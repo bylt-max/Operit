@@ -1369,6 +1369,17 @@
     <string name="floating_window_permission_denied">未获得悬浮窗权限，已关闭悬浮窗模式</string>
     <string name="select_download_source">选择下载源</string>
     <string name="select_download_source_desc">请选择适合您网络环境的下载源：</string>
+    <string name="select_update_method">选择更新方式</string>
+    <string name="select_update_method_desc">请选择更新方式：</string>
+    <string name="update_via_browser">浏览器更新</string>
+    <string name="update_via_browser_desc">跳转浏览器下载（与原流程一致）</string>
+    <string name="update_in_app">软件内更新</string>
+    <string name="update_in_app_desc">在应用内下载 APK，完成后自动拉起安装</string>
+    <string name="full_update">全量更新</string>
+    <string name="full_update_preparing">准备更新到 %1$s，正在下载安装包</string>
+    <string name="full_update_downloading">正在下载安装包</string>
+    <string name="full_update_ready_to_install">准备安装</string>
+    <string name="full_update_failed">全量更新失败: %1$s</string>
     <string name="auto_select">自动选择</string>
     <string name="mirror_download">%1$s 镜像下载</string>
     <string name="china_mirror">国内加速镜像</string>

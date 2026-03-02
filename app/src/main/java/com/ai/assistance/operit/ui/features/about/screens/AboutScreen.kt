@@ -38,6 +38,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.data.updates.FullUpdateInstaller
 import com.ai.assistance.operit.data.updates.UpdateManager
 import com.ai.assistance.operit.data.updates.UpdateStatus
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
@@ -78,6 +79,22 @@ private data class PatchUpdateDialogState(
     val mirrorCompleted: Int = 0,
     val mirrorTotal: Int = 0,
     val selectedMirror: String? = null,
+    val errorMessage: String? = null
+)
+
+private enum class FullUpdatePhase {
+    DOWNLOADING_APK,
+    READY_TO_INSTALL,
+    ERROR
+}
+
+private data class FullUpdateDialogState(
+    val phase: FullUpdatePhase,
+    val message: String,
+    val progressPercent: Int? = null,
+    val readBytes: Long = 0L,
+    val totalBytes: Long? = null,
+    val speedBytesPerSec: Long = 0L,
     val errorMessage: String? = null
 )
 
@@ -171,6 +188,53 @@ private fun reducePatchUpdateState(
             )
         }
         is PatchUpdateInstaller.ProgressEvent.DownloadProgress -> {
+            val percent =
+                if (event.totalBytes != null && event.totalBytes > 0) {
+                    ((event.readBytes * 100) / event.totalBytes).toInt().coerceIn(0, 100)
+                } else {
+                    null
+                }
+            base.copy(
+                progressPercent = percent,
+                readBytes = event.readBytes,
+                totalBytes = event.totalBytes,
+                speedBytesPerSec = event.speedBytesPerSec
+            )
+        }
+    }
+}
+
+private fun mapFullUpdateStage(stage: FullUpdateInstaller.Stage): FullUpdatePhase {
+    return when (stage) {
+        FullUpdateInstaller.Stage.DOWNLOADING_APK -> FullUpdatePhase.DOWNLOADING_APK
+        FullUpdateInstaller.Stage.READY_TO_INSTALL -> FullUpdatePhase.READY_TO_INSTALL
+    }
+}
+
+private fun reduceFullUpdateState(
+    previous: FullUpdateDialogState?,
+    event: FullUpdateInstaller.ProgressEvent
+): FullUpdateDialogState {
+    val base =
+        previous
+            ?: FullUpdateDialogState(
+                phase = FullUpdatePhase.DOWNLOADING_APK,
+                message = ""
+            )
+
+    return when (event) {
+        is FullUpdateInstaller.ProgressEvent.StageChanged -> {
+            base.copy(
+                phase = mapFullUpdateStage(event.stage),
+                message = event.message,
+                progressPercent = null,
+                readBytes = 0L,
+                totalBytes = null,
+                speedBytesPerSec = 0L
+            )
+        }
+
+        is FullUpdateInstaller.ProgressEvent.DownloadProgress -> {
             val percent =
                 if (event.totalBytes != null && event.totalBytes > 0) {
                     ((event.readBytes * 100) / event.totalBytes).toInt().coerceIn(0, 100)
@@ -369,7 +433,12 @@ fun AboutScreen(
     val patchUpdateStateFlow = remember { MutableStateFlow<PatchUpdateDialogState?>(null) }
     val patchUpdateState by patchUpdateStateFlow.collectAsState()
     var patchUpdateJob by remember { mutableStateOf<Job?>(null) }
+    val fullUpdateStateFlow = remember { MutableStateFlow<FullUpdateDialogState?>(null) }
+    val fullUpdateState by fullUpdateStateFlow.collectAsState()
+    var fullUpdateJob by remember { mutableStateOf<Job?>(null) }
+    var pendingFullUpdateMethod by remember { mutableStateOf<UpdateStatus.Available?>(null) }
     var pendingFullUpdate by remember { mutableStateOf<UpdateStatus.Available?>(null) }
+    var pendingFullUpdateInApp by remember { mutableStateOf<UpdateStatus.Available?>(null) }
     var pendingPatchUpdate by remember { mutableStateOf<UpdateStatus.PatchAvailable?>(null) }
 
     // 添加开源许可对话框状态
@@ -535,13 +604,63 @@ fun AboutScreen(
             }
     }
 
+    fun startFullUpdateInApp(apkUrl: String, targetVersion: String) {
+        if (fullUpdateJob?.isActive == true) return
+        showUpdateDialog = false
+
+        fullUpdateStateFlow.value =
+            FullUpdateDialogState(
+                phase = FullUpdatePhase.DOWNLOADING_APK,
+                message = context.getString(R.string.full_update_preparing, targetVersion)
+            )
+
+        fullUpdateJob =
+            scope.launch {
+                try {
+                    val apk =
+                        FullUpdateInstaller.downloadAndPrepareUpdate(
+                            context = context,
+                            apkUrl = apkUrl,
+                            downloadMessage = context.getString(R.string.full_update_downloading),
+                            readyMessage = context.getString(R.string.full_update_ready_to_install)
+                        ) { event ->
+                            fullUpdateStateFlow.update { current ->
+                                if (current == null) {
+                                    null
+                                } else {
+                                    reduceFullUpdateState(current, event)
+                                }
+                            }
+                        }
+
+                    withContext(Dispatchers.Main) {
+                        PatchUpdateInstaller.installApk(context, apk)
+                    }
+                    fullUpdateStateFlow.value = null
+                } catch (e: CancellationException) {
+                    fullUpdateStateFlow.value = null
+                } catch (e: Exception) {
+                    AppLogger.e("AboutScreen", "full update failed", e)
+                    val errorText = e.message ?: context.getString(R.string.unknown_error)
+                    fullUpdateStateFlow.value =
+                        FullUpdateDialogState(
+                            phase = FullUpdatePhase.ERROR,
+                            message = context.getString(R.string.full_update_failed, errorText),
+                            errorMessage = errorText
+                        )
+                } finally {
+                    fullUpdateJob = null
+                }
+            }
+    }
+
     // 处理下载更新 - 自动测速并选择最快下载源
     fun handleDownload() {
         when (val status = updateStatus) {
             is UpdateStatus.Available -> {
                 if (status.downloadUrl.isNotEmpty() && status.downloadUrl.endsWith(".apk")) {
                     showUpdateDialog = false
-                    pendingFullUpdate = status
+                    pendingFullUpdateMethod = status
                 } else {
                     // 如果没有APK下载链接，则直接打开更新页面
                     val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -576,6 +695,32 @@ fun AboutScreen(
         )
     }
 
+    if (fullUpdateState != null) {
+        FullUpdateProgressDialog(
+            state = fullUpdateState!!,
+            onCancel = {
+                fullUpdateJob?.cancel()
+                fullUpdateJob = null
+                fullUpdateStateFlow.value = null
+            }
+        )
+    }
+
+    if (pendingFullUpdateMethod != null) {
+        val status = pendingFullUpdateMethod!!
+        FullUpdateMethodDialog(
+            onDismiss = { pendingFullUpdateMethod = null },
+            onBrowser = {
+                pendingFullUpdateMethod = null
+                pendingFullUpdate = status
+            },
+            onInApp = {
+                pendingFullUpdateMethod = null
+                pendingFullUpdateInApp = status
+            }
+        )
+    }
+
     if (pendingFullUpdate != null) {
         val status = pendingFullUpdate!!
         DownloadSourceDialog(
@@ -584,6 +729,21 @@ fun AboutScreen(
             onDownload = { url ->
                 pendingFullUpdate = null
                 downloadFromUrl(url)
+            }
+        )
+    }
+
+    if (pendingFullUpdateInApp != null) {
+        val status = pendingFullUpdateInApp!!
+        DownloadSourceDialog(
+            updateStatus = status,
+            onDismiss = { pendingFullUpdateInApp = null },
+            onDownload = { url ->
+                pendingFullUpdateInApp = null
+                startFullUpdateInApp(
+                    apkUrl = url,
+                    targetVersion = status.newVersion
+                )
             }
         )
     }
@@ -1048,6 +1208,167 @@ private fun PatchUpdateProgressDialog(
                     }
 
                     PatchUpdatePhase.ERROR -> {
+                        Text(
+                            text = state.errorMessage ?: stringResource(id = R.string.unknown_error),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    if (showCancel) {
+                        TextButton(onClick = onCancel) {
+                            Text(stringResource(id = R.string.cancel))
+                        }
+                    } else if (isError) {
+                        TextButton(onClick = onCancel) {
+                            Text(stringResource(id = R.string.close))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FullUpdateMethodDialog(
+    onDismiss: () -> Unit,
+    onBrowser: () -> Unit,
+    onInApp: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(id = R.string.select_update_method)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = stringResource(id = R.string.select_update_method_desc),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clickable { onInApp() },
+                    shape = RoundedCornerShape(10.dp),
+                    tonalElevation = 1.dp,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = stringResource(id = R.string.update_in_app),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = stringResource(id = R.string.update_in_app_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clickable { onBrowser() },
+                    shape = RoundedCornerShape(10.dp),
+                    tonalElevation = 1.dp,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = stringResource(id = R.string.update_via_browser),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = stringResource(id = R.string.update_via_browser_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {}
+    )
+}
+
+@Composable
+private fun FullUpdateProgressDialog(
+    state: FullUpdateDialogState,
+    onCancel: () -> Unit
+) {
+    val isError = state.phase == FullUpdatePhase.ERROR
+    val showCancel = !isError
+
+    Dialog(
+        onDismissRequest = { },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        )
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(id = R.string.full_update),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = state.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                when (state.phase) {
+                    FullUpdatePhase.DOWNLOADING_APK -> {
+                        if (state.progressPercent != null) {
+                            LinearProgressIndicator(
+                                progress = state.progressPercent / 100f,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        }
+                        val sizeText =
+                            if (state.totalBytes != null && state.totalBytes > 0) {
+                                "${formatBytes(state.readBytes)} / ${formatBytes(state.totalBytes)}"
+                            } else {
+                                formatBytes(state.readBytes)
+                            }
+                        Text(
+                            text = "$sizeText · ${formatSpeed(state.speedBytesPerSec)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    FullUpdatePhase.READY_TO_INSTALL -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Text(
+                                text = state.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    FullUpdatePhase.ERROR -> {
                         Text(
                             text = state.errorMessage ?: stringResource(id = R.string.unknown_error),
                             style = MaterialTheme.typography.bodySmall,

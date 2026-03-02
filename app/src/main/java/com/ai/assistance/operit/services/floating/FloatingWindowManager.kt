@@ -9,7 +9,9 @@ import android.os.Handler
 import android.os.Looper
 import com.ai.assistance.operit.util.AppLogger
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.InputMethodManager
@@ -104,9 +106,12 @@ class FloatingWindowManager(
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var composeView: ComposeView? = null
     private var statusIndicatorView: ComposeView? = null
+    private var focusDismissView: View? = null
     private var isViewAdded = false
     private var isIndicatorAdded = false
+    private var isDismissViewAdded = false
     private var sizeAnimator: ValueAnimator? = null
+    private var windowFocusChangeListener: ViewTreeObserver.OnWindowFocusChangeListener? = null
     private var windowDisplayEnabled: Boolean = true
     private var windowPersistentHidden: Boolean = false
     private var indicatorDisplayEnabled: Boolean = true
@@ -127,6 +132,7 @@ class FloatingWindowManager(
             params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
         }
+        setFocusDismissVisible(false)
     }
 
     fun prepareForExit() {
@@ -144,6 +150,8 @@ class FloatingWindowManager(
         if (isViewAdded) return
 
         try {
+            ensureFocusDismissView()
+
             composeView =
                     ComposeView(context).apply {
                         setViewTreeLifecycleOwner(lifecycleOwner)
@@ -156,7 +164,24 @@ class FloatingWindowManager(
                                     typography = callback.getTypography()
                             ) { FloatingChatUi() }
                         }
+
+                        // When input is focused in window mode, outside taps should defocus the overlay.
+                        setOnTouchListener { _, event ->
+                            if (event.action == MotionEvent.ACTION_OUTSIDE &&
+                                    state.currentMode.value == FloatingMode.WINDOW
+                            ) {
+                                setFocusable(false)
+                            }
+                            false
+                        }
                     }
+
+            windowFocusChangeListener = ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
+                if (!hasFocus && state.currentMode.value == FloatingMode.WINDOW) {
+                    setFocusable(false)
+                }
+            }
+            composeView?.viewTreeObserver?.addOnWindowFocusChangeListener(windowFocusChangeListener)
 
             val params = createLayoutParams()
             windowManager.addView(composeView, params)
@@ -172,6 +197,12 @@ class FloatingWindowManager(
         if (isViewAdded) {
             composeView?.let {
                 cancelFocusBeforeExit()
+                windowFocusChangeListener?.let { listener ->
+                    if (it.viewTreeObserver.isAlive) {
+                        it.viewTreeObserver.removeOnWindowFocusChangeListener(listener)
+                    }
+                }
+                windowFocusChangeListener = null
                 try {
                     windowManager.removeView(it)
                 } catch (e: Exception) {
@@ -181,6 +212,64 @@ class FloatingWindowManager(
                 isViewAdded = false
             }
         }
+
+        if (isDismissViewAdded) {
+            focusDismissView?.let {
+                try {
+                    windowManager.removeView(it)
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "Error removing focus dismiss view", e)
+                }
+            }
+            focusDismissView = null
+            isDismissViewAdded = false
+        }
+    }
+
+    private fun ensureFocusDismissView() {
+        if (isDismissViewAdded) return
+
+        val dismissView = View(context).apply {
+            // Keep transparent but clickable so taps outside floating window can clear focus.
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            visibility = View.GONE
+            isClickable = true
+            setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_DOWN || event.action == MotionEvent.ACTION_UP) {
+                    setFocusable(false)
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+        }
+
+        try {
+            windowManager.addView(dismissView, params)
+            focusDismissView = dismissView
+            isDismissViewAdded = true
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error creating focus dismiss view", e)
+        }
+    }
+
+    private fun setFocusDismissVisible(visible: Boolean) {
+        val view = focusDismissView ?: return
+        if (state.currentMode.value != FloatingMode.WINDOW) {
+            view.visibility = View.GONE
+            return
+        }
+        view.visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     @Composable
@@ -261,6 +350,8 @@ class FloatingWindowManager(
                 updateViewLayout { params ->
                     params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
                 }
+            } else {
+                setFocusDismissVisible(false)
             }
         }
 
@@ -728,6 +819,9 @@ class FloatingWindowManager(
         }
 
         state.currentMode.value = newMode
+        if (newMode != FloatingMode.WINDOW) {
+            setFocusDismissVisible(false)
+        }
         callback.saveState()
 
         if (wasFullscreen != willFullscreen) {
@@ -1027,6 +1121,14 @@ class FloatingWindowManager(
             updateViewLayout { params ->
                 params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
 
+                // Allow outside tap passthrough and receive ACTION_OUTSIDE to clear focus.
+                if (state.currentMode.value == FloatingMode.WINDOW) {
+                    params.flags =
+                            params.flags or
+                                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                }
+
                 // 为全屏模式特殊处理软键盘，以避免遮挡UI
                 if (state.currentMode.value == FloatingMode.FULLSCREEN) {
                     @Suppress("DEPRECATION")
@@ -1045,9 +1147,11 @@ class FloatingWindowManager(
                     },
                     200
             )
+            setFocusDismissVisible(state.currentMode.value == FloatingMode.WINDOW)
         } else {
             // Step 1: 立即隐藏键盘
             imm.hideSoftInputFromWindow(view.windowToken, 0)
+            setFocusDismissVisible(false)
 
             // Step 2: 延迟恢复窗口的不可聚焦状态（全屏模式除外）
             view.postDelayed(
@@ -1058,6 +1162,12 @@ class FloatingWindowManager(
                                 params.flags =
                                         params.flags or
                                                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                                params.flags =
+                                        params.flags and
+                                                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL.inv()
+                                params.flags =
+                                        params.flags and
+                                                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH.inv()
                             }
                             // 重置软键盘模式
                             params.softInputMode =

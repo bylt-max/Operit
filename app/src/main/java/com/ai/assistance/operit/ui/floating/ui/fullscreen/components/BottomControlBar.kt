@@ -433,8 +433,9 @@ fun BottomControlBar(
                     if (isHoldToSpeakMode) {
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(pillHeight)
+                                .matchParentSize()
+                                .padding(glowPadding),
+                            contentAlignment = Alignment.Center
                         ) {
                             if (isPressed && !isCancelRegion) {
                                 Canvas(
@@ -467,8 +468,7 @@ fun BottomControlBar(
                                 Text(
                                     text = if (isCancelRegion) stringResource(R.string.floating_release_to_cancel) else stringResource(R.string.floating_release_to_finish),
                                     color = if (isCancelRegion) Color.White else Color.Black,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.align(Alignment.Center)
+                                    style = MaterialTheme.typography.bodySmall
                                 )
                             }
                         }

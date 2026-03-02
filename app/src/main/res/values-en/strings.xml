@@ -1401,6 +1401,17 @@
     <string name="floating_window_permission_denied">Floating window permission not granted, floating window mode closed</string>
     <string name="select_download_source">Select Download Source</string>
     <string name="select_download_source_desc">Please select a download source suitable for your network:</string>
+    <string name="select_update_method">Choose Update Method</string>
+    <string name="select_update_method_desc">Please choose how to update:</string>
+    <string name="update_via_browser">Update via Browser</string>
+    <string name="update_via_browser_desc">Open browser download (same as current flow)</string>
+    <string name="update_in_app">Update In-App</string>
+    <string name="update_in_app_desc">Download APK inside app and open installer when done</string>
+    <string name="full_update">Full Update</string>
+    <string name="full_update_preparing">Preparing update to %1$s, downloading package...</string>
+    <string name="full_update_downloading">Downloading package...</string>
+    <string name="full_update_ready_to_install">Ready to install</string>
+    <string name="full_update_failed">Full update failed: %1$s</string>
     <string name="auto_select">Auto Select</string>
     <string name="mirror_download">%1$s Mirror Download</string>
     <string name="china_mirror">China Accelerated Mirror</string>
