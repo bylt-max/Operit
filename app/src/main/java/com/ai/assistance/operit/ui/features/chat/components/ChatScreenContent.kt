@@ -89,7 +89,6 @@ fun ChatScreenContent(
         actualViewModel: ChatViewModel,
         showChatHistorySelector: Boolean,
         chatHistory: List<ChatMessage>,
-        enableAiPlanning: Boolean,
         isLoading: Boolean,
         userMessageColor: Color,
         aiMessageColor: Color,

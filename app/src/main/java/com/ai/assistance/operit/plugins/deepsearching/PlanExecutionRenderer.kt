@@ -1,4 +1,4 @@
-package com.ai.assistance.operit.ui.common.markdown
+package com.ai.assistance.operit.plugins.deepsearching
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -74,11 +74,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ai.assistance.operit.R
-import com.ai.assistance.operit.api.chat.plan.ExecutionGraph
-import com.ai.assistance.operit.api.chat.plan.PlanParser
-import com.ai.assistance.operit.api.chat.plan.TaskNode
 import com.google.gson.Gson
-import java.util.regex.Pattern
 
 private enum class TaskStatus {
     TODO, IN_PROGRESS, COMPLETED, FAILED

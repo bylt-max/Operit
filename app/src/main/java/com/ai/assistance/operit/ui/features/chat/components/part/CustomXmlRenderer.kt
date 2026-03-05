@@ -37,6 +37,7 @@ import com.ai.assistance.operit.ui.common.animations.SimpleAnimatedVisibility
 import com.ai.assistance.operit.ui.common.markdown.DefaultXmlRenderer
 import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRenderer
 import com.ai.assistance.operit.ui.common.markdown.XmlContentRenderer
+import com.ai.assistance.operit.ui.common.markdown.XmlRenderPluginRegistry
 import com.ai.assistance.operit.ui.common.rememberLocal
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.stream.Stream
@@ -80,11 +81,11 @@ class CustomXmlRenderer(
         // 用 Box 包裹所有内容，添加无障碍描述
         if (tagName == "think" || tagName == "thinking") {
             Box(modifier = modifier) {
-                RenderXmlContentInternal(trimmedContent, tagName, textColor, xmlStream)
+                RenderXmlContentInternal(trimmedContent, tagName, textColor, xmlStream, Modifier)
             }
         } else {
             Box(modifier = modifier.semantics { contentDescription = accessibilityDesc }) {
-                RenderXmlContentInternal(trimmedContent, tagName, textColor, xmlStream)
+                RenderXmlContentInternal(trimmedContent, tagName, textColor, xmlStream, Modifier)
             }
         }
     }
@@ -94,7 +95,8 @@ class CustomXmlRenderer(
         trimmedContent: String,
         tagName: String?,
         textColor: Color,
-        xmlStream: Stream<String>?
+        xmlStream: Stream<String>?,
+        modifier: Modifier
     ) {
 
         // 根据设置决定是否渲染 think 和 thinking 标签
@@ -115,6 +117,19 @@ class CustomXmlRenderer(
         // 如果无法识别为有效的XML标签，则交由默认渲染器处理
         if (tagName == null) {
             fallback.RenderXmlContent(trimmedContent, Modifier, textColor, xmlStream)
+            return
+        }
+
+        // 优先分发到已注册的 XML 渲染插件（例如 deepsearch 的 <plan>）
+        if (
+            XmlRenderPluginRegistry.RenderIfMatched(
+                xmlContent = trimmedContent,
+                tagName = tagName,
+                modifier = modifier,
+                textColor = textColor,
+                xmlStream = xmlStream
+            )
+        ) {
             return
         }
 

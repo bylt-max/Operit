@@ -5,9 +5,11 @@ import android.content.Context
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
-import com.ai.assistance.operit.api.chat.plan.PlanModeManager
 import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkParser
 import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkBuilder
+import com.ai.assistance.operit.core.chat.plugins.MessageProcessingController
+import com.ai.assistance.operit.core.chat.plugins.MessageProcessingHookParams
+import com.ai.assistance.operit.core.chat.plugins.MessageProcessingPluginRegistry
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.MemoryQueryResultData
 import com.ai.assistance.operit.data.model.AITool
@@ -21,7 +23,6 @@ import com.ai.assistance.operit.util.ImagePoolManager
 import com.ai.assistance.operit.util.MediaPoolManager
 import com.ai.assistance.operit.util.ChatUtils
 import com.ai.assistance.operit.util.ChatMarkupRegex
-import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.util.stream.SharedStream
 import com.ai.assistance.operit.util.stream.share
 import kotlinx.coroutines.CoroutineScope
@@ -56,7 +57,7 @@ object AIMessageManager {
     private const val DEFAULT_CHAT_KEY = "__DEFAULT_CHAT__"
 
     private val activeEnhancedAiServiceByChatId = ConcurrentHashMap<String, EnhancedAIService>()
-    private val activePlanModeManagerByChatId = ConcurrentHashMap<String, PlanModeManager>()
+    private val activeMessageProcessingControllerByChatId = ConcurrentHashMap<String, MessageProcessingController>()
 
     @Volatile private var lastActiveChatKey: String = DEFAULT_CHAT_KEY
 
@@ -279,9 +280,6 @@ object AIMessageManager {
             )
         }
 
-        // 检查是否启用了深度搜索模式（计划模式）
-        val isDeepSearchEnabled = apiPreferences.enableAiPlanningFlow.first()
-
         return withContext(Dispatchers.IO) {
             val maxImageHistoryUserTurns = apiPreferences.maxImageHistoryUserTurnsFlow.first()
             val maxMediaHistoryUserTurns = apiPreferences.maxMediaHistoryUserTurnsFlow.first()
@@ -306,43 +304,31 @@ object AIMessageManager {
                 )
             }
 
-            if (isDeepSearchEnabled) {
-                // 创建计划模式管理器
-                val planModeManager = PlanModeManager(context, enhancedAiService)
-
-                // 检查消息是否适合使用深度搜索模式
-                val shouldUseDeepSearch = planModeManager.shouldUseDeepSearchMode(messageContent)
-
-                if (shouldUseDeepSearch) {
-                    activePlanModeManagerByChatId[chatKey] = planModeManager
-                    AppLogger.d(TAG, "启用深度搜索模式处理消息")
-
-                    // 设置执行计划的特定UI状态
-                    enhancedAiService.setInputProcessingState(
-                        InputProcessingState.ExecutingPlan(context.getString(R.string.ai_message_executing_deep_search))
-                    )
-
-                    // 使用深度搜索模式
-                    return@withContext planModeManager.executeDeepSearchMode(
-                        userMessage = messageContent,
-                        chatHistory = memoryForRequest,
-                        workspacePath = workspacePath,
-                        maxTokens = maxTokens,
-                        tokenUsageThreshold = tokenUsageThreshold,
-                        onNonFatalError = onNonFatalError
-                    ).share(
-                        scope = scope,
-                        onComplete = {
-                            activePlanModeManagerByChatId.remove(chatKey)
-                            activeEnhancedAiServiceByChatId.remove(chatKey)
-                        }
-                    )
-                } else {
-                    activePlanModeManagerByChatId.remove(chatKey)
-                    AppLogger.d(TAG, "消息不适合深度搜索模式，使用普通模式")
-                }
+            val pluginExecution = MessageProcessingPluginRegistry.createExecutionIfMatched(
+                params = MessageProcessingHookParams(
+                    context = context,
+                    enhancedAIService = enhancedAiService,
+                    messageContent = messageContent,
+                    chatHistory = memoryForRequest,
+                    workspacePath = workspacePath,
+                    maxTokens = maxTokens,
+                    tokenUsageThreshold = tokenUsageThreshold,
+                    onNonFatalError = onNonFatalError
+                )
+            )
+            if (pluginExecution != null) {
+                activeMessageProcessingControllerByChatId[chatKey] = pluginExecution.controller
+                AppLogger.d(TAG, "消息处理插件已接管消息处理")
+                return@withContext pluginExecution.stream.share(
+                    scope = scope,
+                    onComplete = {
+                        activeMessageProcessingControllerByChatId.remove(chatKey)
+                        activeEnhancedAiServiceByChatId.remove(chatKey)
+                    }
+                )
             } else {
-                activePlanModeManagerByChatId.remove(chatKey)
+                activeMessageProcessingControllerByChatId.remove(chatKey)
+                AppLogger.d(TAG, "消息处理插件未接管，使用普通模式")
             }
 
             // 获取流式输出设置
@@ -374,7 +360,7 @@ object AIMessageManager {
             ).share(
                 scope = scope,
                 onComplete = {
-                    activePlanModeManagerByChatId.remove(chatKey)
+                    activeMessageProcessingControllerByChatId.remove(chatKey)
                     activeEnhancedAiServiceByChatId.remove(chatKey)
                 }
             )
@@ -431,7 +417,7 @@ object AIMessageManager {
 
     /**
      * 取消当前正在进行的AI操作。
-     * 这会同时尝试取消计划执行（如果正在进行）和底层的AI流。
+     * 这会同时尝试取消插件接管执行（如果正在进行）和底层的AI流。
      */
     fun cancelCurrentOperation() {
         cancelOperation(lastActiveChatKey)
@@ -441,8 +427,8 @@ object AIMessageManager {
         val chatKey = chatId.ifBlank { DEFAULT_CHAT_KEY }
         AppLogger.d(TAG, "请求取消AI操作: chatId=$chatKey")
 
-        activePlanModeManagerByChatId.remove(chatKey)?.let {
-            AppLogger.d(TAG, "正在取消计划模式执行: chatId=$chatKey")
+        activeMessageProcessingControllerByChatId.remove(chatKey)?.let {
+            AppLogger.d(TAG, "正在取消消息处理插件执行: chatId=$chatKey")
             it.cancel()
         }
 
@@ -456,7 +442,7 @@ object AIMessageManager {
 
     fun cancelAllOperations() {
         AppLogger.d(TAG, "请求取消所有AI操作...")
-        val keys = (activeEnhancedAiServiceByChatId.keys + activePlanModeManagerByChatId.keys).toSet()
+        val keys = (activeEnhancedAiServiceByChatId.keys + activeMessageProcessingControllerByChatId.keys).toSet()
         keys.forEach { cancelOperation(it) }
         AppLogger.d(TAG, "所有AI操作取消请求已发送。")
     }

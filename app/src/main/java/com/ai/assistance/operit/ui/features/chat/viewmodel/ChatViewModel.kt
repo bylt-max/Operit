@@ -174,7 +174,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         _shouldShowConfigDialog.value = true
     }
 
-    val enableAiPlanning: StateFlow<Boolean> by lazy { apiConfigDelegate.enableAiPlanning }
+    val featureToggles: StateFlow<Map<String, Boolean>> by lazy { apiConfigDelegate.featureToggles }
     val keepScreenOn: StateFlow<Boolean> by lazy { apiConfigDelegate.keepScreenOn }
 
     // 思考模式和思考引导状态现在由ApiConfigDelegate管理
@@ -638,9 +638,8 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             uiStateDelegate.showErrorMessage(context.getString(R.string.chat_default_config_incomplete))
         }
     }
-    fun toggleAiPlanning() {
-        apiConfigDelegate.toggleAiPlanning()
-        // 移除Toast提示
+    fun toggleFeature(featureKey: String) {
+        apiConfigDelegate.toggleFeature(featureKey)
     }
 
     // 切换思考模式的方法现在委托给ApiConfigDelegate

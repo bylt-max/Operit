@@ -12,7 +12,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.hjson.JsonValue
-import org.json.JSONObject
 
 internal enum class ToolPkgSourceType {
     ASSET,
@@ -28,9 +27,28 @@ internal data class ToolPkgResourceRuntime(
 internal data class ToolPkgUiModuleRuntime(
     val id: String,
     val runtime: String,
-    val entry: String,
-    val title: LocalizedText,
-    val showInPackageManager: Boolean
+    val screen: String,
+    val title: LocalizedText
+)
+
+internal data class ToolPkgAppLifecycleHookRuntime(
+    val id: String,
+    val event: String,
+    val function: String,
+    val functionSource: String? = null
+)
+
+internal data class ToolPkgFunctionHookRuntime(
+    val id: String,
+    val function: String,
+    val functionSource: String? = null
+)
+
+internal data class ToolPkgTagFunctionHookRuntime(
+    val id: String,
+    val tag: String,
+    val function: String,
+    val functionSource: String? = null
 )
 
 internal data class ToolPkgSubpackageRuntime(
@@ -48,11 +66,16 @@ internal data class ToolPkgContainerRuntime(
     val displayName: LocalizedText,
     val description: LocalizedText,
     val version: String,
+    val mainEntry: String,
     val sourceType: ToolPkgSourceType,
     val sourcePath: String,
     val subpackages: List<ToolPkgSubpackageRuntime>,
     val resources: List<ToolPkgResourceRuntime>,
-    val uiModules: List<ToolPkgUiModuleRuntime>
+    val uiModules: List<ToolPkgUiModuleRuntime>,
+    val appLifecycleHooks: List<ToolPkgAppLifecycleHookRuntime>,
+    val messageProcessingPlugins: List<ToolPkgFunctionHookRuntime>,
+    val xmlRenderPlugins: List<ToolPkgTagFunctionHookRuntime>,
+    val inputMenuTogglePlugins: List<ToolPkgFunctionHookRuntime>
 )
 
 internal data class ToolPkgLoadResult(
@@ -66,10 +89,10 @@ internal data class ToolPkgManifest(
     @SerialName("schema_version") val schemaVersion: Int = 1,
     @SerialName("toolpkg_id") val toolpkgId: String,
     val version: String = "",
+    val main: String = "",
     @SerialName("display_name") val displayName: LocalizedText = LocalizedText.of(""),
     val description: LocalizedText = LocalizedText.of(""),
     val subpackages: List<ToolPkgManifestSubpackage> = emptyList(),
-    @SerialName("ui_modules") val uiModules: List<ToolPkgManifestUiModule> = emptyList(),
     val resources: List<ToolPkgManifestResource> = emptyList()
 )
 
@@ -80,19 +103,45 @@ internal data class ToolPkgManifestSubpackage(
 )
 
 @Serializable
-internal data class ToolPkgManifestUiModule(
-    val id: String,
-    val runtime: String = "",
-    val entry: String = "",
-    val title: LocalizedText = LocalizedText.of(""),
-    @SerialName("show_in_package_manager") val showInPackageManager: Boolean = false
-)
-
-@Serializable
 internal data class ToolPkgManifestResource(
     val key: String,
     val path: String,
     val mime: String = ""
+)
+
+internal data class ToolPkgRegisteredUiModule(
+    val id: String,
+    val runtime: String,
+    val screen: String,
+    val title: LocalizedText
+)
+
+internal data class ToolPkgRegisteredAppLifecycleHook(
+    val id: String,
+    val event: String,
+    val function: String,
+    val functionSource: String? = null
+)
+
+internal data class ToolPkgRegisteredFunctionHook(
+    val id: String,
+    val function: String,
+    val functionSource: String? = null
+)
+
+internal data class ToolPkgRegisteredTagFunctionHook(
+    val id: String,
+    val tag: String,
+    val function: String,
+    val functionSource: String? = null
+)
+
+internal data class ToolPkgMainRegistration(
+    val toolboxUiModules: List<ToolPkgRegisteredUiModule> = emptyList(),
+    val appLifecycleHooks: List<ToolPkgRegisteredAppLifecycleHook> = emptyList(),
+    val messageProcessingPlugins: List<ToolPkgRegisteredFunctionHook> = emptyList(),
+    val xmlRenderPlugins: List<ToolPkgRegisteredTagFunctionHook> = emptyList(),
+    val inputMenuTogglePlugins: List<ToolPkgRegisteredFunctionHook> = emptyList()
 )
 
 internal object ToolPkgArchiveParser {
@@ -102,6 +151,7 @@ internal object ToolPkgArchiveParser {
         sourcePath: String,
         isBuiltIn: Boolean,
         parseJsPackage: (String, (String, String) -> Unit) -> ToolPackage?,
+        parseMainRegistration: (String, String) -> ToolPkgMainRegistration?,
         reportPackageLoadError: (String, String) -> Unit
     ): ToolPkgLoadResult {
         val manifestEntryName = findManifestEntry(entries)
@@ -115,6 +165,16 @@ internal object ToolPkgArchiveParser {
         if (manifest.toolpkgId.isBlank()) {
             throw IllegalArgumentException("manifest.toolpkg_id is required")
         }
+        val normalizedMainEntry =
+            normalizeZipEntryPath(manifest.main)
+                ?: throw IllegalArgumentException("manifest.main is required")
+        if (!containsZipEntry(entries, normalizedMainEntry)) {
+            throw IllegalArgumentException("Cannot find manifest.main entry '${manifest.main}'")
+        }
+        val mainScriptText =
+            findZipEntryContent(entries, normalizedMainEntry)
+                ?.toString(StandardCharsets.UTF_8)
+                ?: throw IllegalArgumentException("Failed to read manifest.main entry '${manifest.main}'")
 
         val subpackagePackages = mutableListOf<ToolPackage>()
         val subpackageRuntimes = mutableListOf<ToolPkgSubpackageRuntime>()
@@ -222,23 +282,158 @@ internal object ToolPkgArchiveParser {
                 )
             }
 
-        val uiModules =
-            manifest.uiModules.map { uiModule ->
-                ToolPkgUiModuleRuntime(
-                    id = uiModule.id,
-                    runtime = uiModule.runtime,
-                    entry = uiModule.entry,
-                    title = uiModule.title,
-                    showInPackageManager = uiModule.showInPackageManager
-                )
-            }
-
         val containerDisplayName =
             if (hasLocalizedTextContent(manifest.displayName)) {
                 manifest.displayName
             } else {
                 LocalizedText.of(manifest.toolpkgId)
             }
+        val mainRegistration =
+            parseMainRegistration(mainScriptText, manifest.toolpkgId)
+                ?: throw IllegalArgumentException(
+                    "Failed to parse main registration from '${manifest.main}'. " +
+                        "main script must export registerToolPkg()"
+                )
+
+        val uiModules = mutableListOf<ToolPkgUiModuleRuntime>()
+        val uiModuleIds = linkedSetOf<String>()
+        mainRegistration.toolboxUiModules.forEachIndexed { index, module ->
+            val id = module.id.trim()
+            if (id.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_TOOLBOX_UI_MODULE[$index].id is required")
+            }
+            if (!uiModuleIds.add(id.lowercase())) {
+                throw IllegalArgumentException("Duplicate toolbox ui module id: $id")
+            }
+
+            val runtimeName = module.runtime.trim().ifBlank { TOOLPKG_RUNTIME_COMPOSE_DSL }
+            val normalizedScreenPath =
+                normalizeZipEntryPath(module.screen)
+                    ?: throw IllegalArgumentException(
+                        "$TOOLPKG_REGISTRATION_TOOLBOX_UI_MODULE[$index].screen is invalid: ${module.screen}"
+                    )
+            if (!containsZipEntry(entries, normalizedScreenPath)) {
+                throw IllegalArgumentException(
+                    "$TOOLPKG_REGISTRATION_TOOLBOX_UI_MODULE[$index].screen not found: ${module.screen}"
+                )
+            }
+
+            uiModules.add(
+                ToolPkgUiModuleRuntime(
+                    id = id,
+                    runtime = runtimeName,
+                    screen = normalizedScreenPath,
+                    title = module.title
+                )
+            )
+        }
+
+        val appLifecycleHooks = mutableListOf<ToolPkgAppLifecycleHookRuntime>()
+        val hookIds = linkedSetOf<String>()
+        mainRegistration.appLifecycleHooks.forEachIndexed { index, hook ->
+            val id = hook.id.trim()
+            if (id.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_APP_LIFECYCLE_HOOK[$index].id is required")
+            }
+            if (!hookIds.add(id.lowercase())) {
+                throw IllegalArgumentException("Duplicate app lifecycle hook id: $id")
+            }
+
+            val event = hook.event.trim().lowercase()
+            val function = hook.function.trim()
+            if (event.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_APP_LIFECYCLE_HOOK[$index].event is required")
+            }
+            if (function.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_APP_LIFECYCLE_HOOK[$index].function is required")
+            }
+
+            appLifecycleHooks.add(
+                ToolPkgAppLifecycleHookRuntime(
+                    id = id,
+                    event = event,
+                    function = function,
+                    functionSource = hook.functionSource
+                )
+            )
+        }
+
+        val messageProcessingPlugins = mutableListOf<ToolPkgFunctionHookRuntime>()
+        val messageProcessingIds = linkedSetOf<String>()
+        mainRegistration.messageProcessingPlugins.forEachIndexed { index, hook ->
+            val id = hook.id.trim()
+            if (id.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_MESSAGE_PROCESSING_PLUGIN[$index].id is required")
+            }
+            if (!messageProcessingIds.add(id.lowercase())) {
+                throw IllegalArgumentException("Duplicate message processing plugin id: $id")
+            }
+
+            val function = hook.function.trim()
+            if (function.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_MESSAGE_PROCESSING_PLUGIN[$index].function is required")
+            }
+            messageProcessingPlugins.add(
+                ToolPkgFunctionHookRuntime(
+                    id = id,
+                    function = function,
+                    functionSource = hook.functionSource
+                )
+            )
+        }
+
+        val xmlRenderPlugins = mutableListOf<ToolPkgTagFunctionHookRuntime>()
+        val xmlRenderIds = linkedSetOf<String>()
+        mainRegistration.xmlRenderPlugins.forEachIndexed { index, hook ->
+            val id = hook.id.trim()
+            if (id.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_XML_RENDER_PLUGIN[$index].id is required")
+            }
+            if (!xmlRenderIds.add(id.lowercase())) {
+                throw IllegalArgumentException("Duplicate xml render plugin id: $id")
+            }
+
+            val tag = hook.tag.trim().lowercase()
+            val function = hook.function.trim()
+            if (tag.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_XML_RENDER_PLUGIN[$index].tag is required")
+            }
+            if (function.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_XML_RENDER_PLUGIN[$index].function is required")
+            }
+            xmlRenderPlugins.add(
+                ToolPkgTagFunctionHookRuntime(
+                    id = id,
+                    tag = tag,
+                    function = function,
+                    functionSource = hook.functionSource
+                )
+            )
+        }
+
+        val inputMenuTogglePlugins = mutableListOf<ToolPkgFunctionHookRuntime>()
+        val inputMenuToggleIds = linkedSetOf<String>()
+        mainRegistration.inputMenuTogglePlugins.forEachIndexed { index, hook ->
+            val id = hook.id.trim()
+            if (id.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_INPUT_MENU_TOGGLE_PLUGIN[$index].id is required")
+            }
+            if (!inputMenuToggleIds.add(id.lowercase())) {
+                throw IllegalArgumentException("Duplicate input menu toggle plugin id: $id")
+            }
+
+            val function = hook.function.trim()
+            if (function.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_INPUT_MENU_TOGGLE_PLUGIN[$index].function is required")
+            }
+            inputMenuTogglePlugins.add(
+                ToolPkgFunctionHookRuntime(
+                    id = id,
+                    function = function,
+                    functionSource = hook.functionSource
+                )
+            )
+        }
 
         val containerDescription =
             when {
@@ -254,6 +449,7 @@ internal object ToolPkgArchiveParser {
                 tools = emptyList(),
                 isBuiltIn = isBuiltIn,
                 enabledByDefault = true,
+                displayName = containerDisplayName,
                 category = "ToolPkg"
             )
 
@@ -263,11 +459,16 @@ internal object ToolPkgArchiveParser {
                 displayName = containerDisplayName,
                 description = containerDescription,
                 version = manifest.version,
+                mainEntry = normalizedMainEntry,
                 sourceType = sourceType,
                 sourcePath = sourcePath,
                 subpackages = subpackageRuntimes,
                 resources = resources,
-                uiModules = uiModules
+                uiModules = uiModules,
+                appLifecycleHooks = appLifecycleHooks,
+                messageProcessingPlugins = messageProcessingPlugins,
+                xmlRenderPlugins = xmlRenderPlugins,
+                inputMenuTogglePlugins = inputMenuTogglePlugins
             )
 
         return ToolPkgLoadResult(
@@ -399,46 +600,5 @@ internal object ToolPkgArchiveParser {
 
     private fun hasLocalizedTextContent(text: LocalizedText?): Boolean {
         return text?.values?.values?.any { it.isNotBlank() } == true
-    }
-}
-
-internal object ToolPkgUiScriptParser {
-    fun extractUiSpecJson(
-        scriptText: String,
-        startMarker: String,
-        endMarker: String
-    ): JSONObject? {
-        val markerRegex =
-            Regex(
-                pattern = "/\\*\\s*$startMarker\\s*(\\{[\\s\\S]*?\\})\\s*$endMarker\\s*\\*/",
-                options = setOf(RegexOption.IGNORE_CASE)
-            )
-
-        val payload = markerRegex.find(scriptText)?.groupValues?.getOrNull(1) ?: return null
-        return try {
-            JSONObject(payload)
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    fun readStringList(json: JSONObject?, key: String): List<String> {
-        if (json == null) {
-            return emptyList()
-        }
-        val arr = json.optJSONArray(key) ?: return emptyList()
-        val result = mutableListOf<String>()
-        for (i in 0 until arr.length()) {
-            val value = arr.optString(i).trim()
-            if (value.isNotBlank()) {
-                result.add(value)
-            }
-        }
-        return result
-    }
-
-    fun readString(json: JSONObject?, key: String, defaultValue: String): String {
-        val value = json?.optString(key)?.trim().orEmpty()
-        return if (value.isBlank()) defaultValue else value
     }
 }

@@ -573,11 +573,12 @@ fun getJsToolsDefinition(): String {
                     return toolCall("get_memory_by_title", params);
                 },
                 // 创建记忆
-                create: (title, content, contentType, source, folderPath) => {
+                create: (title, content, contentType, source, folderPath, tags) => {
                     const params = { title, content };
                     if (contentType) params.content_type = contentType;
                     if (source) params.source = source;
                     if (folderPath) params.folder_path = folderPath;
+                    if (tags) params.tags = tags;
                     return toolCall("create_memory", params);
                 },
                 // 更新记忆

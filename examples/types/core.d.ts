@@ -134,6 +134,36 @@ export namespace NativeInterface {
     function logDebug(message: string, data: string): void;
 
     /**
+     * Register a toolbox UI module for current toolpkg main registration session.
+     * @param specJson - JSON object string describing a toolbox UI module
+     */
+    function registerToolPkgToolboxUiModule(specJson: string): void;
+
+    /**
+     * Register an app lifecycle hook for current toolpkg main registration session.
+     * @param specJson - JSON object string describing an app lifecycle hook
+     */
+    function registerToolPkgAppLifecycleHook(specJson: string): void;
+
+    /**
+     * Register a message processing plugin for current toolpkg main registration session.
+     * @param specJson - JSON object string describing a message processing plugin
+     */
+    function registerToolPkgMessageProcessingPlugin(specJson: string): void;
+
+    /**
+     * Register an XML render plugin for current toolpkg main registration session.
+     * @param specJson - JSON object string describing an XML render plugin
+     */
+    function registerToolPkgXmlRenderPlugin(specJson: string): void;
+
+    /**
+     * Register an input menu toggle plugin for current toolpkg main registration session.
+     * @param specJson - JSON object string describing an input menu toggle plugin
+     */
+    function registerToolPkgInputMenuTogglePlugin(specJson: string): void;
+
+    /**
      * Register an image from base64-encoded data into the global image pool
      * and return a `<link type="image" id="...">` tag string that can be
      * embedded into tool results or messages.

@@ -133,6 +133,8 @@ import com.ai.assistance.operit.ui.features.chat.components.AttachmentChip
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentSelectorPopupPanel
 import com.ai.assistance.operit.ui.features.chat.components.FullscreenInputDialog
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.CharacterCardModelBindingSwitchConfirmDialog
+import com.ai.assistance.operit.ui.features.chat.components.style.input.common.InputMenuToggleHookParams
+import com.ai.assistance.operit.ui.features.chat.components.style.input.common.InputMenuTogglePluginRegistry
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.PendingMessageQueuePanel
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.PendingQueueMessageItem
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.ToolPromptManagerDialog
@@ -180,8 +182,8 @@ fun AgentChatInputSection(
     onToggleThinkingGuidance: () -> Unit = {},
     enableMaxContextMode: Boolean = false,
     onToggleEnableMaxContextMode: () -> Unit = {},
-    enableAiPlanning: Boolean = false,
-    onToggleAiPlanning: () -> Unit = {},
+    featureStates: Map<String, Boolean> = emptyMap(),
+    onToggleFeature: (String) -> Unit = {},
     permissionLevel: PermissionLevel = PermissionLevel.ASK,
     onTogglePermission: () -> Unit = {},
     enableMemoryQuery: Boolean = false,
@@ -1259,8 +1261,8 @@ fun AgentChatInputSection(
                 },
                 enableMemoryQuery = enableMemoryQuery,
                 onToggleMemoryQuery = onToggleMemoryQuery,
-                enableAiPlanning = enableAiPlanning,
-                onToggleAiPlanning = onToggleAiPlanning,
+                featureStates = featureStates,
+                onToggleFeature = onToggleFeature,
                 isAutoReadEnabled = isAutoReadEnabled,
                 onToggleAutoRead = onToggleAutoRead,
                 permissionLevel = permissionLevel,
@@ -1987,8 +1989,8 @@ private fun AgentExtraSettingsPopup(
     onManageMemory: () -> Unit,
     enableMemoryQuery: Boolean,
     onToggleMemoryQuery: () -> Unit,
-    enableAiPlanning: Boolean,
-    onToggleAiPlanning: () -> Unit,
+    featureStates: Map<String, Boolean>,
+    onToggleFeature: (String) -> Unit,
     isAutoReadEnabled: Boolean,
     onToggleAutoRead: () -> Unit,
     permissionLevel: PermissionLevel,
@@ -2014,6 +2016,13 @@ private fun AgentExtraSettingsPopup(
     var showToolPromptManagerDialog by remember { mutableStateOf(false) }
     var infoPopupContent by remember { mutableStateOf<Pair<String, String>?>(null) }
     val context = LocalContext.current
+    val inputMenuToggles = InputMenuTogglePluginRegistry.createToggles(
+        params = InputMenuToggleHookParams(
+            context = context,
+            featureStates = featureStates,
+            onToggleFeature = onToggleFeature
+        )
+    )
 
     Popup(
         alignment = Alignment.TopStart,
@@ -2101,17 +2110,27 @@ private fun AgentExtraSettingsPopup(
                         },
                     )
 
-                    AgentSimpleToggleSettingItem(
-                        title = stringResource(R.string.ai_planning_mode),
-                        icon = Icons.Outlined.Hub,
-                        isChecked = enableAiPlanning,
-                        onToggle = onToggleAiPlanning,
-                        onInfoClick = {
-                            infoPopupContent =
-                                context.getString(R.string.ai_planning_mode) to
-                                    context.getString(R.string.ai_planning_desc)
-                        },
-                    )
+                    inputMenuToggles.forEach { toggle ->
+                        val toggleTitle =
+                            if (toggle.titleRes != 0) stringResource(toggle.titleRes)
+                            else toggle.title.orEmpty()
+                        AgentSimpleToggleSettingItem(
+                            title = toggleTitle,
+                            icon = Icons.Outlined.Hub,
+                            isChecked = toggle.isChecked,
+                            onToggle = toggle.onToggle,
+                            onInfoClick = {
+                                val infoTitle =
+                                    if (toggle.titleRes != 0) context.getString(toggle.titleRes)
+                                    else toggle.title.orEmpty()
+                                val infoDescription =
+                                    if (toggle.descriptionRes != 0) context.getString(toggle.descriptionRes)
+                                    else toggle.description.orEmpty()
+                                infoPopupContent =
+                                    infoTitle to infoDescription
+                            },
+                        )
+                    }
 
                     AgentSimpleToggleSettingItem(
                         title = stringResource(R.string.auto_read_message),

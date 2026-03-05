@@ -1,4 +1,4 @@
-package com.ai.assistance.operit.api.chat.plan
+package com.ai.assistance.operit.plugins.deepsearching
 
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
@@ -14,6 +14,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.coroutineContext
 
@@ -34,6 +35,8 @@ class TaskExecutor(
     private val taskMutex = Mutex()
     // 正在执行的任务
     private val runningTasks = ConcurrentHashMap<String, Job>()
+    // 取消标记，防止取消后继续调度后续任务
+    private val isCancelled = AtomicBoolean(false)
     
     /**
      * 执行整个执行图
@@ -56,6 +59,7 @@ class TaskExecutor(
         onNonFatalError: suspend (error: String) -> Unit
     ): Stream<String> = stream {
         try {
+            isCancelled.set(false)
             taskResults.clear()
             runningTasks.clear()
 
@@ -86,9 +90,17 @@ class TaskExecutor(
                     runningTasks.clear()
                 }
             }
+        } catch (e: CancellationException) {
+            AppLogger.d(TAG, "子任务执行已取消")
         } catch (e: Exception) {
-            AppLogger.e(TAG, "执行子任务时发生错误", e)
-            emit("<error>❌ ${context.getString(R.string.plan_error_execution_failed)}: ${e.message}</error>\n")
+            if (isCancelled.get()) {
+                AppLogger.d(TAG, "子任务执行已取消")
+            } else {
+                AppLogger.e(TAG, "执行子任务时发生错误", e)
+                emit("<error>❌ ${context.getString(R.string.plan_error_execution_failed)}: ${e.message}</error>\n")
+            }
+        } finally {
+            isCancelled.set(false)
         }
     }
 
@@ -135,18 +147,20 @@ class TaskExecutor(
         onMessage: suspend (String) -> Unit
     ) {
         val completedTasks = mutableSetOf<String>()
-        val taskMap = sortedTasks.associateBy { it.id }
         
         // 使用队列来管理待执行的任务
         val pendingTasks = sortedTasks.toMutableList()
         
-        while (pendingTasks.isNotEmpty()) {
+        while (pendingTasks.isNotEmpty() && !isCancelled.get()) {
             // 找到所有依赖已完成的任务
             val readyTasks = pendingTasks.filter { task ->
                 task.dependencies.all { depId -> completedTasks.contains(depId) }
             }
             
             if (readyTasks.isEmpty()) {
+                if (isCancelled.get()) {
+                    break
+                }
                 // 如果没有就绪的任务，说明存在问题
                 onMessage("<error>❌ ${context.getString(R.string.plan_error_no_executable_tasks)}</error>\n")
                 break
@@ -161,6 +175,10 @@ class TaskExecutor(
             
             // 等待所有任务完成
             jobs.awaitAll()
+
+            if (isCancelled.get()) {
+                break
+            }
             
             // 标记任务为已完成并从待执行列表中移除
             readyTasks.forEach { task ->
@@ -187,6 +205,10 @@ class TaskExecutor(
         val job = coroutineContext[Job]
         if (job == null) {
             onMessage("""<update id="${task.id}" status="FAILED" error="Task execution context error"/>""" + "\n")
+            return
+        }
+        if (isCancelled.get() || !job.isActive) {
+            onMessage("""<update id="${task.id}" status="FAILED" error="${context.getString(R.string.plan_error_task_cancelled)}"/>""" + "\n")
             return
         }
 
@@ -420,6 +442,7 @@ $graph.finalSummaryInstruction
      * 取消所有正在执行的任务
      */
     fun cancelAllTasks() {
+        isCancelled.set(true)
         runningTasks.values.forEach { job ->
             job.cancel()
         }

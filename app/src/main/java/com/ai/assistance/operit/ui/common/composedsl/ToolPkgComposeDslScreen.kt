@@ -166,7 +166,7 @@ fun ToolPkgComposeDslToolScreen(
     }
 
     var script by remember(containerPackageName, uiModuleId) { mutableStateOf<String?>(null) }
-    var scriptEntryPath by remember(containerPackageName, uiModuleId) { mutableStateOf<String?>(null) }
+    var scriptScreenPath by remember(containerPackageName, uiModuleId) { mutableStateOf<String?>(null) }
     var renderResult by remember(containerPackageName, uiModuleId) {
         mutableStateOf<ToolPkgComposeDslRenderResult?>(null)
     }
@@ -175,11 +175,11 @@ fun ToolPkgComposeDslToolScreen(
     var isDispatching by remember(containerPackageName, uiModuleId) { mutableStateOf(false) }
     var dispatchingCount by remember(containerPackageName, uiModuleId) { mutableStateOf(0) }
 
-    fun buildModuleSpec(entryPath: String?): Map<String, Any?> =
+    fun buildModuleSpec(screenPath: String?): Map<String, Any?> =
         mapOf(
             "id" to uiModuleId,
             "runtime" to "compose_dsl",
-            "entry" to (entryPath ?: ""),
+            "screen" to (screenPath ?: ""),
             "title" to fallbackTitle,
             "toolPkgId" to containerPackageName
         )
@@ -242,14 +242,14 @@ fun ToolPkgComposeDslToolScreen(
                                         containerPackageName = containerPackageName,
                                         uiModuleId = uiModuleId
                                     ),
-                                    packageManager.getToolPkgComposeDslEntryPath(
+                                    packageManager.getToolPkgComposeDslScreenPath(
                                         containerPackageName = containerPackageName,
                                         uiModuleId = uiModuleId
                                     )
                                 )
                             }
-                        if (scriptEntryPath.isNullOrBlank() && !loaded.second.isNullOrBlank()) {
-                            scriptEntryPath = loaded.second
+                        if (scriptScreenPath.isNullOrBlank() && !loaded.second.isNullOrBlank()) {
+                            scriptScreenPath = loaded.second
                         }
                         loaded.first
                     } else {
@@ -278,8 +278,8 @@ fun ToolPkgComposeDslToolScreen(
                                     "uiModuleId" to uiModuleId,
                                     "__operit_package_lang" to
                                         (if (language.isNotBlank()) language else "zh"),
-                                    "__operit_script_entry" to (scriptEntryPath ?: ""),
-                                    "moduleSpec" to buildModuleSpec(scriptEntryPath),
+                                    "__operit_script_screen" to (scriptScreenPath ?: ""),
+                                    "moduleSpec" to buildModuleSpec(scriptScreenPath),
                                     "state" to (renderResult?.state ?: emptyMap<String, Any?>()),
                                     "memo" to (renderResult?.memo ?: emptyMap<String, Any?>())
                                 )

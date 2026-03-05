@@ -214,8 +214,8 @@ private constructor(private val context: Context, private val packageManager: Pa
                             engine!!.executeScriptFunction(
                                     script,
                                     functionName,
-                                    injectedParams
-                            ) { intermediateResult ->
+                                    injectedParams,
+                                    onIntermediateResult = { intermediateResult ->
                                 val resultString = intermediateResult?.toString() ?: "null"
                                 AppLogger.d(TAG, "Intermediate JS result: $resultString")
                                 trySend(
@@ -225,7 +225,7 @@ private constructor(private val context: Context, private val packageManager: Pa
                                                 result = StringResultData(resultString)
                                         )
                                 )
-                            }
+                            })
 
                     val executionTime = System.currentTimeMillis() - startTime
                     AppLogger.d(

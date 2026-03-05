@@ -1,4 +1,4 @@
-package com.ai.assistance.operit.api.chat.plan
+package com.ai.assistance.operit.plugins.deepsearching
 
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.application.OperitApplication

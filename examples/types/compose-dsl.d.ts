@@ -1,5 +1,5 @@
 /**
- * Compose-like DSL type definitions for toolpkg ui_modules runtime="compose_dsl".
+ * Compose-like DSL type definitions for toolpkg runtime module `runtime="compose_dsl"`.
  */
 import type { ComposeMaterial3GeneratedUiFactoryRegistry } from "./compose-dsl.material3.generated";
 
@@ -218,20 +218,6 @@ export interface ComposeUiModuleSpec {
   [key: string]: unknown;
 }
 
-export interface ComposeToolCandidateResolveRequest {
-  packageName?: string;
-  subpackageId?: string;
-  toolName: string;
-  extraCandidates?: string[];
-  preferImported?: boolean;
-}
-
-export interface ComposeToolCandidateCallResult<T = unknown> {
-  toolName?: string;
-  result?: T;
-  error?: string;
-}
-
 export interface ComposeToolCallConfig {
   type?: string;
   name: string;
@@ -258,7 +244,7 @@ export interface ComposeDslContext {
   reportError(error: unknown): Promise<void> | void;
 
   /**
-   * Returns runtime module spec parsed from toolpkg ui_modules entry.
+   * Returns runtime module spec parsed from a registered toolpkg runtime module entry.
    */
   getModuleSpec?<TSpec extends ComposeUiModuleSpec = ComposeUiModuleSpec>(): TSpec;
 
@@ -278,21 +264,6 @@ export interface ComposeDslContext {
    * Formats template text like "failed: {error}" with provided values.
    */
   formatTemplate?(template: string, values: ComposeTemplateValues): string;
-
-  /**
-   * Lets host resolve tool candidates for subpackage/container mapping.
-   */
-  resolveToolCandidates?(
-    request: ComposeToolCandidateResolveRequest
-  ): Promise<string[]> | string[];
-
-  /**
-   * Calls tool candidates in order until one succeeds; host decides success policy.
-   */
-  callToolCandidates?<T = unknown>(
-    toolNames: string[],
-    params?: Record<string, unknown>
-  ): Promise<ComposeToolCandidateCallResult<T>>;
 
   /**
    * Batch environment writes; host may implement atomically.

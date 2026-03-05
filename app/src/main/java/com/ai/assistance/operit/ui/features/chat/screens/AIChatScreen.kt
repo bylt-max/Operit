@@ -289,7 +289,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val isSummarizing by actualViewModel.isSummarizing.collectAsState()
     val isSendTriggeredSummarizing by actualViewModel.isSendTriggeredSummarizing.collectAsState()
 
-    val enableAiPlanning by actualViewModel.enableAiPlanning.collectAsState()
+    val featureStates by actualViewModel.featureToggles.collectAsState()
     val enableThinkingMode by actualViewModel.enableThinkingMode.collectAsState() // 收集思考模式状态
     val enableThinkingGuidance by
             actualViewModel.enableThinkingGuidance.collectAsState() // 收集思考引导状态
@@ -920,8 +920,10 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                         onToggleEnableMaxContextMode = {
                                             actualViewModel.toggleEnableMaxContextMode()
                                         },
-                                        enableAiPlanning = enableAiPlanning,
-                                        onToggleAiPlanning = { actualViewModel.toggleAiPlanning() },
+                                        featureStates = featureStates,
+                                        onToggleFeature = { featureKey ->
+                                            actualViewModel.toggleFeature(featureKey)
+                                        },
                                         permissionLevel =
                                                 actualViewModel.masterPermissionLevel
                                                         .collectAsState()
@@ -1136,7 +1138,6 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 actualViewModel = actualViewModel,
                                 showChatHistorySelector = showChatHistorySelector,
                                 chatHistory = chatHistory,
-                                enableAiPlanning = enableAiPlanning,
                                 isLoading = isLoading,
                                 userMessageColor = userMessageColor,
                                 aiMessageColor = aiMessageColor,
@@ -1186,8 +1187,10 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                         if (inputStyle == UserPreferencesManager.INPUT_STYLE_CLASSIC) {
                             ClassicChatSettingsBar(
                                     modifier = Modifier.align(Alignment.BottomEnd),
-                                    enableAiPlanning = enableAiPlanning,
-                                    onToggleAiPlanning = { actualViewModel.toggleAiPlanning() },
+                                    featureStates = featureStates,
+                                    onToggleFeature = { featureKey ->
+                                        actualViewModel.toggleFeature(featureKey)
+                                    },
                                     permissionLevel =
                                             actualViewModel.masterPermissionLevel
                                                     .collectAsState()

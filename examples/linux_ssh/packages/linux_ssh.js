@@ -378,8 +378,7 @@ const linuxSshTools = (function () {
             sessionId: result.sessionId || session.sessionId,
             exitCode: Number(result.exitCode || 0),
             timedOut: !!result.timedOut,
-            output: asText(result.output),
-            command: asText(result.command || command)
+            output: asText(result.output)
         };
     }
     async function ensureLocalCommand(sessionName, commandName, installScript) {
@@ -685,7 +684,6 @@ const linuxSshTools = (function () {
             return {
                 success,
                 packageVersion: PACKAGE_VERSION,
-                command,
                 timeoutMs,
                 exitCode: result.exitCode,
                 timedOut: result.timedOut,
@@ -764,7 +762,6 @@ const linuxSshTools = (function () {
                 packageVersion: PACKAGE_VERSION,
                 tmuxSessionName,
                 windowName,
-                command,
                 workdir,
                 exitCode: result.exitCode,
                 timedOut: result.timedOut,

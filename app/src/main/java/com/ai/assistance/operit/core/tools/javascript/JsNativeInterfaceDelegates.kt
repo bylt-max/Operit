@@ -5,7 +5,15 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.util.Base64
+import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.core.tools.BinaryResultData
+import com.ai.assistance.operit.core.tools.BooleanResultData
+import com.ai.assistance.operit.core.tools.IntResultData
+import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
+import com.ai.assistance.operit.data.model.AITool
+import com.ai.assistance.operit.data.model.ToolParameter
+import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.preferences.EnvPreferences
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.OperitPaths
@@ -22,12 +30,103 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
 import org.json.JSONObject
 
 internal object JsNativeInterfaceDelegates {
     private const val TAG = "JsNativeInterface"
+    private data class ParsedToolCall(
+        val params: Map<String, String>,
+        val fullToolName: String,
+        val aiTool: AITool
+    )
+
+    private fun buildToolErrorJson(message: String): String {
+        return Json.encodeToString(
+            JsonElement.serializer(),
+            buildJsonObject {
+                put("success", JsonPrimitive(false))
+                put("error", JsonPrimitive(message))
+            }
+        )
+    }
+
+    private fun parseToolCall(
+        toolType: String,
+        toolName: String,
+        paramsJson: String
+    ): ParsedToolCall {
+        val normalizedToolName = toolName.trim()
+        if (normalizedToolName.isEmpty()) {
+            throw IllegalArgumentException("Tool name cannot be empty")
+        }
+
+        val params = mutableMapOf<String, String>()
+        val jsonObject = JSONObject(paramsJson)
+        jsonObject.keys().forEach { key ->
+            params[key] = jsonObject.opt(key)?.toString() ?: ""
+        }
+
+        val fullToolName =
+            if (toolType.isNotEmpty() && toolType != "default") {
+                "$toolType:$normalizedToolName"
+            } else {
+                normalizedToolName
+            }
+
+        val toolParameters = params.map { (name, value) -> ToolParameter(name = name, value = value) }
+        val aiTool = AITool(name = fullToolName, parameters = toolParameters)
+        return ParsedToolCall(
+            params = params,
+            fullToolName = fullToolName,
+            aiTool = aiTool
+        )
+    }
+
+    private fun serializeToolExecutionResult(
+        result: ToolResult,
+        binaryDataRegistry: ConcurrentHashMap<String, ByteArray>,
+        binaryHandlePrefix: String,
+        binaryDataThreshold: Int
+    ): String {
+        if (!result.success) {
+            return buildToolErrorJson(result.error ?: "Unknown error")
+        }
+
+        return Json.encodeToString(
+            JsonElement.serializer(),
+            buildJsonObject {
+                put("success", JsonPrimitive(true))
+
+                when (val resultData = result.result) {
+                    is BinaryResultData -> {
+                        if (resultData.value.size > binaryDataThreshold) {
+                            val handle = UUID.randomUUID().toString()
+                            binaryDataRegistry[handle] = resultData.value
+                            AppLogger.d(TAG, "Stored large binary data with handle: $handle")
+                            put("data", JsonPrimitive("$binaryHandlePrefix$handle"))
+                        } else {
+                            put("data", JsonPrimitive(Base64.encodeToString(resultData.value, Base64.NO_WRAP)))
+                        }
+                        put("dataType", JsonPrimitive("base64"))
+                    }
+                    is StringResultData -> put("data", JsonPrimitive(resultData.value))
+                    is BooleanResultData -> put("data", JsonPrimitive(resultData.value))
+                    is IntResultData -> put("data", JsonPrimitive(resultData.value))
+                    else -> {
+                        val jsonString = resultData.toJson()
+                        try {
+                            put("data", Json.parseToJsonElement(jsonString))
+                        } catch (_e: Exception) {
+                            put("data", JsonPrimitive(jsonString))
+                        }
+                    }
+                }
+            }
+        )
+    }
 
     fun setEnv(context: Context, key: String, value: String?) {
         try {
@@ -44,6 +143,29 @@ internal object JsNativeInterfaceDelegates {
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error writing environment variable from JS: $key", e)
+        }
+    }
+
+    fun getEnv(
+        context: Context,
+        key: String,
+        envOverrides: Map<String, String>
+    ): String {
+        return try {
+            val name = key.trim()
+            if (name.isEmpty()) {
+                ""
+            } else {
+                val overridden = envOverrides[name]
+                if (!overridden.isNullOrEmpty()) {
+                    overridden
+                } else {
+                    EnvPreferences.getInstance(context).getEnv(name) ?: ""
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error reading environment variable from JS: $key", e)
+            ""
         }
     }
 
@@ -266,6 +388,193 @@ internal object JsNativeInterfaceDelegates {
                 e
             )
             ""
+        }
+    }
+
+    fun decompress(
+        data: String,
+        algorithm: String,
+        binaryDataRegistry: ConcurrentHashMap<String, ByteArray>,
+        binaryHandlePrefix: String
+    ): String {
+        return try {
+            if (algorithm.lowercase() != "deflate") {
+                throw IllegalArgumentException("Unsupported algorithm: $algorithm. Only 'deflate' is supported.")
+            }
+
+            val compressedData: ByteArray =
+                if (data.startsWith(binaryHandlePrefix)) {
+                    val handle = data.substring(binaryHandlePrefix.length)
+                    binaryDataRegistry.remove(handle)
+                        ?: throw Exception("Invalid or expired binary handle: $handle")
+                } else {
+                    Base64.decode(data, Base64.NO_WRAP)
+                }
+
+            if (compressedData.isEmpty()) {
+                return ""
+            }
+
+            val inflater = java.util.zip.Inflater(true)
+            inflater.setInput(compressedData)
+            val outputStream = ByteArrayOutputStream()
+            val buffer = ByteArray(1024)
+
+            while (!inflater.finished()) {
+                val count = inflater.inflate(buffer)
+                if (count == 0 && inflater.needsInput()) {
+                    throw java.util.zip.DataFormatException("Input is incomplete or corrupt")
+                }
+                outputStream.write(buffer, 0, count)
+            }
+
+            outputStream.close()
+            inflater.end()
+
+            outputStream.toByteArray().toString(Charsets.UTF_8)
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Native decompress operation failed: ${e.message}", e)
+            "{\"nativeError\":\"${e.message?.replace("\"", "'")}\"}"
+        }
+    }
+
+    fun callToolSync(
+        toolHandler: AIToolHandler,
+        toolType: String,
+        toolName: String,
+        paramsJson: String,
+        binaryDataRegistry: ConcurrentHashMap<String, ByteArray>,
+        binaryHandlePrefix: String,
+        binaryDataThreshold: Int
+    ): String {
+        if (toolName.trim().isEmpty()) {
+            AppLogger.e(TAG, "Tool name cannot be empty")
+            return "Error: Tool name cannot be empty"
+        }
+
+        return try {
+            val parsed = parseToolCall(toolType, toolName, paramsJson)
+            AppLogger.d(TAG, "[Sync] JavaScript tool call: ${parsed.fullToolName} with params: ${parsed.params}")
+            val result = toolHandler.executeTool(parsed.aiTool)
+            if (result.success) {
+                val resultString = result.result.toString()
+                AppLogger.d(
+                    TAG,
+                    "[Sync] Tool execution succeeded: ${resultString.take(1000)}${if (resultString.length > 1000) "..." else ""}"
+                )
+            } else {
+                AppLogger.e(TAG, "[Sync] Tool execution failed: ${result.error}")
+            }
+
+            serializeToolExecutionResult(
+                result = result,
+                binaryDataRegistry = binaryDataRegistry,
+                binaryHandlePrefix = binaryHandlePrefix,
+                binaryDataThreshold = binaryDataThreshold
+            )
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "[Sync] Error in tool call: ${e.message}", e)
+            buildToolErrorJson("Error: ${e.message}")
+        }
+    }
+
+    fun callToolAsync(
+        toolHandler: AIToolHandler,
+        callbackId: String,
+        toolType: String,
+        toolName: String,
+        paramsJson: String,
+        binaryDataRegistry: ConcurrentHashMap<String, ByteArray>,
+        binaryHandlePrefix: String,
+        binaryDataThreshold: Int,
+        sendToolResult: (callbackId: String, result: String, isError: Boolean) -> Unit
+    ) {
+        val parsed =
+            try {
+                parseToolCall(toolType, toolName, paramsJson)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "[Async] Error preparing tool call: ${e.message}", e)
+                val rawMessage = e.message?.trim().orEmpty()
+                val finalMessage =
+                    if (rawMessage.equals("Tool name cannot be empty", ignoreCase = true)) {
+                        "Tool name cannot be empty"
+                    } else {
+                        "Error: ${if (rawMessage.isBlank()) "Unknown error" else rawMessage}"
+                    }
+                sendToolResult(
+                    callbackId,
+                    buildToolErrorJson(finalMessage),
+                    true
+                )
+                return
+            }
+
+        AppLogger.d(
+            TAG,
+            "[Async] JavaScript tool call: ${parsed.fullToolName} with params: ${parsed.params}, callbackId: $callbackId"
+        )
+
+        Thread {
+            try {
+                val result = toolHandler.executeTool(parsed.aiTool)
+
+                if (result.success) {
+                    val resultString = result.result.toString()
+                    AppLogger.d(
+                        TAG,
+                        "[Async] Tool execution succeeded: ${resultString.take(1000)}${if (resultString.length > 1000) "..." else ""}"
+                    )
+                } else {
+                    AppLogger.e(TAG, "[Async] Tool execution failed: ${result.error}")
+                }
+
+                val resultJson =
+                    serializeToolExecutionResult(
+                        result = result,
+                        binaryDataRegistry = binaryDataRegistry,
+                        binaryHandlePrefix = binaryHandlePrefix,
+                        binaryDataThreshold = binaryDataThreshold
+                    )
+                sendToolResult(callbackId, resultJson, !result.success)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "[Async] Error in async tool execution: ${e.message}", e)
+                sendToolResult(
+                    callbackId,
+                    buildToolErrorJson("Error: ${e.message}"),
+                    true
+                )
+            }
+        }.start()
+    }
+
+    fun buildToolResultCallbackScript(callbackId: String, result: String, isError: Boolean): String {
+        val trimmedResult = result.trim()
+        val isJsonLiteral =
+            (trimmedResult.startsWith("{") && trimmedResult.endsWith("}")) ||
+                (trimmedResult.startsWith("[") && trimmedResult.endsWith("]")) ||
+                (trimmedResult.startsWith("\"") && trimmedResult.endsWith("\""))
+
+        return if (isJsonLiteral) {
+            """
+                if (typeof window['$callbackId'] === 'function') {
+                    window['$callbackId']($result, $isError);
+                } else {
+                    console.error("Callback not found: $callbackId");
+                }
+            """.trimIndent()
+        } else {
+            val escapedResult =
+                result.replace("\\", "\\\\")
+                    .replace("\"", "\\\"")
+                    .replace("\n", "\\n")
+                    .replace("\r", "\\r")
+            """
+                if (typeof window['$callbackId'] === 'function') {
+                    window['$callbackId']("$escapedResult", $isError);
+                } else {
+                    console.error("Callback not found: $callbackId");
+                }
+            """.trimIndent()
         }
     }
 

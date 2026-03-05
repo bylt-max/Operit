@@ -502,7 +502,8 @@ object SystemToolPromptsInternal {
                                 ToolParameterSchema(name = "content", type = "string", description = "required, string", required = true),
                                 ToolParameterSchema(name = "content_type", type = "string", description = "optional", required = false, default = "\"text/plain\""),
                                 ToolParameterSchema(name = "source", type = "string", description = "optional", required = false, default = "\"ai_created\""),
-                                ToolParameterSchema(name = "folder_path", type = "string", description = "optional", required = false, default = "\"\"")
+                                ToolParameterSchema(name = "folder_path", type = "string", description = "optional", required = false, default = "\"\""),
+                                ToolParameterSchema(name = "tags", type = "string", description = "optional, comma-separated string", required = false)
                             )
                         ),
                         ToolPrompt(
@@ -2958,7 +2959,8 @@ object SystemToolPromptsInternal {
                                 ToolParameterSchema(name = "content", type = "string", description = "必需, 字符串", required = true),
                                 ToolParameterSchema(name = "content_type", type = "string", description = "可选", required = false, default = "\"text/plain\""),
                                 ToolParameterSchema(name = "source", type = "string", description = "可选", required = false, default = "\"ai_created\""),
-                                ToolParameterSchema(name = "folder_path", type = "string", description = "可选", required = false, default = "\"\"")
+                                ToolParameterSchema(name = "folder_path", type = "string", description = "可选", required = false, default = "\"\""),
+                                ToolParameterSchema(name = "tags", type = "string", description = "可选, 逗号分隔的字符串", required = false)
                             )
                         ),
                         ToolPrompt(

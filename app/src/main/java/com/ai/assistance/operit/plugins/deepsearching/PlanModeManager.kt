@@ -1,8 +1,9 @@
-package com.ai.assistance.operit.api.chat.plan
+package com.ai.assistance.operit.plugins.deepsearching
 
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
+import com.ai.assistance.operit.api.chat.llmprovider.AIService
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.PromptFunctionType
@@ -12,6 +13,7 @@ import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.util.stream.stream
 import com.google.gson.Gson
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 计划模式管理器，负责协调整个深度搜索模式的执行
@@ -21,6 +23,7 @@ class PlanModeManager(
     private val enhancedAIService: EnhancedAIService
 ) {
     private val isCancelled = AtomicBoolean(false)
+    private val planningServiceRef = AtomicReference<AIService?>(null)
 
     companion object {
         private const val TAG = "PlanModeManager"
@@ -222,55 +225,60 @@ class PlanModeManager(
             // 调用 AI 生成计划
             // 获取专门用于聊天的AI服务实例
             val planningService = enhancedAIService.getAIServiceForFunction(FunctionType.CHAT)
+            planningServiceRef.set(planningService)
 
-            // 使用获取到的服务实例来发送规划请求
-            // 准备包含系统提示词的聊天历史
-            val planningHistory = listOf(Pair("system", planningRequest))
+            try {
+                // 使用获取到的服务实例来发送规划请求
+                // 准备包含系统提示词的聊天历史
+                val planningHistory = listOf(Pair("system", planningRequest))
 
-            // 使用获取到的服务实例来发送规划请求
-            val planningStream = planningService.sendMessage(
-                context = context,
-                message = context.getString(R.string.plan_generate_detailed_plan),
-                chatHistory = planningHistory, // 传入包含系统提示词的历史
-                modelParameters = emptyList(), // 修正类型为 List
-                enableThinking = false,
-                stream = true, // 明确启用流式传输
-                onTokensUpdated = { _, _, _ -> }, // 空的 token 更新回调
-                onNonFatalError = onNonFatalError
-            )
-            // 收集规划结果
-            val planBuilder = StringBuilder()
-            planningStream.collect { chunk ->
-                if (isCancelled.get()) {
-                    planningService.cancelStreaming()
-                    throw kotlinx.coroutines.CancellationException("plan generation cancelled")
+                // 使用获取到的服务实例来发送规划请求
+                val planningStream = planningService.sendMessage(
+                    context = context,
+                    message = context.getString(R.string.plan_generate_detailed_plan),
+                    chatHistory = planningHistory, // 传入包含系统提示词的历史
+                    modelParameters = emptyList(), // 修正类型为 List
+                    enableThinking = false,
+                    stream = true, // 明确启用流式传输
+                    onTokensUpdated = { _, _, _ -> }, // 空的 token 更新回调
+                    onNonFatalError = onNonFatalError
+                )
+                // 收集规划结果
+                val planBuilder = StringBuilder()
+                planningStream.collect { chunk ->
+                    if (isCancelled.get()) {
+                        planningService.cancelStreaming()
+                        throw kotlinx.coroutines.CancellationException("plan generation cancelled")
+                    }
+                    planBuilder.append(chunk)
                 }
-                planBuilder.append(chunk)
-            }
 
-            if (isCancelled.get()) {
-                return null
+                if (isCancelled.get()) {
+                    return null
+                }
+                
+                val planResponse = ChatUtils.removeThinkingContent(planBuilder.toString().trim())
+                AppLogger.d(TAG, "AI生成的执行计划: $planResponse")
+                
+                // 解析执行计划
+                val executionGraph = PlanParser.parseExecutionGraph(planResponse)
+                if (executionGraph == null) {
+                    AppLogger.e(TAG, "解析执行计划失败")
+                    return null
+                }
+                
+                // 验证执行计划
+                val (isValid, errorMessage) = PlanParser.validateExecutionGraph(executionGraph)
+                if (!isValid) {
+                    AppLogger.e(TAG, "执行计划验证失败: $errorMessage")
+                    return null
+                }
+                
+                AppLogger.d(TAG, "执行计划生成并验证成功，包含 ${executionGraph.tasks.size} 个任务")
+                return executionGraph
+            } finally {
+                planningServiceRef.compareAndSet(planningService, null)
             }
-            
-            val planResponse = ChatUtils.removeThinkingContent(planBuilder.toString().trim())
-            AppLogger.d(TAG, "AI生成的执行计划: $planResponse")
-            
-            // 解析执行计划
-            val executionGraph = PlanParser.parseExecutionGraph(planResponse)
-            if (executionGraph == null) {
-                AppLogger.e(TAG, "解析执行计划失败")
-                return null
-            }
-            
-            // 验证执行计划
-            val (isValid, errorMessage) = PlanParser.validateExecutionGraph(executionGraph)
-            if (!isValid) {
-                AppLogger.e(TAG, "执行计划验证失败: $errorMessage")
-                return null
-            }
-            
-            AppLogger.d(TAG, "执行计划生成并验证成功，包含 ${executionGraph.tasks.size} 个任务")
-            return executionGraph
             
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) {
@@ -299,9 +307,14 @@ $userMessage
      */
     fun cancel() {
         isCancelled.set(true)
+        planningServiceRef.getAndSet(null)?.let { planningService ->
+            runCatching {
+                planningService.cancelStreaming()
+            }.onFailure { e ->
+                AppLogger.e(TAG, "取消规划阶段流式输出失败", e)
+            }
+        }
         taskExecutor.cancelAllTasks()
-        // 可以在这里取消正在进行的 planningService.sendMessage
-        // 但由于 planningService 是局部变量，需要修改结构或依赖注入
         AppLogger.d(TAG, "PlanModeManager cancel called")
     }
     
@@ -310,7 +323,9 @@ $userMessage
      * 这是一个简单的启发式检查，可以根据需要进行优化
      */
     fun shouldUseDeepSearchMode(message: String): Boolean {
-        val messageLength = message.length
+        val normalizedMessage = message.trim()
+        if (normalizedMessage.isBlank()) return false
+
         val complexityIndicators = listOf(
             context.getString(R.string.plan_complexity_analyze),
             context.getString(R.string.plan_complexity_compare),
@@ -335,13 +350,12 @@ $userMessage
             context.getString(R.string.plan_complexity_specific_analysis),
             context.getString(R.string.plan_complexity_how_to_implement),
             context.getString(R.string.plan_complexity_implementation_plan)
-        )
+        ).map { it.trim() }.filter { it.isNotEmpty() }
         
         val hasComplexityIndicators = complexityIndicators.any { indicator ->
-            message.contains(indicator, ignoreCase = true)
+            normalizedMessage.contains(indicator, ignoreCase = true)
         }
         
-        // 消息长度超过50字符或包含复杂性指标
-        return messageLength > 50 || hasComplexityIndicators
+        return hasComplexityIndicators
     }
 } 

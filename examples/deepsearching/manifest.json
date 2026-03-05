@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "toolpkg_id": "com.operit.deepsearching_bundle",
+  "version": "0.1.0",
+  "main": "main.js",
+  "display_name": {
+    "zh": "DeepSearching 调试包",
+    "en": "DeepSearching Debug Bundle"
+  },
+  "description": {
+    "zh": "用于验证 ToolPkg 注册与日志输出的调试示例",
+    "en": "Debug sample for ToolPkg registration and log output"
+  },
+  "subpackages": []
+}

@@ -506,16 +506,6 @@ private fun renderNodeContent(
             )
         }
         
-        // ========== 计划执行：保留原组件 ==========
-        MarkdownProcessorType.PLAN_EXECUTION -> {
-            // 不使用 key()，让 Compose 根据位置自然识别组件
-            // 这样可以保留用户交互状态（如缩放、拖动偏移量）
-            PlanExecutionRenderer(
-                content = content,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-        
         // ========== 图片：保留原组件 ==========
         MarkdownProcessorType.IMAGE -> {
             val imageContent = content.trimAll()

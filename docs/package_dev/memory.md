@@ -92,7 +92,7 @@ async function getMemoryByTitle() {
 }
 ```
 
-### `create(title: string, content: string, contentType?: string, source?: string, folderPath?: string): Promise<string>`
+### `create(title: string, content: string, contentType?: string, source?: string, folderPath?: string, tags?: string): Promise<string>`
 
 创建一个新的记忆。
 
@@ -101,6 +101,7 @@ async function getMemoryByTitle() {
 -   **`contentType`**: **可选** (默认 "text/plain")。内容类型，如 "text/plain", "text/markdown", "application/json" 等。
 -   **`source`**: **可选** (默认 "ai_created")。记忆的来源标识。
 -   **`folderPath`**: **可选** (默认 "")。记忆所在的文件夹路径。
+-   **`tags`**: **可选**。标签（逗号分隔字符串），例如 `"会议,项目A,重要"`。
 
 -   **返回值**: 一个 `Promise`，成功时解析为创建成功的消息字符串。
 
@@ -121,7 +122,8 @@ async function createNewMemory() {
             "# REST API\n\n## 端点\n\n- GET /api/users\n- POST /api/users",
             "text/markdown",
             "manual_input",
-            "/文档/API"
+            "/文档/API",
+            "文档,API"
         );
 
         // 创建 JSON 数据记忆

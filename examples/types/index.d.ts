@@ -75,8 +75,9 @@ export * from './results';
 // Export tool type definitions
 export * from './tool-types';
 export * from './java-bridge';
+export * from './toolpkg';
 
-// Export compose-dsl definitions for toolpkg ui_modules
+// Export compose-dsl definitions for toolpkg runtime modules
 export * from './compose-dsl';
 export * from './compose-dsl.material3.generated';
 
@@ -214,8 +215,6 @@ declare global {
     interface ToolParams {
         [key: string]: string | number | boolean | object;
     }
-
-    type LocalizedText = string | { [lang: string]: string };
 
     interface ToolConfig {
         type?: string;
