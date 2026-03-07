@@ -277,6 +277,8 @@ fun ThemeSettingsScreen() {
         ).value
 
     val bubbleShowAvatar = preferencesManager.bubbleShowAvatar.collectAsState(initial = true).value
+    val bubbleWideLayoutEnabled =
+        preferencesManager.bubbleWideLayoutEnabled.collectAsState(initial = false).value
     val cursorUserBubbleFollowTheme =
         preferencesManager.cursorUserBubbleFollowTheme.collectAsState(initial = true).value
     val cursorUserBubbleColor =
@@ -465,6 +467,7 @@ fun ThemeSettingsScreen() {
     var inputStyleInput by remember { mutableStateOf(inputStyle) }
 
     var bubbleShowAvatarInput by remember { mutableStateOf(bubbleShowAvatar) }
+    var bubbleWideLayoutEnabledInput by remember { mutableStateOf(bubbleWideLayoutEnabled) }
     var cursorUserBubbleFollowThemeInput by remember { mutableStateOf(cursorUserBubbleFollowTheme) }
     var cursorUserBubbleColorInput by
         remember { mutableStateOf(cursorUserBubbleColor ?: defaultCursorUserBubbleColor) }
@@ -1162,6 +1165,7 @@ fun ThemeSettingsScreen() {
         chatStyleInput = chatStyle
         inputStyleInput = inputStyle
         bubbleShowAvatarInput = bubbleShowAvatar
+        bubbleWideLayoutEnabledInput = bubbleWideLayoutEnabled
         cursorUserBubbleFollowThemeInput = cursorUserBubbleFollowTheme
         cursorUserBubbleColorInput = cursorUserBubbleColor ?: defaultCursorUserBubbleColor
         bubbleUserBubbleColorInput = bubbleUserBubbleColor ?: defaultBubbleUserBubbleColor
@@ -1411,6 +1415,8 @@ fun ThemeSettingsScreen() {
             onInputStyleInputChange = { inputStyleInput = it },
             bubbleShowAvatarInput = bubbleShowAvatarInput,
             onBubbleShowAvatarInputChange = { bubbleShowAvatarInput = it },
+            bubbleWideLayoutEnabledInput = bubbleWideLayoutEnabledInput,
+            onBubbleWideLayoutEnabledInputChange = { bubbleWideLayoutEnabledInput = it },
             cursorUserBubbleFollowThemeInput = cursorUserBubbleFollowThemeInput,
             onCursorUserBubbleFollowThemeInputChange = { cursorUserBubbleFollowThemeInput = it },
             cursorUserBubbleColorInput = cursorUserBubbleColorInput,
@@ -1633,6 +1639,7 @@ fun ThemeSettingsScreen() {
                         chatStyleInput = UserPreferencesManager.CHAT_STYLE_CURSOR
                         inputStyleInput = UserPreferencesManager.INPUT_STYLE_AGENT
                         bubbleShowAvatarInput = true
+                        bubbleWideLayoutEnabledInput = false
                         cursorUserBubbleFollowThemeInput = true
                         cursorUserBubbleColorInput = defaultCursorUserBubbleColor
                         bubbleUserBubbleColorInput = defaultBubbleUserBubbleColor

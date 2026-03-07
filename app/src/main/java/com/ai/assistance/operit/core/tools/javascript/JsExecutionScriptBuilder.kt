@@ -229,6 +229,78 @@ internal fun buildExecutionScript(
                 return new Function('module', 'exports', 'require', '__operit_call_runtime', runtimePrelude + '\n' + scriptText);
             }
 
+            function computeFactoryHash(scriptText) {
+                var text = String(scriptText || '');
+                var hash = 0;
+                for (var i = 0; i < text.length; i += 1) {
+                    hash = (((hash << 5) - hash) + text.charCodeAt(i)) | 0;
+                }
+                return (hash >>> 0).toString(16);
+            }
+
+            function getFactoryCacheState() {
+                var state = window.__operitFactoryCacheState;
+                if (!state || typeof state !== 'object') {
+                    state = {
+                        entries: {},
+                        order: [],
+                        maxEntries: 256
+                    };
+                    window.__operitFactoryCacheState = state;
+                    return state;
+                }
+                if (!state.entries || typeof state.entries !== 'object') {
+                    state.entries = {};
+                }
+                if (!Array.isArray(state.order)) {
+                    state.order = [];
+                }
+                if (typeof state.maxEntries !== 'number' || state.maxEntries < 16) {
+                    state.maxEntries = 256;
+                }
+                return state;
+            }
+
+            function touchFactoryCacheKey(state, cacheKey) {
+                var index = state.order.indexOf(cacheKey);
+                if (index >= 0) {
+                    state.order.splice(index, 1);
+                }
+                state.order.push(cacheKey);
+            }
+
+            function pruneFactoryCache(state) {
+                while (state.order.length > state.maxEntries) {
+                    var staleKey = state.order.shift();
+                    if (staleKey !== undefined && staleKey !== null && staleKey !== '') {
+                        delete state.entries[staleKey];
+                    }
+                }
+            }
+
+            function buildFactoryCacheKey(prefix, identity, scriptText) {
+                return [
+                    String(prefix || 'script'),
+                    String(identity || ''),
+                    String((scriptText || '').length),
+                    computeFactoryHash(scriptText)
+                ].join(':');
+            }
+
+            function getOrCreateFactory(cacheKey, scriptText) {
+                var state = getFactoryCacheState();
+                var entry = state.entries[cacheKey];
+                if (entry && typeof entry.factory === 'function') {
+                    touchFactoryCacheKey(state, cacheKey);
+                    return entry.factory;
+                }
+                var factory = createFactory(scriptText);
+                state.entries[cacheKey] = { factory: factory };
+                touchFactoryCacheKey(state, cacheKey);
+                pruneFactoryCache(state);
+                return factory;
+            }
+
             try {
                 var registerCallSession =
                     typeof window.__operitRegisterCallSession === 'function'
@@ -504,7 +576,12 @@ internal fun buildExecutionScript(
                         return requireInternal(nextName, modulePath);
                     };
 
-                    var factory = createFactory(moduleText);
+                    var factoryCacheKey = buildFactoryCacheKey(
+                        'module',
+                        String(packageTarget || '') + ':' + String(modulePath || ''),
+                        moduleText
+                    );
+                    var factory = getOrCreateFactory(factoryCacheKey, moduleText);
                     var previousActiveModule = window.__operitActiveModule;
                     var previousActiveModuleExports = window.__operitActiveModuleExports;
                     window.__operitActiveModule = localModule;
@@ -598,7 +675,12 @@ internal fun buildExecutionScript(
                 };
 
                 setStage('compile_main_script');
-                var mainFactory = createFactory($scriptJson);
+                var mainFactoryCacheKey = buildFactoryCacheKey(
+                    'main',
+                    String(packageTarget || '') + ':' + String(screenPath || '<root>'),
+                    $scriptJson
+                );
+                var mainFactory = getOrCreateFactory(mainFactoryCacheKey, $scriptJson);
                 setStage('execute_main_script');
                 var previousActiveModule = window.__operitActiveModule;
                 var previousActiveModuleExports = window.__operitActiveModuleExports;

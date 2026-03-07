@@ -884,6 +884,36 @@ class JsEngine(private val context: Context) {
         }
 
         @JavascriptInterface
+        fun registerToolPkgToolLifecycleHook(specJson: String) {
+            toolPkgRegistrationSession.appendToolLifecycleHook(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgPromptInputHook(specJson: String) {
+            toolPkgRegistrationSession.appendPromptInputHook(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgPromptHistoryHook(specJson: String) {
+            toolPkgRegistrationSession.appendPromptHistoryHook(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgSystemPromptComposeHook(specJson: String) {
+            toolPkgRegistrationSession.appendSystemPromptComposeHook(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgToolPromptComposeHook(specJson: String) {
+            toolPkgRegistrationSession.appendToolPromptComposeHook(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgPromptFinalizeHook(specJson: String) {
+            toolPkgRegistrationSession.appendPromptFinalizeHook(specJson)
+        }
+
+        @JavascriptInterface
         fun javaClassExists(className: String): Boolean {
             return JsJavaBridgeDelegates.classExists(className = className)
         }

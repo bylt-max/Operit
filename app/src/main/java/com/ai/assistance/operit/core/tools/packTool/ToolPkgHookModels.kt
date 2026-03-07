@@ -16,3 +16,30 @@ data class ToolPkgXmlRenderHookObjectResult(
     val content: String? = null,
     val composeDsl: ToolPkgXmlRenderHookComposeDslResult? = null
 )
+
+data class ToolPkgToolLifecycleEventPayload(
+    val toolName: String,
+    val parameters: Map<String, String> = emptyMap(),
+    val description: String? = null,
+    val granted: Boolean? = null,
+    val reason: String? = null,
+    val success: Boolean? = null,
+    val errorMessage: String? = null,
+    val resultText: String? = null,
+    val resultJson: Map<String, Any?>? = null
+)
+
+data class ToolPkgPromptMessage(
+    val role: String,
+    val content: String
+)
+
+data class ToolPkgPromptHookObjectResult(
+    val rawInput: String? = null,
+    val processedInput: String? = null,
+    val chatHistory: List<ToolPkgPromptMessage>? = null,
+    val preparedHistory: List<ToolPkgPromptMessage>? = null,
+    val systemPrompt: String? = null,
+    val toolPrompt: String? = null,
+    val metadata: Map<String, Any?> = emptyMap()
+)

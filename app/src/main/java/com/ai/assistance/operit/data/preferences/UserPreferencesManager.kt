@@ -129,6 +129,8 @@ class UserPreferencesManager private constructor(private val context: Context) {
         private val INPUT_STYLE = stringPreferencesKey("input_style")
 
         private val BUBBLE_SHOW_AVATAR = booleanPreferencesKey("bubble_show_avatar")
+        private val BUBBLE_WIDE_LAYOUT_ENABLED =
+            booleanPreferencesKey("bubble_wide_layout_enabled")
         private val CURSOR_USER_BUBBLE_FOLLOW_THEME =
             booleanPreferencesKey("cursor_user_bubble_follow_theme")
         private val CURSOR_USER_BUBBLE_COLOR = intPreferencesKey("cursor_user_bubble_color")
@@ -472,6 +474,11 @@ class UserPreferencesManager private constructor(private val context: Context) {
             context.userPreferencesDataStore.data.map { preferences ->
                 preferences[BUBBLE_SHOW_AVATAR] ?: true
             }
+
+    val bubbleWideLayoutEnabled: Flow<Boolean> =
+        context.userPreferencesDataStore.data.map { preferences ->
+            preferences[BUBBLE_WIDE_LAYOUT_ENABLED] ?: false
+        }
 
     val cursorUserBubbleFollowTheme: Flow<Boolean> =
         context.userPreferencesDataStore.data.map { preferences ->
@@ -889,6 +896,7 @@ class UserPreferencesManager private constructor(private val context: Context) {
             backgroundBlurRadius: Float? = null,
             chatStyle: String? = null,
             bubbleShowAvatar: Boolean? = null,
+            bubbleWideLayoutEnabled: Boolean? = null,
             cursorUserBubbleFollowTheme: Boolean? = null,
             cursorUserBubbleColor: Int? = null,
             bubbleUserBubbleColor: Int? = null,
@@ -973,6 +981,7 @@ class UserPreferencesManager private constructor(private val context: Context) {
             backgroundBlurRadius?.let { preferences[BACKGROUND_BLUR_RADIUS] = it }
             chatStyle?.let { preferences[CHAT_STYLE] = it }
             bubbleShowAvatar?.let { preferences[BUBBLE_SHOW_AVATAR] = it }
+            bubbleWideLayoutEnabled?.let { preferences[BUBBLE_WIDE_LAYOUT_ENABLED] = it }
             cursorUserBubbleFollowTheme?.let { preferences[CURSOR_USER_BUBBLE_FOLLOW_THEME] = it }
             cursorUserBubbleColor?.let { preferences[CURSOR_USER_BUBBLE_COLOR] = it }
             bubbleUserBubbleColor?.let { preferences[BUBBLE_USER_BUBBLE_COLOR] = it }
@@ -1057,6 +1066,7 @@ class UserPreferencesManager private constructor(private val context: Context) {
             preferences.remove(BACKGROUND_BLUR_RADIUS)
             preferences.remove(CHAT_STYLE)
             preferences.remove(BUBBLE_SHOW_AVATAR)
+            preferences.remove(BUBBLE_WIDE_LAYOUT_ENABLED)
             preferences.remove(CURSOR_USER_BUBBLE_FOLLOW_THEME)
             preferences.remove(CURSOR_USER_BUBBLE_COLOR)
             preferences.remove(BUBBLE_USER_BUBBLE_COLOR)

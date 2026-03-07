@@ -45,12 +45,48 @@ internal object ToolPkgMainRegistrationScriptParser {
                     registrations = captured.inputMenuTogglePlugins,
                     registryName = TOOLPKG_REGISTRATION_INPUT_MENU_TOGGLE_PLUGIN
                 )
+            val toolLifecycleHooks =
+                parseRegisteredFunctionHooks(
+                    registrations = captured.toolLifecycleHooks,
+                    registryName = TOOLPKG_REGISTRATION_TOOL_LIFECYCLE_HOOK
+                )
+            val promptInputHooks =
+                parseRegisteredFunctionHooks(
+                    registrations = captured.promptInputHooks,
+                    registryName = TOOLPKG_REGISTRATION_PROMPT_INPUT_HOOK
+                )
+            val promptHistoryHooks =
+                parseRegisteredFunctionHooks(
+                    registrations = captured.promptHistoryHooks,
+                    registryName = TOOLPKG_REGISTRATION_PROMPT_HISTORY_HOOK
+                )
+            val systemPromptComposeHooks =
+                parseRegisteredFunctionHooks(
+                    registrations = captured.systemPromptComposeHooks,
+                    registryName = TOOLPKG_REGISTRATION_SYSTEM_PROMPT_COMPOSE_HOOK
+                )
+            val toolPromptComposeHooks =
+                parseRegisteredFunctionHooks(
+                    registrations = captured.toolPromptComposeHooks,
+                    registryName = TOOLPKG_REGISTRATION_TOOL_PROMPT_COMPOSE_HOOK
+                )
+            val promptFinalizeHooks =
+                parseRegisteredFunctionHooks(
+                    registrations = captured.promptFinalizeHooks,
+                    registryName = TOOLPKG_REGISTRATION_PROMPT_FINALIZE_HOOK
+                )
             ToolPkgMainRegistration(
                 toolboxUiModules = uiModules,
                 appLifecycleHooks = appLifecycleHooks,
                 messageProcessingPlugins = messageProcessingPlugins,
                 xmlRenderPlugins = xmlRenderPlugins,
-                inputMenuTogglePlugins = inputMenuTogglePlugins
+                inputMenuTogglePlugins = inputMenuTogglePlugins,
+                toolLifecycleHooks = toolLifecycleHooks,
+                promptInputHooks = promptInputHooks,
+                promptHistoryHooks = promptHistoryHooks,
+                systemPromptComposeHooks = systemPromptComposeHooks,
+                toolPromptComposeHooks = toolPromptComposeHooks,
+                promptFinalizeHooks = promptFinalizeHooks
             )
         } catch (e: Exception) {
             AppLogger.e(TAG, "Failed to parse toolpkg main registration: $toolPkgId", e)

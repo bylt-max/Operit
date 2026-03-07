@@ -75,7 +75,13 @@ internal data class ToolPkgContainerRuntime(
     val appLifecycleHooks: List<ToolPkgAppLifecycleHookRuntime>,
     val messageProcessingPlugins: List<ToolPkgFunctionHookRuntime>,
     val xmlRenderPlugins: List<ToolPkgTagFunctionHookRuntime>,
-    val inputMenuTogglePlugins: List<ToolPkgFunctionHookRuntime>
+    val inputMenuTogglePlugins: List<ToolPkgFunctionHookRuntime>,
+    val toolLifecycleHooks: List<ToolPkgFunctionHookRuntime>,
+    val promptInputHooks: List<ToolPkgFunctionHookRuntime>,
+    val promptHistoryHooks: List<ToolPkgFunctionHookRuntime>,
+    val systemPromptComposeHooks: List<ToolPkgFunctionHookRuntime>,
+    val toolPromptComposeHooks: List<ToolPkgFunctionHookRuntime>,
+    val promptFinalizeHooks: List<ToolPkgFunctionHookRuntime>
 )
 
 internal data class ToolPkgLoadResult(
@@ -141,7 +147,13 @@ internal data class ToolPkgMainRegistration(
     val appLifecycleHooks: List<ToolPkgRegisteredAppLifecycleHook> = emptyList(),
     val messageProcessingPlugins: List<ToolPkgRegisteredFunctionHook> = emptyList(),
     val xmlRenderPlugins: List<ToolPkgRegisteredTagFunctionHook> = emptyList(),
-    val inputMenuTogglePlugins: List<ToolPkgRegisteredFunctionHook> = emptyList()
+    val inputMenuTogglePlugins: List<ToolPkgRegisteredFunctionHook> = emptyList(),
+    val toolLifecycleHooks: List<ToolPkgRegisteredFunctionHook> = emptyList(),
+    val promptInputHooks: List<ToolPkgRegisteredFunctionHook> = emptyList(),
+    val promptHistoryHooks: List<ToolPkgRegisteredFunctionHook> = emptyList(),
+    val systemPromptComposeHooks: List<ToolPkgRegisteredFunctionHook> = emptyList(),
+    val toolPromptComposeHooks: List<ToolPkgRegisteredFunctionHook> = emptyList(),
+    val promptFinalizeHooks: List<ToolPkgRegisteredFunctionHook> = emptyList()
 )
 
 internal object ToolPkgArchiveParser {
@@ -435,6 +447,150 @@ internal object ToolPkgArchiveParser {
             )
         }
 
+        val toolLifecycleHooks = mutableListOf<ToolPkgFunctionHookRuntime>()
+        val toolLifecycleIds = linkedSetOf<String>()
+        mainRegistration.toolLifecycleHooks.forEachIndexed { index, hook ->
+            val id = hook.id.trim()
+            if (id.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_TOOL_LIFECYCLE_HOOK[$index].id is required")
+            }
+            if (!toolLifecycleIds.add(id.lowercase())) {
+                throw IllegalArgumentException("Duplicate tool lifecycle hook id: $id")
+            }
+
+            val function = hook.function.trim()
+            if (function.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_TOOL_LIFECYCLE_HOOK[$index].function is required")
+            }
+            toolLifecycleHooks.add(
+                ToolPkgFunctionHookRuntime(
+                    id = id,
+                    function = function,
+                    functionSource = hook.functionSource
+                )
+            )
+        }
+
+        val promptInputHooks = mutableListOf<ToolPkgFunctionHookRuntime>()
+        val promptInputIds = linkedSetOf<String>()
+        mainRegistration.promptInputHooks.forEachIndexed { index, hook ->
+            val id = hook.id.trim()
+            if (id.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_PROMPT_INPUT_HOOK[$index].id is required")
+            }
+            if (!promptInputIds.add(id.lowercase())) {
+                throw IllegalArgumentException("Duplicate prompt input hook id: $id")
+            }
+
+            val function = hook.function.trim()
+            if (function.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_PROMPT_INPUT_HOOK[$index].function is required")
+            }
+            promptInputHooks.add(
+                ToolPkgFunctionHookRuntime(
+                    id = id,
+                    function = function,
+                    functionSource = hook.functionSource
+                )
+            )
+        }
+
+        val promptHistoryHooks = mutableListOf<ToolPkgFunctionHookRuntime>()
+        val promptHistoryIds = linkedSetOf<String>()
+        mainRegistration.promptHistoryHooks.forEachIndexed { index, hook ->
+            val id = hook.id.trim()
+            if (id.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_PROMPT_HISTORY_HOOK[$index].id is required")
+            }
+            if (!promptHistoryIds.add(id.lowercase())) {
+                throw IllegalArgumentException("Duplicate prompt history hook id: $id")
+            }
+
+            val function = hook.function.trim()
+            if (function.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_PROMPT_HISTORY_HOOK[$index].function is required")
+            }
+            promptHistoryHooks.add(
+                ToolPkgFunctionHookRuntime(
+                    id = id,
+                    function = function,
+                    functionSource = hook.functionSource
+                )
+            )
+        }
+
+        val systemPromptComposeHooks = mutableListOf<ToolPkgFunctionHookRuntime>()
+        val systemPromptComposeIds = linkedSetOf<String>()
+        mainRegistration.systemPromptComposeHooks.forEachIndexed { index, hook ->
+            val id = hook.id.trim()
+            if (id.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_SYSTEM_PROMPT_COMPOSE_HOOK[$index].id is required")
+            }
+            if (!systemPromptComposeIds.add(id.lowercase())) {
+                throw IllegalArgumentException("Duplicate system prompt compose hook id: $id")
+            }
+
+            val function = hook.function.trim()
+            if (function.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_SYSTEM_PROMPT_COMPOSE_HOOK[$index].function is required")
+            }
+            systemPromptComposeHooks.add(
+                ToolPkgFunctionHookRuntime(
+                    id = id,
+                    function = function,
+                    functionSource = hook.functionSource
+                )
+            )
+        }
+
+        val toolPromptComposeHooks = mutableListOf<ToolPkgFunctionHookRuntime>()
+        val toolPromptComposeIds = linkedSetOf<String>()
+        mainRegistration.toolPromptComposeHooks.forEachIndexed { index, hook ->
+            val id = hook.id.trim()
+            if (id.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_TOOL_PROMPT_COMPOSE_HOOK[$index].id is required")
+            }
+            if (!toolPromptComposeIds.add(id.lowercase())) {
+                throw IllegalArgumentException("Duplicate tool prompt compose hook id: $id")
+            }
+
+            val function = hook.function.trim()
+            if (function.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_TOOL_PROMPT_COMPOSE_HOOK[$index].function is required")
+            }
+            toolPromptComposeHooks.add(
+                ToolPkgFunctionHookRuntime(
+                    id = id,
+                    function = function,
+                    functionSource = hook.functionSource
+                )
+            )
+        }
+
+        val promptFinalizeHooks = mutableListOf<ToolPkgFunctionHookRuntime>()
+        val promptFinalizeIds = linkedSetOf<String>()
+        mainRegistration.promptFinalizeHooks.forEachIndexed { index, hook ->
+            val id = hook.id.trim()
+            if (id.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_PROMPT_FINALIZE_HOOK[$index].id is required")
+            }
+            if (!promptFinalizeIds.add(id.lowercase())) {
+                throw IllegalArgumentException("Duplicate prompt finalize hook id: $id")
+            }
+
+            val function = hook.function.trim()
+            if (function.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_PROMPT_FINALIZE_HOOK[$index].function is required")
+            }
+            promptFinalizeHooks.add(
+                ToolPkgFunctionHookRuntime(
+                    id = id,
+                    function = function,
+                    functionSource = hook.functionSource
+                )
+            )
+        }
+
         val containerDescription =
             when {
                 hasLocalizedTextContent(manifest.description) -> manifest.description
@@ -468,7 +624,13 @@ internal object ToolPkgArchiveParser {
                 appLifecycleHooks = appLifecycleHooks,
                 messageProcessingPlugins = messageProcessingPlugins,
                 xmlRenderPlugins = xmlRenderPlugins,
-                inputMenuTogglePlugins = inputMenuTogglePlugins
+                inputMenuTogglePlugins = inputMenuTogglePlugins,
+                toolLifecycleHooks = toolLifecycleHooks,
+                promptInputHooks = promptInputHooks,
+                promptHistoryHooks = promptHistoryHooks,
+                systemPromptComposeHooks = systemPromptComposeHooks,
+                toolPromptComposeHooks = toolPromptComposeHooks,
+                promptFinalizeHooks = promptFinalizeHooks
             )
 
         return ToolPkgLoadResult(

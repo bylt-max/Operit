@@ -376,6 +376,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                 WaveVisualizerSection(
                     isWaveActive = viewModel.isWaveActive,
                     isRecording = viewModel.isRecording,
+                    showAiLoadingEffect = viewModel.isVoiceCapturePausedForAi && !viewModel.isRecording,
                     volumeLevelFlow = if (viewModel.isWaveActive && viewModel.isRecording)
                         viewModel.volumeLevelFlow else null,
                     aiAvatarUri = aiAvatarUri,
@@ -404,7 +405,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) {
-                            viewModel.exitWaveMode()
+                            viewModel.onCenterAvatarClick()
                         }
                 )
             }

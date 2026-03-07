@@ -41,7 +41,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -81,7 +80,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.navigation.NavController
 import com.ai.assistance.operit.core.tools.AIToolHandler
-import com.ai.assistance.operit.core.tools.javascript.JsEngine
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslNode
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslParser
@@ -96,6 +94,13 @@ import kotlinx.coroutines.sync.withLock
 import java.util.Locale
 
 private const val TAG = "ToolPkgComposeDslScreen"
+
+private fun buildComposeDslExecutionContextKey(
+    containerPackageName: String,
+    uiModuleId: String
+): String =
+    "toolpkg_compose_dsl:${containerPackageName.trim().ifBlank { "default" }}:${uiModuleId.trim().ifBlank { "default" }}"
+
 internal fun normalizeToken(raw: String): String =
     raw.lowercase(Locale.ROOT)
         .replace("-", "")
@@ -175,9 +180,11 @@ fun ToolPkgComposeDslToolScreen(
     val packageManager = remember {
         PackageManager.getInstance(context, AIToolHandler.getInstance(context))
     }
-    val jsEngine = remember(containerPackageName, uiModuleId) { JsEngine(context) }
-    DisposableEffect(jsEngine) {
-        onDispose { jsEngine.destroy() }
+    val executionContextKey = remember(containerPackageName, uiModuleId) {
+        buildComposeDslExecutionContextKey(containerPackageName, uiModuleId)
+    }
+    val jsEngine = remember(packageManager, executionContextKey) {
+        packageManager.getToolPkgExecutionEngine(executionContextKey)
     }
 
     var script by remember(containerPackageName, uiModuleId) { mutableStateOf<String?>(null) }

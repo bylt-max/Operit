@@ -1130,6 +1130,11 @@
     <string name="chat_style_desc">Elegir estilo de interfaz de chat</string>
     <string name="chat_style_cursor">Caja de Comandos</string>
     <string name="chat_style_bubble">Caja de Diálogo</string>
+    <string name="chat_style_bubble_wide_layout">Burbujas más anchas</string>
+    <string name="chat_style_bubble_wide_layout_desc">Coloca las burbujas debajo del avatar y alinea el nombre del rol con el avatar para dejar más espacio al contenido</string>
+    <string name="chat_style_preview_user_name">Nombre de usuario</string>
+    <string name="chat_style_preview_ai_name">Nombre del rol</string>
+    <string name="chat_style_preview_ai_meta">Modelo de ejemplo por Proveedor de ejemplo</string>
     <string name="display_options_title">Opciones de Visualización</string>
     <string name="show_thinking_process">Mostrar Proceso de Pensamiento</string>
     <string name="show_thinking_process_desc">Alternar visibilidad de etiquetas &lt;think&gt; en respuestas de IA</string>

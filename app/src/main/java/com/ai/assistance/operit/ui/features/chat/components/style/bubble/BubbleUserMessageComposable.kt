@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -79,6 +80,7 @@ fun BubbleUserMessageComposable(
     val displayPreferencesManager = remember { DisplayPreferencesManager.getInstance(context) }
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
     val bubbleShowAvatar by preferencesManager.bubbleShowAvatar.collectAsState(initial = true)
+    val bubbleWideLayoutEnabled by preferencesManager.bubbleWideLayoutEnabled.collectAsState(initial = false)
     val customUserAvatarUri by preferencesManager.customUserAvatarUri.collectAsState(initial = null)
     val globalUserAvatarUri by displayPreferencesManager.globalUserAvatarUri.collectAsState(initial = null)
     val globalUserName by displayPreferencesManager.globalUserName.collectAsState(initial = null)
@@ -133,6 +135,8 @@ fun BubbleUserMessageComposable(
             CircleShape
         }
     }
+    val resolvedDisplayName = if (isProxySender) proxySenderName else globalUserName
+    val shouldShowResolvedName = if (isProxySender) true else showUserName
 
     // 添加状态控制内容预览
     val showContentPreview = remember { mutableStateOf(false) }
@@ -272,6 +276,118 @@ fun BubbleUserMessageComposable(
         }
 
         // Message bubble
+        if (bubbleWideLayoutEnabled) {
+            val headerVisible = bubbleShowAvatar || (shouldShowResolvedName && !resolvedDisplayName.isNullOrEmpty())
+
+            if (headerVisible) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (shouldShowResolvedName) {
+                        resolvedDisplayName?.takeIf { it.isNotEmpty() }?.let { userName ->
+                            Text(
+                                text = userName,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.Black,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+
+                    if (bubbleShowAvatar) {
+                        if (shouldShowResolvedName && !resolvedDisplayName.isNullOrEmpty()) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+
+                        if (!avatarUri.isNullOrEmpty()) {
+                            Image(
+                                painter = rememberAsyncImagePainter(model = Uri.parse(avatarUri)),
+                                contentDescription = "User Avatar",
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(avatarShape),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = if (isProxySender) Icons.Default.Assistant else Icons.Default.Person,
+                                contentDescription = "User Avatar",
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(avatarShape),
+                                tint = if (isProxySender) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val maxBubbleWidth = maxWidth
+                val bubbleShape =
+                    if (bubbleRoundedCornersEnabled) {
+                        RoundedCornerShape(20.dp, 4.dp, 20.dp, 20.dp)
+                    } else {
+                        RoundedCornerShape(0.dp)
+                    }
+                val bubbleModifier =
+                    Modifier
+                        .widthIn(max = maxBubbleWidth)
+                        .defaultMinSize(minHeight = 44.dp)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    if (bubbleImageStyle != null) {
+                        BubbleImageBackgroundSurface(
+                            imageStyle = bubbleImageStyle,
+                            shape = bubbleShape,
+                            modifier = bubbleModifier,
+                            contentPadding =
+                                PaddingValues(
+                                    start = bubbleContentPaddingLeft.dp,
+                                    top = 12.dp,
+                                    end = bubbleContentPaddingRight.dp,
+                                    bottom = 12.dp,
+                                ),
+                        ) {
+                            Text(
+                                text = textContent,
+                                color = textColor,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    } else {
+                        Surface(
+                            modifier = bubbleModifier,
+                            shape = bubbleShape,
+                            color = backgroundColor,
+                            tonalElevation = 2.dp,
+                        ) {
+                            Text(
+                                text = textContent,
+                                modifier =
+                                    Modifier.padding(
+                                        start = bubbleContentPaddingLeft.dp,
+                                        top = 12.dp,
+                                        end = bubbleContentPaddingRight.dp,
+                                        bottom = 12.dp,
+                                    ),
+                                color = textColor,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
@@ -382,6 +498,7 @@ fun BubbleUserMessageComposable(
                     )
                 }
             }
+        }
         }
     }
 

@@ -2,7 +2,6 @@ package com.ai.assistance.operit.ui.common.markdown
 
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LinearProgressIndicator
 import com.ai.assistance.operit.core.tools.AIToolHandler
-import com.ai.assistance.operit.core.tools.javascript.JsEngine
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslParser
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslRenderResult
@@ -61,6 +59,12 @@ interface XmlRenderPlugin {
         xmlStream: Stream<String>?
     ): XmlRenderResult?
 }
+
+private fun buildXmlRenderComposeDslExecutionContextKey(
+    containerPackageName: String,
+    screenPath: String
+): String =
+    "toolpkg_xml_render:${containerPackageName.trim().ifBlank { "default" }}:${screenPath.trim().ifBlank { "default" }}"
 
 object XmlRenderPluginRegistry {
     private const val TAG = "XmlRenderPluginRegistry"
@@ -181,9 +185,14 @@ object XmlRenderPluginRegistry {
         val packageManager = remember(result.containerPackageName) {
             PackageManager.getInstance(context, AIToolHandler.getInstance(context))
         }
-        val jsEngine = remember(renderInstanceKey, result.containerPackageName, result.screenPath) { JsEngine(context) }
-        DisposableEffect(jsEngine) {
-            onDispose { jsEngine.destroy() }
+        val executionContextKey = remember(result.containerPackageName, result.screenPath) {
+            buildXmlRenderComposeDslExecutionContextKey(
+                containerPackageName = result.containerPackageName,
+                screenPath = result.screenPath
+            )
+        }
+        val jsEngine = remember(packageManager, executionContextKey) {
+            packageManager.getToolPkgExecutionEngine(executionContextKey)
         }
 
         var renderResult by remember(renderInstanceKey, result.containerPackageName, result.screenPath) {

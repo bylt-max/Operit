@@ -32,6 +32,8 @@
     <string name="attach_local_storage_repo">Attach Local Storage Repository</string>
     <string name="chat_style_bubble_show_avatar">Show avatars</string>
     <string name="chat_style_bubble_show_avatar_desc">Show user and AI avatars in bubble chat style</string>
+    <string name="chat_style_bubble_wide_layout">Wider bubbles</string>
+    <string name="chat_style_bubble_wide_layout_desc">Place bubbles below avatars and keep role names aligned with avatars to free more room for message content</string>
     <string name="chat_style_bubble_image_render_mode_title">Image bubble render mode</string>
     <string name="chat_style_bubble_image_render_mode_desc">Choose .9 stretch mode or 9-slice tiled mode</string>
     <string name="chat_style_bubble_image_render_mode_nine_patch">.9 mode</string>
@@ -3437,6 +3439,9 @@
     <string name="chat_style_preview_title">Style preview</string>
     <string name="chat_style_preview_user_message">This is a user message preview</string>
     <string name="chat_style_preview_ai_message">This is an AI message preview</string>
+    <string name="chat_style_preview_user_name">User Name</string>
+    <string name="chat_style_preview_ai_name">Role Name</string>
+    <string name="chat_style_preview_ai_meta">Sample Model by Sample Provider</string>
     <string name="chat_style_preview_user_source_title">User source 9-slice preview</string>
     <string name="chat_style_preview_ai_source_title">AI source 9-slice preview</string>
     <string name="chat_style_bubble_image_saved">Bubble image saved</string>

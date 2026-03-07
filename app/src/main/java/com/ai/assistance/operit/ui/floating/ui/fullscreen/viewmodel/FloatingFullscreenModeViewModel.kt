@@ -61,8 +61,11 @@ class FloatingFullscreenModeViewModel(
     private var lastVoiceActivityAtMs: Long = 0L
 
     private var wakeEnterJob: Job? = null
+    private var resumeVoiceCaptureJob: Job? = null
+    private var shouldResumeVoiceCaptureAfterAiTurn: Boolean = false
     private var suppressRecognitionUntilMs: Long = 0L
     private var waveModeAutoTimeoutEnabled: Boolean = false
+    var isVoiceCapturePausedForAi by mutableStateOf(false)
     
     // ===== 语音交互管理器 =====
     val speechManager = SpeechInteractionManager(
@@ -74,11 +77,13 @@ class FloatingFullscreenModeViewModel(
             if (finalText.isNotEmpty()) {
                 aiMessage = context.getString(R.string.floating_thinking)
                 coroutineScope.launch {
+                    prepareVoiceCaptureForAiTurn()
                     try {
                         maybeAutoAttachByKeyword(finalText)
                     } catch (_: Exception) {
                     }
                     floatContext.onSendMessage?.invoke(finalText, PromptFunctionType.VOICE)
+                    awaitAiTurnAndResumeVoiceCapture()
                 }
             }
         },
@@ -106,6 +111,55 @@ class FloatingFullscreenModeViewModel(
 
     private fun stopCurrentTtsPlayback() {
         coroutineScope.launch { speechManager.voiceService.stop() }
+    }
+
+    private fun isAiBusyOrSpeaking(): Boolean {
+        return isAiBusy() || speechManager.voiceService.isSpeaking
+    }
+
+    private fun shouldInterceptCenterAvatarClick(): Boolean {
+        return isVoiceCapturePausedForAi || isAiBusyOrSpeaking()
+    }
+
+    private fun prepareVoiceCaptureForAiTurn() {
+        if (!isWaveActive) return
+        shouldResumeVoiceCaptureAfterAiTurn = true
+        isVoiceCapturePausedForAi = true
+        resumeVoiceCaptureJob?.cancel()
+        if (speechManager.isRecording || speechManager.isProcessingSpeech) {
+            stopVoiceCapture(true)
+        }
+    }
+
+    private fun awaitAiTurnAndResumeVoiceCapture() {
+        if (!isWaveActive || !shouldResumeVoiceCaptureAfterAiTurn) return
+        resumeVoiceCaptureJob?.cancel()
+        resumeVoiceCaptureJob = coroutineScope.launch {
+            delay(120)
+            var observedAiBusy = false
+            while (isActive && isWaveActive && shouldResumeVoiceCaptureAfterAiTurn) {
+                val busy = isAiBusyOrSpeaking()
+                if (busy) {
+                    observedAiBusy = true
+                }
+                if (observedAiBusy && !busy) {
+                    shouldResumeVoiceCaptureAfterAiTurn = false
+                    isVoiceCapturePausedForAi = false
+                    if (!speechManager.isRecording && !speechManager.isProcessingSpeech) {
+                        startVoiceCapture()
+                    }
+                    return@launch
+                }
+                delay(120)
+            }
+        }
+    }
+
+    private fun cancelPendingVoiceCaptureResume() {
+        shouldResumeVoiceCaptureAfterAiTurn = false
+        isVoiceCapturePausedForAi = false
+        resumeVoiceCaptureJob?.cancel()
+        resumeVoiceCaptureJob = null
     }
 
     fun processAndSpeakAiMessage(lastMessage: ChatMessage?, ttsCleanerRegexs: List<String>) {
@@ -261,6 +315,7 @@ class FloatingFullscreenModeViewModel(
     fun exitWaveMode() {
         wakeEnterJob?.cancel()
         wakeEnterJob = null
+        cancelPendingVoiceCaptureResume()
         suppressRecognitionUntilMs = 0L
         waveModeAutoTimeoutEnabled = false
         stopVoiceCapture(true)
@@ -290,6 +345,29 @@ class FloatingFullscreenModeViewModel(
         speechManager.speak(text, interrupt = true)
     }
 
+    fun onCenterAvatarClick() {
+        if (isWaveActive && shouldInterceptCenterAvatarClick()) {
+            val shouldCancelAiTurn = shouldResumeVoiceCaptureAfterAiTurn || isAiBusy()
+            cancelPendingVoiceCaptureResume()
+            if (shouldCancelAiTurn) {
+                floatContext.onCancelMessage?.invoke()
+            }
+            coroutineScope.launch {
+                speechManager.voiceService.stop()
+                if (!speechManager.isRecording && !speechManager.isProcessingSpeech) {
+                    startVoiceCapture()
+                }
+            }
+            return
+        }
+
+        if (isWaveActive) {
+            exitWaveMode()
+        } else {
+            enterWaveMode(enableAutoTimeout = false)
+        }
+    }
+
     fun handleRecognitionResult(resultText: String, isFinal: Boolean) {
         if (isWaveActive && System.currentTimeMillis() < suppressRecognitionUntilMs) {
             return
@@ -305,6 +383,7 @@ class FloatingFullscreenModeViewModel(
 
      suspend fun initialize(autoEnterVoiceChat: Boolean = false, wakeLaunched: Boolean = false) {
          speechManager.initialize()
+         cancelPendingVoiceCaptureResume()
          prefsJob?.cancel()
          prefsJob = coroutineScope.launch {
              wakePrefs.voiceCallInactivityTimeoutSecondsFlow.collectLatest { seconds ->
@@ -333,6 +412,7 @@ class FloatingFullscreenModeViewModel(
         val view = floatContext.chatService?.getComposeView()
         speechManager.releaseFocus(view)
         speechManager.cleanup()
+        cancelPendingVoiceCaptureResume()
 
         prefsJob?.cancel()
         prefsJob = null
@@ -421,7 +501,9 @@ class FloatingFullscreenModeViewModel(
     
     fun sendEditedMessage() {
         if (editableText.isNotBlank()) {
+            prepareVoiceCaptureForAiTurn()
             floatContext.onSendMessage?.invoke(editableText, PromptFunctionType.VOICE)
+            awaitAiTurnAndResumeVoiceCapture()
             isEditMode = false
             editableText = ""
             aiMessage = context.getString(R.string.floating_thinking)
@@ -444,6 +526,8 @@ class FloatingFullscreenModeViewModel(
         hasOcrSelection = false
         aiMessage = context.getString(R.string.floating_thinking)
 
+        prepareVoiceCaptureForAiTurn()
+
         coroutineScope.launch {
             try {
                 maybeAutoAttachByKeyword(text)
@@ -465,6 +549,7 @@ class FloatingFullscreenModeViewModel(
             }
 
             floatContext.onSendMessage?.invoke(text, PromptFunctionType.VOICE)
+            awaitAiTurnAndResumeVoiceCapture()
         }
     }
 

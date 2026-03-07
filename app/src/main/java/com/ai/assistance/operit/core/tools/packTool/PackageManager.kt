@@ -143,6 +143,42 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         val functionName: String
     )
 
+    data class ToolPkgToolLifecycleHook(
+        val containerPackageName: String,
+        val hookId: String,
+        val functionName: String
+    )
+
+    data class ToolPkgPromptInputHook(
+        val containerPackageName: String,
+        val hookId: String,
+        val functionName: String
+    )
+
+    data class ToolPkgPromptHistoryHook(
+        val containerPackageName: String,
+        val hookId: String,
+        val functionName: String
+    )
+
+    data class ToolPkgSystemPromptComposeHook(
+        val containerPackageName: String,
+        val hookId: String,
+        val functionName: String
+    )
+
+    data class ToolPkgToolPromptComposeHook(
+        val containerPackageName: String,
+        val hookId: String,
+        val functionName: String
+    )
+
+    data class ToolPkgPromptFinalizeHook(
+        val containerPackageName: String,
+        val hookId: String,
+        val functionName: String
+    )
+
 
     @Volatile
     private var isInitialized = false
@@ -479,6 +515,7 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         containerPackageName: String,
         functionName: String,
         event: String,
+        eventName: String? = null,
         pluginId: String? = null,
         eventPayload: Map<String, Any?> = emptyMap(),
         onIntermediateResult: ((Any?) -> Unit)? = null
@@ -487,6 +524,7 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
             containerPackageName = containerPackageName,
             functionName = functionName,
             event = event,
+            eventName = eventName,
             pluginId = pluginId,
             eventPayload = eventPayload,
             onIntermediateResult = onIntermediateResult
@@ -503,6 +541,30 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
 
     fun getToolPkgInputMenuTogglePlugins(): List<ToolPkgInputMenuTogglePlugin> {
         return toolPkgFacade.getToolPkgInputMenuTogglePlugins()
+    }
+
+    fun getToolPkgToolLifecycleHooks(): List<ToolPkgToolLifecycleHook> {
+        return toolPkgFacade.getToolPkgToolLifecycleHooks()
+    }
+
+    fun getToolPkgPromptInputHooks(): List<ToolPkgPromptInputHook> {
+        return toolPkgFacade.getToolPkgPromptInputHooks()
+    }
+
+    fun getToolPkgPromptHistoryHooks(): List<ToolPkgPromptHistoryHook> {
+        return toolPkgFacade.getToolPkgPromptHistoryHooks()
+    }
+
+    fun getToolPkgSystemPromptComposeHooks(): List<ToolPkgSystemPromptComposeHook> {
+        return toolPkgFacade.getToolPkgSystemPromptComposeHooks()
+    }
+
+    fun getToolPkgToolPromptComposeHooks(): List<ToolPkgToolPromptComposeHook> {
+        return toolPkgFacade.getToolPkgToolPromptComposeHooks()
+    }
+
+    fun getToolPkgPromptFinalizeHooks(): List<ToolPkgPromptFinalizeHook> {
+        return toolPkgFacade.getToolPkgPromptFinalizeHooks()
     }
 
     fun readToolPkgTextResource(

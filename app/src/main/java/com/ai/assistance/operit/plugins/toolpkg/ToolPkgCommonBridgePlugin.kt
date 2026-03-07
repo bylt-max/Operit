@@ -722,5 +722,7 @@ object ToolPkgCommonBridgePlugin : OperitPlugin {
         MessageProcessingPluginRegistry.register(ToolPkgMessageProcessingBridgePlugin)
         XmlRenderPluginRegistry.register(ToolPkgXmlRenderBridgePlugin)
         InputMenuTogglePluginRegistry.register(ToolPkgInputMenuToggleBridgePlugin)
+        ToolPkgPromptHookBridge.register()
+        ToolPkgToolLifecycleBridge.register()
     }
 }

@@ -8,7 +8,13 @@ data class ToolPkgMainRegistrationCapture(
     val appLifecycleHooks: List<String>,
     val messageProcessingPlugins: List<String>,
     val xmlRenderPlugins: List<String>,
-    val inputMenuTogglePlugins: List<String>
+    val inputMenuTogglePlugins: List<String>,
+    val toolLifecycleHooks: List<String>,
+    val promptInputHooks: List<String>,
+    val promptHistoryHooks: List<String>,
+    val systemPromptComposeHooks: List<String>,
+    val toolPromptComposeHooks: List<String>,
+    val promptFinalizeHooks: List<String>
 )
 
 private data class MutableToolPkgMainRegistrationCapture(
@@ -16,7 +22,13 @@ private data class MutableToolPkgMainRegistrationCapture(
     val appLifecycleHooks: MutableList<String> = mutableListOf(),
     val messageProcessingPlugins: MutableList<String> = mutableListOf(),
     val xmlRenderPlugins: MutableList<String> = mutableListOf(),
-    val inputMenuTogglePlugins: MutableList<String> = mutableListOf()
+    val inputMenuTogglePlugins: MutableList<String> = mutableListOf(),
+    val toolLifecycleHooks: MutableList<String> = mutableListOf(),
+    val promptInputHooks: MutableList<String> = mutableListOf(),
+    val promptHistoryHooks: MutableList<String> = mutableListOf(),
+    val systemPromptComposeHooks: MutableList<String> = mutableListOf(),
+    val toolPromptComposeHooks: MutableList<String> = mutableListOf(),
+    val promptFinalizeHooks: MutableList<String> = mutableListOf()
 )
 
 internal class JsToolPkgRegistrationSession {
@@ -64,6 +76,48 @@ internal class JsToolPkgRegistrationSession {
         }
     }
 
+    fun appendToolLifecycleHook(specJson: String) {
+        val normalized = normalizeRegistrationSpec(specJson)
+        withActiveCapture { current ->
+            current.toolLifecycleHooks.add(normalized)
+        }
+    }
+
+    fun appendPromptInputHook(specJson: String) {
+        val normalized = normalizeRegistrationSpec(specJson)
+        withActiveCapture { current ->
+            current.promptInputHooks.add(normalized)
+        }
+    }
+
+    fun appendPromptHistoryHook(specJson: String) {
+        val normalized = normalizeRegistrationSpec(specJson)
+        withActiveCapture { current ->
+            current.promptHistoryHooks.add(normalized)
+        }
+    }
+
+    fun appendSystemPromptComposeHook(specJson: String) {
+        val normalized = normalizeRegistrationSpec(specJson)
+        withActiveCapture { current ->
+            current.systemPromptComposeHooks.add(normalized)
+        }
+    }
+
+    fun appendToolPromptComposeHook(specJson: String) {
+        val normalized = normalizeRegistrationSpec(specJson)
+        withActiveCapture { current ->
+            current.toolPromptComposeHooks.add(normalized)
+        }
+    }
+
+    fun appendPromptFinalizeHook(specJson: String) {
+        val normalized = normalizeRegistrationSpec(specJson)
+        withActiveCapture { current ->
+            current.promptFinalizeHooks.add(normalized)
+        }
+    }
+
     fun finish(executionResult: Any?): ToolPkgMainRegistrationCapture {
         if (executionResult is String) {
             val normalized = executionResult.trim()
@@ -79,7 +133,13 @@ internal class JsToolPkgRegistrationSession {
                 appLifecycleHooks = current.appLifecycleHooks.toList(),
                 messageProcessingPlugins = current.messageProcessingPlugins.toList(),
                 xmlRenderPlugins = current.xmlRenderPlugins.toList(),
-                inputMenuTogglePlugins = current.inputMenuTogglePlugins.toList()
+                inputMenuTogglePlugins = current.inputMenuTogglePlugins.toList(),
+                toolLifecycleHooks = current.toolLifecycleHooks.toList(),
+                promptInputHooks = current.promptInputHooks.toList(),
+                promptHistoryHooks = current.promptHistoryHooks.toList(),
+                systemPromptComposeHooks = current.systemPromptComposeHooks.toList(),
+                toolPromptComposeHooks = current.toolPromptComposeHooks.toList(),
+                promptFinalizeHooks = current.promptFinalizeHooks.toList()
             )
         }
     }
@@ -308,6 +368,96 @@ internal fun buildToolPkgRegistrationBridgeScript(): String {
             NativeInterface.registerToolPkgInputMenuTogglePlugin(JSON.stringify(normalized));
         }
 
+        function registerToolPkgToolLifecycleHook(definition) {
+            if (!definition || typeof definition !== 'object' || Array.isArray(definition)) {
+                throw new Error("registerToolPkgToolLifecycleHook expects an object");
+            }
+            if (typeof NativeInterface === 'undefined' || typeof NativeInterface.registerToolPkgToolLifecycleHook !== 'function') {
+                throw new Error("NativeInterface.registerToolPkgToolLifecycleHook is unavailable");
+            }
+            var normalized = __operitResolveFunctionField(
+                definition,
+                "function",
+                "registerToolPkgToolLifecycleHook"
+            );
+            NativeInterface.registerToolPkgToolLifecycleHook(JSON.stringify(normalized));
+        }
+
+        function registerToolPkgPromptInputHook(definition) {
+            if (!definition || typeof definition !== 'object' || Array.isArray(definition)) {
+                throw new Error("registerToolPkgPromptInputHook expects an object");
+            }
+            if (typeof NativeInterface === 'undefined' || typeof NativeInterface.registerToolPkgPromptInputHook !== 'function') {
+                throw new Error("NativeInterface.registerToolPkgPromptInputHook is unavailable");
+            }
+            var normalized = __operitResolveFunctionField(
+                definition,
+                "function",
+                "registerToolPkgPromptInputHook"
+            );
+            NativeInterface.registerToolPkgPromptInputHook(JSON.stringify(normalized));
+        }
+
+        function registerToolPkgPromptHistoryHook(definition) {
+            if (!definition || typeof definition !== 'object' || Array.isArray(definition)) {
+                throw new Error("registerToolPkgPromptHistoryHook expects an object");
+            }
+            if (typeof NativeInterface === 'undefined' || typeof NativeInterface.registerToolPkgPromptHistoryHook !== 'function') {
+                throw new Error("NativeInterface.registerToolPkgPromptHistoryHook is unavailable");
+            }
+            var normalized = __operitResolveFunctionField(
+                definition,
+                "function",
+                "registerToolPkgPromptHistoryHook"
+            );
+            NativeInterface.registerToolPkgPromptHistoryHook(JSON.stringify(normalized));
+        }
+
+        function registerToolPkgSystemPromptComposeHook(definition) {
+            if (!definition || typeof definition !== 'object' || Array.isArray(definition)) {
+                throw new Error("registerToolPkgSystemPromptComposeHook expects an object");
+            }
+            if (typeof NativeInterface === 'undefined' || typeof NativeInterface.registerToolPkgSystemPromptComposeHook !== 'function') {
+                throw new Error("NativeInterface.registerToolPkgSystemPromptComposeHook is unavailable");
+            }
+            var normalized = __operitResolveFunctionField(
+                definition,
+                "function",
+                "registerToolPkgSystemPromptComposeHook"
+            );
+            NativeInterface.registerToolPkgSystemPromptComposeHook(JSON.stringify(normalized));
+        }
+
+        function registerToolPkgToolPromptComposeHook(definition) {
+            if (!definition || typeof definition !== 'object' || Array.isArray(definition)) {
+                throw new Error("registerToolPkgToolPromptComposeHook expects an object");
+            }
+            if (typeof NativeInterface === 'undefined' || typeof NativeInterface.registerToolPkgToolPromptComposeHook !== 'function') {
+                throw new Error("NativeInterface.registerToolPkgToolPromptComposeHook is unavailable");
+            }
+            var normalized = __operitResolveFunctionField(
+                definition,
+                "function",
+                "registerToolPkgToolPromptComposeHook"
+            );
+            NativeInterface.registerToolPkgToolPromptComposeHook(JSON.stringify(normalized));
+        }
+
+        function registerToolPkgPromptFinalizeHook(definition) {
+            if (!definition || typeof definition !== 'object' || Array.isArray(definition)) {
+                throw new Error("registerToolPkgPromptFinalizeHook expects an object");
+            }
+            if (typeof NativeInterface === 'undefined' || typeof NativeInterface.registerToolPkgPromptFinalizeHook !== 'function') {
+                throw new Error("NativeInterface.registerToolPkgPromptFinalizeHook is unavailable");
+            }
+            var normalized = __operitResolveFunctionField(
+                definition,
+                "function",
+                "registerToolPkgPromptFinalizeHook"
+            );
+            NativeInterface.registerToolPkgPromptFinalizeHook(JSON.stringify(normalized));
+        }
+
         function __operitInstallGlobal(name, value) {
             var key = String(name || '').trim();
             if (!key || value === undefined) {
@@ -328,7 +478,13 @@ internal fun buildToolPkgRegistrationBridgeScript(): String {
             registerAppLifecycleHook: registerToolPkgAppLifecycleHook,
             registerMessageProcessingPlugin: registerToolPkgMessageProcessingPlugin,
             registerXmlRenderPlugin: registerToolPkgXmlRenderPlugin,
-            registerInputMenuTogglePlugin: registerToolPkgInputMenuTogglePlugin
+            registerInputMenuTogglePlugin: registerToolPkgInputMenuTogglePlugin,
+            registerToolLifecycleHook: registerToolPkgToolLifecycleHook,
+            registerPromptInputHook: registerToolPkgPromptInputHook,
+            registerPromptHistoryHook: registerToolPkgPromptHistoryHook,
+            registerSystemPromptComposeHook: registerToolPkgSystemPromptComposeHook,
+            registerToolPromptComposeHook: registerToolPkgToolPromptComposeHook,
+            registerPromptFinalizeHook: registerToolPkgPromptFinalizeHook
         };
         __operitInstallGlobal("ToolPkg", __operitToolPkgApi);
     """.trimIndent()

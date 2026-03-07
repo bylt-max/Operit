@@ -1,5 +1,7 @@
 package com.ai.assistance.operit.core.config
 
+import com.ai.assistance.operit.core.chat.hooks.PromptHookContext
+import com.ai.assistance.operit.core.chat.hooks.PromptHookRegistry
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.skill.SkillRepository
@@ -660,40 +662,87 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
           groupOrchestrationRoleName: String = "",
           groupParticipantNamesText: String = ""
   ): String {
-    // Get the base system prompt
-    val basePrompt = getSystemPrompt(
-        packageManager = packageManager,
-        workspacePath = workspacePath,
-        workspaceEnv = workspaceEnv,
-        safBookmarkNames = safBookmarkNames,
-        useEnglish = useEnglish,
-        thinkingGuidance = thinkingGuidance,
-        customSystemPromptTemplate = customSystemPromptTemplate,
-        enableTools = enableTools,
-        enableMemoryQuery = enableMemoryQuery,
-        hasImageRecognition = hasImageRecognition,
-        chatModelHasDirectImage = chatModelHasDirectImage,
-        hasAudioRecognition = hasAudioRecognition,
-        hasVideoRecognition = hasVideoRecognition,
-        chatModelHasDirectAudio = chatModelHasDirectAudio,
-        chatModelHasDirectVideo = chatModelHasDirectVideo,
-        useToolCallApi = useToolCallApi,
-        strictToolCall = strictToolCall,
-        disableLatexDescription = disableLatexDescription,
-        toolVisibility = toolVisibility
-    )
+    val beforeContext =
+        PromptHookRegistry.dispatchSystemPromptComposeHooks(
+            PromptHookContext(
+                stage = "before_compose_system_prompt",
+                useEnglish = useEnglish,
+                metadata =
+                    mapOf(
+                        "workspacePath" to workspacePath,
+                        "workspaceEnv" to workspaceEnv,
+                        "safBookmarkNames" to safBookmarkNames,
+                        "thinkingGuidance" to thinkingGuidance,
+                        "customSystemPromptTemplate" to customSystemPromptTemplate,
+                        "customIntroPrompt" to customIntroPrompt,
+                        "enableTools" to enableTools,
+                        "enableMemoryQuery" to enableMemoryQuery,
+                        "hasImageRecognition" to hasImageRecognition,
+                        "chatModelHasDirectImage" to chatModelHasDirectImage,
+                        "hasAudioRecognition" to hasAudioRecognition,
+                        "hasVideoRecognition" to hasVideoRecognition,
+                        "chatModelHasDirectAudio" to chatModelHasDirectAudio,
+                        "chatModelHasDirectVideo" to chatModelHasDirectVideo,
+                        "useToolCallApi" to useToolCallApi,
+                        "strictToolCall" to strictToolCall,
+                        "disableLatexDescription" to disableLatexDescription,
+                        "toolVisibility" to toolVisibility,
+                        "enableGroupOrchestrationHint" to enableGroupOrchestrationHint,
+                        "groupOrchestrationRoleName" to groupOrchestrationRoleName,
+                        "groupParticipantNamesText" to groupParticipantNamesText
+                    )
+            )
+        )
 
-    val promptWithCustomIntro = applyCustomPrompts(basePrompt, customIntroPrompt)
-    if (!enableGroupOrchestrationHint) {
-      return promptWithCustomIntro
+    val basePrompt =
+        beforeContext.systemPrompt ?: getSystemPrompt(
+            packageManager = packageManager,
+            workspacePath = workspacePath,
+            workspaceEnv = workspaceEnv,
+            safBookmarkNames = safBookmarkNames,
+            useEnglish = useEnglish,
+            thinkingGuidance = thinkingGuidance,
+            customSystemPromptTemplate = customSystemPromptTemplate,
+            enableTools = enableTools,
+            enableMemoryQuery = enableMemoryQuery,
+            hasImageRecognition = hasImageRecognition,
+            chatModelHasDirectImage = chatModelHasDirectImage,
+            hasAudioRecognition = hasAudioRecognition,
+            hasVideoRecognition = hasVideoRecognition,
+            chatModelHasDirectAudio = chatModelHasDirectAudio,
+            chatModelHasDirectVideo = chatModelHasDirectVideo,
+            useToolCallApi = useToolCallApi,
+            strictToolCall = strictToolCall,
+            disableLatexDescription = disableLatexDescription,
+            toolVisibility = toolVisibility
+        )
+
+    var composedPrompt = applyCustomPrompts(basePrompt, customIntroPrompt)
+    if (enableGroupOrchestrationHint) {
+      val safeRoleName = groupOrchestrationRoleName.ifBlank { if (useEnglish) "assistant" else "助手" }
+      composedPrompt += buildGroupOrchestrationHint(
+          useEnglish = useEnglish,
+          roleName = safeRoleName,
+          participantNamesText = groupParticipantNamesText
+      )
     }
 
-    val safeRoleName = groupOrchestrationRoleName.ifBlank { if (useEnglish) "assistant" else "助手" }
-    return promptWithCustomIntro + buildGroupOrchestrationHint(
-        useEnglish = useEnglish,
-        roleName = safeRoleName,
-        participantNamesText = groupParticipantNamesText
-    )
+    val composeContext =
+        PromptHookRegistry.dispatchSystemPromptComposeHooks(
+            beforeContext.copy(
+                stage = "compose_system_prompt_sections",
+                systemPrompt = composedPrompt
+            )
+        )
+    val afterComposePrompt = composeContext.systemPrompt ?: composedPrompt
+    val afterContext =
+        PromptHookRegistry.dispatchSystemPromptComposeHooks(
+            composeContext.copy(
+                stage = "after_compose_system_prompt",
+                systemPrompt = afterComposePrompt
+            )
+        )
+    return afterContext.systemPrompt ?: afterComposePrompt
   }
 
   /** Original method for backward compatibility */

@@ -30,7 +30,13 @@ export namespace ToolPkg {
         | AppLifecycleEvent
         | "message_processing"
         | "xml_render"
-        | "input_menu_toggle";
+        | "input_menu_toggle"
+        | ToolLifecycleEventName
+        | PromptInputEventName
+        | PromptHistoryEventName
+        | SystemPromptComposeEventName
+        | ToolPromptComposeEventName
+        | PromptFinalizeEventName;
 
     export type HookReturn = JsonValue | void | Promise<JsonValue | void>;
 
@@ -96,6 +102,117 @@ export namespace ToolPkg {
         | void
         | Promise<InputMenuToggleDefinitionResult[] | InputMenuToggleObjectResult | null | void>;
 
+    export type ToolLifecycleEventName =
+        | "tool_call_requested"
+        | "tool_permission_checked"
+        | "tool_execution_started"
+        | "tool_execution_result"
+        | "tool_execution_error"
+        | "tool_execution_finished";
+
+    export type PromptInputEventName =
+        | "before_process"
+        | "after_process";
+
+    export type PromptHistoryEventName =
+        | "before_prepare_history"
+        | "after_prepare_history";
+
+    export type SystemPromptComposeEventName =
+        | "before_compose_system_prompt"
+        | "compose_system_prompt_sections"
+        | "after_compose_system_prompt";
+
+    export type ToolPromptComposeEventName =
+        | "before_compose_tool_prompt"
+        | "filter_tool_prompt_items"
+        | "after_compose_tool_prompt";
+
+    export type PromptFinalizeEventName =
+        | "before_finalize_prompt"
+        | "before_send_to_model";
+
+    export interface PromptMessage extends JsonObject {
+        role: string;
+        content: string;
+    }
+
+    export interface ToolLifecycleEventPayload extends JsonObject {
+        toolName: string;
+        parameters?: { [key: string]: string };
+        description?: string;
+        granted?: boolean;
+        reason?: string;
+        success?: boolean;
+        errorMessage?: string;
+        resultText?: string;
+        resultJson?: JsonValue;
+    }
+
+    export interface PromptHookObjectResult extends JsonObject {
+        rawInput?: string;
+        processedInput?: string;
+        chatHistory?: PromptMessage[];
+        preparedHistory?: PromptMessage[];
+        systemPrompt?: string;
+        toolPrompt?: string;
+        metadata?: JsonObject;
+    }
+
+    export interface PromptHookEventPayload extends JsonObject {
+        stage?: string;
+        functionType?: string;
+        promptFunctionType?: string;
+        useEnglish?: boolean;
+        rawInput?: string;
+        processedInput?: string;
+        chatHistory?: PromptMessage[];
+        preparedHistory?: PromptMessage[];
+        systemPrompt?: string;
+        toolPrompt?: string;
+        modelParameters?: JsonObject[];
+        availableTools?: JsonObject[];
+        metadata?: JsonObject;
+    }
+
+    export type ToolLifecycleHookReturn = void | Promise<void>;
+
+    export type PromptInputHookReturn =
+        | string
+        | PromptHookObjectResult
+        | null
+        | void
+        | Promise<string | PromptHookObjectResult | null | void>;
+
+    export type PromptHistoryHookReturn =
+        | PromptMessage[]
+        | PromptHookObjectResult
+        | null
+        | void
+        | Promise<PromptMessage[] | PromptHookObjectResult | null | void>;
+
+    export type SystemPromptComposeHookReturn =
+        | string
+        | PromptHookObjectResult
+        | null
+        | void
+        | Promise<string | PromptHookObjectResult | null | void>;
+
+    export type ToolPromptComposeHookReturn =
+        | string
+        | PromptHookObjectResult
+        | null
+        | void
+        | Promise<string | PromptHookObjectResult | null | void>;
+
+    export type PromptFinalizeHookReturn =
+        | string
+        | PromptMessage[]
+        | PromptHookObjectResult
+        | null
+        | void
+        | Promise<string | PromptMessage[] | PromptHookObjectResult | null | void>;
+
     export type AppLifecycleHookHandler =
         (event: AppLifecycleHookEvent) => AppLifecycleHookReturn;
 
@@ -109,6 +226,24 @@ export namespace ToolPkg {
 
     export type InputMenuToggleHookHandler =
         (event: InputMenuToggleHookEvent) => InputMenuToggleHookReturn;
+
+    export type ToolLifecycleHookHandler =
+        (event: ToolLifecycleHookEvent) => ToolLifecycleHookReturn;
+
+    export type PromptInputHookHandler =
+        (event: PromptInputHookEvent) => PromptInputHookReturn;
+
+    export type PromptHistoryHookHandler =
+        (event: PromptHistoryHookEvent) => PromptHistoryHookReturn;
+
+    export type SystemPromptComposeHookHandler =
+        (event: SystemPromptComposeHookEvent) => SystemPromptComposeHookReturn;
+
+    export type ToolPromptComposeHookHandler =
+        (event: ToolPromptComposeHookEvent) => ToolPromptComposeHookReturn;
+
+    export type PromptFinalizeHookHandler =
+        (event: PromptFinalizeHookEvent) => PromptFinalizeHookReturn;
 
     export interface HookEventBase<
         TEventName extends string,
@@ -161,6 +296,24 @@ export namespace ToolPkg {
     export interface InputMenuToggleHookEvent
         extends HookEventBase<"input_menu_toggle", InputMenuToggleEventPayload> {}
 
+    export interface ToolLifecycleHookEvent
+        extends HookEventBase<ToolLifecycleEventName, ToolLifecycleEventPayload> {}
+
+    export interface PromptInputHookEvent
+        extends HookEventBase<PromptInputEventName, PromptHookEventPayload> {}
+
+    export interface PromptHistoryHookEvent
+        extends HookEventBase<PromptHistoryEventName, PromptHookEventPayload> {}
+
+    export interface SystemPromptComposeHookEvent
+        extends HookEventBase<SystemPromptComposeEventName, PromptHookEventPayload> {}
+
+    export interface ToolPromptComposeHookEvent
+        extends HookEventBase<ToolPromptComposeEventName, PromptHookEventPayload> {}
+
+    export interface PromptFinalizeHookEvent
+        extends HookEventBase<PromptFinalizeEventName, PromptHookEventPayload> {}
+
     export interface ToolboxUiModuleRegistration {
         id: string;
         runtime?: string;
@@ -191,12 +344,48 @@ export namespace ToolPkg {
         function: InputMenuToggleHookHandler;
     }
 
+    export interface ToolLifecycleHookRegistration {
+        id: string;
+        function: ToolLifecycleHookHandler;
+    }
+
+    export interface PromptInputHookRegistration {
+        id: string;
+        function: PromptInputHookHandler;
+    }
+
+    export interface PromptHistoryHookRegistration {
+        id: string;
+        function: PromptHistoryHookHandler;
+    }
+
+    export interface SystemPromptComposeHookRegistration {
+        id: string;
+        function: SystemPromptComposeHookHandler;
+    }
+
+    export interface ToolPromptComposeHookRegistration {
+        id: string;
+        function: ToolPromptComposeHookHandler;
+    }
+
+    export interface PromptFinalizeHookRegistration {
+        id: string;
+        function: PromptFinalizeHookHandler;
+    }
+
     export interface Registry {
         registerToolboxUiModule(definition: ToolboxUiModuleRegistration): void;
         registerAppLifecycleHook(definition: AppLifecycleHookRegistration): void;
         registerMessageProcessingPlugin(definition: MessageProcessingPluginRegistration): void;
         registerXmlRenderPlugin(definition: XmlRenderPluginRegistration): void;
         registerInputMenuTogglePlugin(definition: InputMenuTogglePluginRegistration): void;
+        registerToolLifecycleHook(definition: ToolLifecycleHookRegistration): void;
+        registerPromptInputHook(definition: PromptInputHookRegistration): void;
+        registerPromptHistoryHook(definition: PromptHistoryHookRegistration): void;
+        registerSystemPromptComposeHook(definition: SystemPromptComposeHookRegistration): void;
+        registerToolPromptComposeHook(definition: ToolPromptComposeHookRegistration): void;
+        registerPromptFinalizeHook(definition: PromptFinalizeHookRegistration): void;
     }
 }
 
@@ -210,6 +399,18 @@ declare global {
     function registerToolPkgXmlRenderPlugin(definition: ToolPkg.XmlRenderPluginRegistration): void;
 
     function registerToolPkgInputMenuTogglePlugin(definition: ToolPkg.InputMenuTogglePluginRegistration): void;
+
+    function registerToolPkgToolLifecycleHook(definition: ToolPkg.ToolLifecycleHookRegistration): void;
+
+    function registerToolPkgPromptInputHook(definition: ToolPkg.PromptInputHookRegistration): void;
+
+    function registerToolPkgPromptHistoryHook(definition: ToolPkg.PromptHistoryHookRegistration): void;
+
+    function registerToolPkgSystemPromptComposeHook(definition: ToolPkg.SystemPromptComposeHookRegistration): void;
+
+    function registerToolPkgToolPromptComposeHook(definition: ToolPkg.ToolPromptComposeHookRegistration): void;
+
+    function registerToolPkgPromptFinalizeHook(definition: ToolPkg.PromptFinalizeHookRegistration): void;
 
     const ToolPkg: ToolPkg.Registry;
 }
