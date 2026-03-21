@@ -52,7 +52,6 @@ import com.ai.assistance.operit.ui.theme.OperitTheme
 import com.ai.assistance.operit.ui.common.displays.VirtualDisplayOverlay
 import com.ai.assistance.operit.util.AnrMonitor
 import com.ai.assistance.operit.util.LocaleUtils
-import com.ai.assistance.operit.util.OperitPaths
 import java.util.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -247,7 +246,6 @@ class MainActivity : ComponentActivity() {
         // 语言设置已在Application中初始化，这里无需重复
 
         initializeComponents()
-        cleanTemporaryFiles()
         anrMonitor.start()
         setupPreferencesListener()
         configureDisplaySettings()
@@ -907,70 +905,6 @@ class MainActivity : ComponentActivity() {
         ).show()
     }
 
-    /** 清理临时文件目录 删除外部/内部 cleanOnExit 目录中的所有临时文件 */
-    private fun cleanTemporaryFiles() {
-        lifecycleScope.launch {
-            try {
-                fun deleteRecursively(
-                    rootDir: java.io.File,
-                    file: java.io.File,
-                    preserveRootNoMedia: Boolean,
-                    isRoot: Boolean = false
-                ): Int {
-                    var deletedCount = 0
-                    if (file.isDirectory) {
-                        val children = file.listFiles()
-                        children?.forEach { child ->
-                            deletedCount += deleteRecursively(
-                                rootDir = rootDir,
-                                file = child,
-                                preserveRootNoMedia = preserveRootNoMedia,
-                                isRoot = false
-                            )
-                        }
-                        if (!isRoot && file.exists()) {
-                            file.delete()
-                        }
-                    } else if (file.isFile) {
-                        val isRootNoMedia =
-                            preserveRootNoMedia &&
-                                file.parentFile?.absolutePath == rootDir.absolutePath &&
-                                file.name == ".nomedia"
-                        if (!isRootNoMedia && file.delete()) {
-                            deletedCount++
-                        }
-                    }
-                    return deletedCount
-                }
-
-                fun cleanDirectory(tempDir: java.io.File, preserveRootNoMedia: Boolean) {
-                    if (!tempDir.exists() || !tempDir.isDirectory) {
-                        return
-                    }
-                    if (preserveRootNoMedia) {
-                        val noMediaFile = java.io.File(tempDir, ".nomedia")
-                        if (!noMediaFile.exists()) {
-                            noMediaFile.createNewFile()
-                        }
-                    }
-                    AppLogger.d(TAG, "开始清理临时文件目录: ${tempDir.absolutePath}")
-                    val totalDeleted =
-                        deleteRecursively(
-                            rootDir = tempDir,
-                            file = tempDir,
-                            preserveRootNoMedia = preserveRootNoMedia,
-                            isRoot = true
-                        )
-                    AppLogger.d(TAG, "已删除${totalDeleted}个临时文件: ${tempDir.absolutePath}")
-                }
-
-                cleanDirectory(java.io.File(OperitPaths.cleanOnExitPathSdcard()), preserveRootNoMedia = true)
-                cleanDirectory(OperitPaths.cleanOnExitInternalDir(this@MainActivity), preserveRootNoMedia = false)
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "清理临时文件失败", e)
-            }
-        }
-    }
 }
 
 @Composable

@@ -48,6 +48,7 @@ import com.ai.assistance.operit.util.ImagePoolManager
 import com.ai.assistance.operit.util.LocaleUtils
 import com.ai.assistance.operit.util.MediaPoolManager
 import com.ai.assistance.operit.util.AppIconManager
+import com.ai.assistance.operit.util.OperitPaths
 import com.ai.assistance.operit.util.SkillRepoZipPoolManager
 import com.ai.assistance.operit.util.SerializationSetup
 import com.ai.assistance.operit.util.TextSegmenter
@@ -58,6 +59,7 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.ai.assistance.operit.core.tools.system.shower.OperitShowerShellRunner
 import com.ai.assistance.showerclient.ShowerEnvironment
 import com.ai.assistance.showerclient.ShowerLogSink
+import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -123,6 +125,9 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
 
         AppLogger.d(TAG, "【启动计时】应用启动开始")
         AppLogger.d(TAG, "【启动计时】实例初始化完成 - ${System.currentTimeMillis() - startTime}ms")
+
+        launchCleanOnExitCleanup()
+        AppLogger.d(TAG, "【启动计时】cleanOnExit 清理任务已提交（异步IO） - ${System.currentTimeMillis() - startTime}ms")
 
         // Initialize ActivityLifecycleManager to track the current activity
         ActivityLifecycleManager.initialize(this)
@@ -372,6 +377,77 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
 
             }
         }
+    }
+
+    private fun launchCleanOnExitCleanup() {
+        applicationScope.launch {
+            val cleanupStartTime = System.currentTimeMillis()
+            try {
+                val deletedFiles =
+                    cleanDirectory(File(OperitPaths.cleanOnExitPathSdcard()), preserveRootNoMedia = true) +
+                        cleanDirectory(File(cacheDir, "Operit/cleanOnExit"), preserveRootNoMedia = false)
+                AppLogger.d(
+                    TAG,
+                    "cleanOnExit 清理完成，总计删除${deletedFiles}个文件，耗时${System.currentTimeMillis() - cleanupStartTime}ms"
+                )
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "清理临时文件失败", e)
+            }
+        }
+    }
+
+    private fun cleanDirectory(tempDir: File, preserveRootNoMedia: Boolean): Int {
+        if (!tempDir.exists() || !tempDir.isDirectory) {
+            return 0
+        }
+        if (preserveRootNoMedia) {
+            val noMediaFile = File(tempDir, ".nomedia")
+            if (!noMediaFile.exists()) {
+                noMediaFile.createNewFile()
+            }
+        }
+        AppLogger.d(TAG, "开始清理临时文件目录: ${tempDir.absolutePath}")
+        val totalDeleted =
+            deleteRecursively(
+                rootDir = tempDir,
+                file = tempDir,
+                preserveRootNoMedia = preserveRootNoMedia,
+                isRoot = true
+            )
+        AppLogger.d(TAG, "已删除${totalDeleted}个临时文件: ${tempDir.absolutePath}")
+        return totalDeleted
+    }
+
+    private fun deleteRecursively(
+        rootDir: File,
+        file: File,
+        preserveRootNoMedia: Boolean,
+        isRoot: Boolean = false
+    ): Int {
+        var deletedCount = 0
+        if (file.isDirectory) {
+            val children = file.listFiles()
+            children?.forEach { child ->
+                deletedCount += deleteRecursively(
+                    rootDir = rootDir,
+                    file = child,
+                    preserveRootNoMedia = preserveRootNoMedia,
+                    isRoot = false
+                )
+            }
+            if (!isRoot && file.exists()) {
+                file.delete()
+            }
+        } else if (file.isFile) {
+            val isRootNoMedia =
+                preserveRootNoMedia &&
+                    file.parentFile?.absolutePath == rootDir.absolutePath &&
+                    file.name == ".nomedia"
+            if (!isRootNoMedia && file.delete()) {
+                deletedCount++
+            }
+        }
+        return deletedCount
     }
 
     private fun startGlobalAIForegroundServiceIfAlwaysListening() {

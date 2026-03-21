@@ -482,6 +482,9 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
             // 波浪可视化和头像：仅在语音模式下显示
             if (effectiveWaveActive) {
                 val waveOffsetY = (-64).dp
+                val voiceWaveSize = 420.dp
+                val voiceAvatarSize = 320.dp
+                val voiceAvatarTapTargetSize = 220.dp
                 WaveVisualizerSection(
                     isWaveActive = viewModel.isWaveActive,
                     isRecording = viewModel.isRecording,
@@ -493,12 +496,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                         if (isVoiceAvatarEnabled) {
                             {
                                 AvatarView(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .graphicsLayer(
-                                            scaleX = 3.1f,
-                                            scaleY = 3.1f
-                                        ),
+                                    modifier = Modifier.fillMaxSize(),
                                     model = currentAvatarModel!!,
                                     controller = voiceAvatarController!!,
                                     rendererFactory = avatarRendererFactory
@@ -509,6 +507,8 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                         },
                     clipAvatarContent = false,
                     avatarShape = CircleShape,
+                    activeWaveSize = voiceWaveSize,
+                    activeAvatarSize = voiceAvatarSize,
                     onToggleActive = {
                         if (viewModel.isWaveActive) {
                             viewModel.exitWaveMode()
@@ -527,7 +527,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                     modifier = Modifier
                         .align(Alignment.Center)
                         .offset(y = waveOffsetY)
-                        .size(140.dp)
+                        .size(voiceAvatarTapTargetSize)
                         .zIndex(4f)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },

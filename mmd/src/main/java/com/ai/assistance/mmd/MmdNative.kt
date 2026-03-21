@@ -1,7 +1,6 @@
 package com.ai.assistance.mmd
 
-import java.nio.FloatBuffer
-import java.nio.IntBuffer
+import android.content.res.AssetManager
 
 object MmdNative {
 
@@ -25,48 +24,38 @@ object MmdNative {
 
     @JvmStatic external fun nativeReadMotionMaxFrame(pathMotion: String): Int
 
-    @JvmStatic external fun nativeBuildPreviewAnimatedMesh(pathModel: String, pathMotion: String, frame: Float): FloatArray?
+    @JvmStatic external fun nativeCreateRenderer(): Long
 
-    @JvmStatic external fun nativeBuildPreviewAnimatedMeshAuto(
-        pathModel: String,
-        pathMotion: String,
-        isLooping: Boolean,
-        restart: Boolean
-    ): FloatArray?
+    @JvmStatic external fun nativeDestroyRenderer(handle: Long)
 
-    @JvmStatic external fun nativeRenderPreviewFrame(
-        pathModel: String?,
-        pathMotion: String?,
-        isLooping: Boolean,
-        restart: Boolean,
+    @JvmStatic external fun nativeOnSurfaceCreated(handle: Long, assetManager: AssetManager)
+
+    @JvmStatic external fun nativeOnSurfaceChanged(handle: Long, width: Int, height: Int)
+
+    @JvmStatic external fun nativeRender(handle: Long): Boolean
+
+    @JvmStatic external fun nativePause(handle: Long)
+
+    @JvmStatic external fun nativeResume(handle: Long)
+
+    @JvmStatic external fun nativeSetModelPath(handle: Long, pathModel: String?)
+
+    @JvmStatic external fun nativeSetAnimationState(
+        handle: Long,
+        animationName: String?,
+        isLooping: Boolean
+    )
+
+    @JvmStatic external fun nativeSetModelRotation(
+        handle: Long,
         rotationX: Float,
         rotationY: Float,
-        rotationZ: Float,
-        centerX: Float,
-        centerY: Float,
-        centerZ: Float,
-        fitScale: Float,
-        cameraDistance: Float,
-        cameraTargetHeight: Float,
-        aspectRatio: Float,
-        nearClip: Float,
-        farClip: Float,
-        vertexBuffer: FloatBuffer?,
-        vertexCount: Int,
-        materialSegments: IntBuffer?,
-        textureIdsBySlot: IntBuffer?,
-        textureFlagsBySlot: IntBuffer?,
-        mainProgramHandles: IntArray?,
-        edgeProgramHandles: IntArray?
-    ): Boolean
+        rotationZ: Float
+    )
 
-    @JvmStatic external fun nativeBuildPreviewMesh(pathModel: String): FloatArray?
+    @JvmStatic external fun nativeSetCameraDistanceScale(handle: Long, scale: Float)
 
-    @JvmStatic external fun nativeBuildPreviewMaterialSegments(pathModel: String): IntArray?
+    @JvmStatic external fun nativeSetCameraTargetHeight(handle: Long, height: Float)
 
-    @JvmStatic external fun nativeReadPreviewTexturePaths(pathModel: String): Array<String>?
-
-    @JvmStatic external fun nativeDecodeImageSize(pathImage: String): IntArray?
-
-    @JvmStatic external fun nativeDecodeImageRgba(pathImage: String): ByteArray?
+    @JvmStatic external fun nativeGetRendererLastError(handle: Long): String
 }

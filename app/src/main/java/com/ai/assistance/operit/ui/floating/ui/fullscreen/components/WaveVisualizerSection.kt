@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import com.ai.assistance.operit.ui.common.WaveVisualizer
@@ -57,12 +58,16 @@ fun WaveVisualizerSection(
     avatarContent: (@Composable BoxScope.() -> Unit)? = null,
     clipAvatarContent: Boolean = true,
     avatarShape: Shape = CircleShape,
+    activeWaveSize: Dp = 300.dp,
+    inactiveWaveSize: Dp = 120.dp,
+    activeAvatarSize: Dp = 120.dp,
+    inactiveAvatarSize: Dp = 80.dp,
     onToggleActive: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
     val waveSize by animateDpAsState(
-        targetValue = if (isWaveActive) 300.dp else 120.dp,
+        targetValue = if (isWaveActive) activeWaveSize else inactiveWaveSize,
         animationSpec = tween(500),
         label = "waveSize"
     )
@@ -74,7 +79,7 @@ fun WaveVisualizerSection(
     )
 
     val avatarSize by animateDpAsState(
-        targetValue = if (isWaveActive) 120.dp else 80.dp,
+        targetValue = if (isWaveActive) activeAvatarSize else inactiveAvatarSize,
         animationSpec = tween(500),
         label = "avatarSize"
     )
