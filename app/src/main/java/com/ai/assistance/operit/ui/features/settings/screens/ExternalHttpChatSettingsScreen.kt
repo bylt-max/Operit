@@ -320,6 +320,15 @@ adb shell am broadcast \
                     Icon(Icons.Default.Link, contentDescription = null)
                 }
             ) {
+                Text(
+                    text = stringResource(
+                        R.string.external_http_chat_bind_hint,
+                        serviceState.port ?: savedPort
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
                 if (accessUrls.isEmpty()) {
                     Text(
                         text = stringResource(R.string.external_http_chat_no_lan_ip),

@@ -2636,9 +2636,14 @@ async function test_tts_playback(params?: {
     delete options.text;
     const result = await Tools.SoftwareSettings.testTtsPlayback(text, options);
     const success = !!(result as { success?: boolean } | null)?.success;
+    const detailMessage =
+      (typeof (result as { error?: unknown } | null)?.error === "string" && (result as { error?: string }).error) ||
+      (typeof (result as { result?: { errorMessage?: unknown } } | null)?.result?.errorMessage === "string" &&
+        (result as { result?: { errorMessage?: string } }).result?.errorMessage) ||
+      "TTS playback test failed.";
     complete({
       success,
-      message: success ? "TTS playback test triggered." : "TTS playback test failed.",
+      message: success ? "TTS playback test triggered." : detailMessage,
       data: result
     });
   } catch (error: unknown) {

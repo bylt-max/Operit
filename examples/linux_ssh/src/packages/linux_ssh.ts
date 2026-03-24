@@ -189,6 +189,8 @@ const linuxSshTools = (function () {
     const DEFAULT_TERMINAL_SESSION_NAME = "linux_ssh_terminal";
     const DEFAULT_HIDDEN_EXECUTOR_NAME = "linux_ssh";
     const DEFAULT_TMUX_SESSION_NAME = "operit_ai";
+    const MAX_INLINE_TERMINAL_OUTPUT_CHARS = 12_000;
+    const LARGE_OUTPUT_HINT = "Output is large and saved to file. Use read_file_part or grep_code to inspect it.";
 
     const ENV_KEYS = {
         host: "LINUX_SSH_HOST",
@@ -223,6 +225,50 @@ const linuxSshTools = (function () {
             return fallbackValue;
         }
         return Math.floor(parsed);
+    }
+
+    async function persistResultOutputIfTooLong(data, fileLabel) {
+        const outputStr = typeof data?.output === "string"
+            ? data.output
+            : String(data?.output ?? "");
+
+        if (outputStr.length <= MAX_INLINE_TERMINAL_OUTPUT_CHARS) {
+            return data;
+        }
+
+        await Tools.Files.mkdir(OPERIT_CLEAN_ON_EXIT_DIR, true);
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const rand = Math.floor(Math.random() * 1_000_000);
+        const safeLabel = firstNonBlank(fileLabel, "linux_ssh_output")
+            .replace(/[^a-zA-Z0-9._-]+/g, "_");
+        const filePath = `${OPERIT_CLEAN_ON_EXIT_DIR}/${safeLabel}_${timestamp}_${rand}.log`;
+
+        await Tools.Files.write(filePath, outputStr, false);
+
+        return {
+            ...data,
+            output: "(saved_to_file)",
+            output_saved_to: filePath,
+            output_chars: outputStr.length,
+            operit_clean_on_exit_dir: OPERIT_CLEAN_ON_EXIT_DIR,
+            hint: LARGE_OUTPUT_HINT
+        };
+    }
+
+    function mergePersistedOutput(target, source) {
+        if (!source || !source.output_saved_to) {
+            return target;
+        }
+
+        return {
+            ...target,
+            output: source.output,
+            output_saved_to: source.output_saved_to,
+            output_chars: source.output_chars,
+            operit_clean_on_exit_dir: source.operit_clean_on_exit_dir,
+            hint: source.hint || LARGE_OUTPUT_HINT
+        };
     }
 
     function parseOptionalPositiveInt(value, fieldName) {
@@ -647,12 +693,12 @@ const linuxSshTools = (function () {
 
         const result = await runRemoteCommandHidden(config, installScript, 240_000, "tmux");
         const success = result.exitCode === 0 && result.output.includes("__TMUX_READY__");
-        return {
+        return await persistResultOutputIfTooLong({
             success,
             exitCode: result.exitCode,
             timedOut: result.timedOut,
             output: result.output
-        };
+        }, "linux_ssh_tmux_setup_output");
     }
 
     async function ensureRemoteTmuxWindow(config, requestedWindowName) {
@@ -689,13 +735,13 @@ const linuxSshTools = (function () {
         );
         const success = result.exitCode === 0 && !result.timedOut && result.output.includes("__OPERIT_TMUX_WINDOW_READY__");
         const windowName = extractOutputLineValue(result.output, "window=");
-        return {
+        return await persistResultOutputIfTooLong({
             success,
             windowName,
             exitCode: result.exitCode,
             timedOut: result.timedOut,
             output: result.output
-        };
+        }, "linux_ssh_tmux_window_output");
     }
 
     async function readRemoteFileContent(config, path, lineStart, lineEnd, useSudo) {
@@ -795,7 +841,7 @@ const linuxSshTools = (function () {
             const success = result.exitCode === 0 && !result.timedOut;
             const block = extractBlock(result.output, "__OPERIT_CONNECT_BEGIN__", "__OPERIT_CONNECT_END__");
 
-            return {
+            return await persistResultOutputIfTooLong({
                 success,
                 packageVersion: PACKAGE_VERSION,
                 timeoutMs,
@@ -803,7 +849,7 @@ const linuxSshTools = (function () {
                 timedOut: result.timedOut,
                 output: block || result.output,
                 error: success ? "" : `SSH connection failed, exitCode=${result.exitCode}`
-            };
+            }, "linux_ssh_test_connection_output");
         } catch (error) {
             return {
                 success: false,
@@ -830,7 +876,7 @@ const linuxSshTools = (function () {
             const result = await runRemoteCommandHidden(config, command, timeoutMs, "remote");
             const success = result.exitCode === 0 && !result.timedOut;
 
-            return {
+            return await persistResultOutputIfTooLong({
                 success,
                 packageVersion: PACKAGE_VERSION,
                 timeoutMs,
@@ -839,7 +885,7 @@ const linuxSshTools = (function () {
                 output: result.output,
                 sessionId: result.sessionId,
                 error: success ? "" : `Remote command failed, exitCode=${result.exitCode}`
-            };
+            }, "linux_ssh_exec_output");
         } catch (error) {
             return {
                 success: false,
@@ -859,14 +905,14 @@ const linuxSshTools = (function () {
             });
             const tmuxResult = await ensureRemoteTmux(config);
 
-            return {
+            return mergePersistedOutput({
                 success: !!tmuxResult.success,
                 packageVersion: PACKAGE_VERSION,
                 exitCode: tmuxResult.exitCode,
                 timedOut: tmuxResult.timedOut,
                 output: tmuxResult.output,
                 error: tmuxResult.success ? "" : "Failed to install or verify tmux on remote host"
-            };
+            }, tmuxResult);
         } catch (error) {
             return {
                 success: false,
@@ -895,12 +941,32 @@ const linuxSshTools = (function () {
 
             const tmuxReady = await ensureRemoteTmux(config);
             if (!tmuxReady.success) {
-                throw new Error(`tmux setup failed: ${tmuxReady.output}`);
+                return mergePersistedOutput({
+                    success: false,
+                    packageVersion: PACKAGE_VERSION,
+                    tmuxSessionName,
+                    requestedWindowName,
+                    workdir,
+                    exitCode: tmuxReady.exitCode,
+                    timedOut: tmuxReady.timedOut,
+                    output: tmuxReady.output,
+                    error: "tmux setup failed"
+                }, tmuxReady);
             }
 
             const targetWindowReady = await ensureRemoteTmuxWindow(config, requestedWindowName);
             if (!targetWindowReady.success || !targetWindowReady.windowName) {
-                throw new Error(`tmux window setup failed: ${targetWindowReady.output}`);
+                return mergePersistedOutput({
+                    success: false,
+                    packageVersion: PACKAGE_VERSION,
+                    tmuxSessionName,
+                    requestedWindowName,
+                    workdir,
+                    exitCode: targetWindowReady.exitCode,
+                    timedOut: targetWindowReady.timedOut,
+                    output: targetWindowReady.output,
+                    error: "tmux window setup failed"
+                }, targetWindowReady);
             }
 
             const windowName = targetWindowReady.windowName;
@@ -917,7 +983,7 @@ const linuxSshTools = (function () {
             const result = await runRemoteCommandHidden(config, script, config.timeoutMs, "tmux");
             const success = result.exitCode === 0 && !result.timedOut && result.output.includes("__OPERIT_TMUX_RUN_OK__");
 
-            return {
+            return await persistResultOutputIfTooLong({
                 success,
                 packageVersion: PACKAGE_VERSION,
                 tmuxSessionName,
@@ -928,7 +994,7 @@ const linuxSshTools = (function () {
                 timedOut: result.timedOut,
                 output: result.output,
                 error: success ? "" : `tmux run failed, exitCode=${result.exitCode}`
-            };
+            }, "linux_ssh_tmux_run_output");
         } catch (error) {
             return {
                 success: false,
@@ -952,7 +1018,17 @@ const linuxSshTools = (function () {
 
             const tmuxReady = await ensureRemoteTmux(config);
             if (!tmuxReady.success) {
-                throw new Error(`tmux setup failed: ${tmuxReady.output}`);
+                return mergePersistedOutput({
+                    success: false,
+                    packageVersion: PACKAGE_VERSION,
+                    tmuxSessionName,
+                    windowName,
+                    maxLines,
+                    exitCode: tmuxReady.exitCode,
+                    timedOut: tmuxReady.timedOut,
+                    output: tmuxReady.output,
+                    error: "tmux setup failed"
+                }, tmuxReady);
             }
 
             const target = windowName ? `${tmuxSessionName}:${windowName}` : tmuxSessionName;
@@ -967,7 +1043,7 @@ const linuxSshTools = (function () {
             const success = result.exitCode === 0 && !result.timedOut;
             const content = extractBlock(result.output, "__OPERIT_TMUX_CAPTURE_BEGIN__", "__OPERIT_TMUX_CAPTURE_END__");
 
-            return {
+            return await persistResultOutputIfTooLong({
                 success,
                 packageVersion: PACKAGE_VERSION,
                 tmuxSessionName,
@@ -977,7 +1053,7 @@ const linuxSshTools = (function () {
                 timedOut: result.timedOut,
                 output: content || result.output,
                 error: success ? "" : `tmux capture failed, exitCode=${result.exitCode}`
-            };
+            }, "linux_ssh_tmux_capture_output");
         } catch (error) {
             return {
                 success: false,
@@ -999,7 +1075,18 @@ const linuxSshTools = (function () {
 
             const tmuxReady = await ensureRemoteTmux(config);
             if (!tmuxReady.success) {
-                throw new Error(`tmux setup failed: ${tmuxReady.output}`);
+                return mergePersistedOutput({
+                    success: false,
+                    packageVersion: PACKAGE_VERSION,
+                    tmuxSessionName,
+                    sessionExists: false,
+                    windows: [],
+                    count: 0,
+                    exitCode: tmuxReady.exitCode,
+                    timedOut: tmuxReady.timedOut,
+                    output: tmuxReady.output,
+                    error: "tmux setup failed"
+                }, tmuxReady);
             }
 
             const script = [
@@ -1029,7 +1116,7 @@ const linuxSshTools = (function () {
                     };
                 });
 
-            return {
+            return await persistResultOutputIfTooLong({
                 success,
                 packageVersion: PACKAGE_VERSION,
                 tmuxSessionName,
@@ -1042,7 +1129,7 @@ const linuxSshTools = (function () {
                 error: notFound
                     ? `tmux session not found: ${tmuxSessionName}`
                     : (success ? "" : `tmux list windows failed, exitCode=${result.exitCode}`)
-            };
+            }, "linux_ssh_tmux_list_windows_output");
         } catch (error) {
             return {
                 success: false,
@@ -1079,12 +1166,34 @@ const linuxSshTools = (function () {
 
             const tmuxReady = await ensureRemoteTmux(config);
             if (!tmuxReady.success) {
-                throw new Error(`tmux setup failed: ${tmuxReady.output}`);
+                return mergePersistedOutput({
+                    success: false,
+                    packageVersion: PACKAGE_VERSION,
+                    tmuxSessionName,
+                    windowName: requestedWindowName,
+                    input: inputText,
+                    control: controlKey,
+                    exitCode: tmuxReady.exitCode,
+                    timedOut: tmuxReady.timedOut,
+                    output: tmuxReady.output,
+                    error: "tmux setup failed"
+                }, tmuxReady);
             }
 
             const targetWindowReady = await ensureRemoteTmuxWindow(config, requestedWindowName);
             if (!targetWindowReady.success || !targetWindowReady.windowName) {
-                throw new Error(`tmux window setup failed: ${targetWindowReady.output}`);
+                return mergePersistedOutput({
+                    success: false,
+                    packageVersion: PACKAGE_VERSION,
+                    tmuxSessionName,
+                    windowName: requestedWindowName,
+                    input: inputText,
+                    control: controlKey,
+                    exitCode: targetWindowReady.exitCode,
+                    timedOut: targetWindowReady.timedOut,
+                    output: targetWindowReady.output,
+                    error: "tmux window setup failed"
+                }, targetWindowReady);
             }
 
             const windowName = targetWindowReady.windowName;
@@ -1102,7 +1211,7 @@ const linuxSshTools = (function () {
             const result = await runRemoteCommandHidden(config, scriptLines.join("\n"), config.timeoutMs, "tmux");
             const success = result.exitCode === 0 && !result.timedOut && result.output.includes("__OPERIT_TMUX_INPUT_OK__");
 
-            return {
+            return await persistResultOutputIfTooLong({
                 success,
                 packageVersion: PACKAGE_VERSION,
                 tmuxSessionName,
@@ -1114,7 +1223,7 @@ const linuxSshTools = (function () {
                 timedOut: result.timedOut,
                 output: result.output,
                 error: success ? "" : `tmux input failed, exitCode=${result.exitCode}`
-            };
+            }, "linux_ssh_tmux_input_output");
         } catch (error) {
             return {
                 success: false,
@@ -1138,13 +1247,25 @@ const linuxSshTools = (function () {
                 allowParamConnection: false,
                 allowParamAuth: false
             });
+            const targetWindow = `${tmuxSessionName}:${windowName}`;
 
             const tmuxReady = await ensureRemoteTmux(config);
             if (!tmuxReady.success) {
-                throw new Error(`tmux setup failed: ${tmuxReady.output}`);
+                return mergePersistedOutput({
+                    success: false,
+                    packageVersion: PACKAGE_VERSION,
+                    tmuxSessionName,
+                    windowName,
+                    tmuxTarget: targetWindow,
+                    sessionExists: false,
+                    windowExists: false,
+                    exitCode: tmuxReady.exitCode,
+                    timedOut: tmuxReady.timedOut,
+                    output: tmuxReady.output,
+                    error: "tmux setup failed"
+                }, tmuxReady);
             }
 
-            const targetWindow = `${tmuxSessionName}:${windowName}`;
             const script = [
                 `tmux has-session -t ${shellQuote(tmuxSessionName)} 2>/dev/null || { echo '__OPERIT_TMUX_NOT_FOUND__'; exit 4; }`,
                 `tmux list-windows -t ${shellQuote(tmuxSessionName)} -F '#{window_name}' | grep -Fx -- ${shellQuote(windowName)} >/dev/null || { echo '__OPERIT_TMUX_WINDOW_NOT_FOUND__'; exit 5; }`,
@@ -1157,7 +1278,7 @@ const linuxSshTools = (function () {
             const windowExists = !hasExactMarkerLine(result.output, "__OPERIT_TMUX_WINDOW_NOT_FOUND__");
             const success = result.exitCode === 0 && !result.timedOut && sessionExists && windowExists && result.output.includes("__OPERIT_TMUX_CLOSE_OK__");
 
-            return {
+            return await persistResultOutputIfTooLong({
                 success,
                 packageVersion: PACKAGE_VERSION,
                 tmuxSessionName,
@@ -1173,7 +1294,7 @@ const linuxSshTools = (function () {
                     : (!windowExists
                         ? `tmux window not found: ${windowName}`
                         : (success ? "" : `tmux close failed, exitCode=${result.exitCode}`))
-            };
+            }, "linux_ssh_tmux_close_output");
         } catch (error) {
             return {
                 success: false,
@@ -1246,7 +1367,7 @@ const linuxSshTools = (function () {
             const result = await runRemoteCommandHidden(config, command, config.timeoutMs, "fs");
             const success = result.exitCode === 0 && !result.timedOut;
 
-            return {
+            return await persistResultOutputIfTooLong({
                 success,
                 packageVersion: PACKAGE_VERSION,
                 path,
@@ -1254,7 +1375,7 @@ const linuxSshTools = (function () {
                 timedOut: result.timedOut,
                 output: result.output,
                 error: success ? "" : `ls failed, exitCode=${result.exitCode}`
-            };
+            }, "linux_ssh_ls_output");
         } catch (error) {
             return {
                 success: false,

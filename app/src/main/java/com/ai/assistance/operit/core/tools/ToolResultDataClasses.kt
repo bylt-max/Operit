@@ -1802,7 +1802,12 @@ data class SpeechServicesTtsPlaybackTestResultData(
     val interrupt: Boolean,
     val textLength: Int,
     val speechRate: Float,
-    val pitch: Float
+    val pitch: Float,
+    val errorType: String? = null,
+    val errorMessage: String? = null,
+    val httpStatusCode: Int? = null,
+    val errorBody: String? = null,
+    val causeMessage: String? = null
 ) : ToolResultData() {
     override fun toString(): String {
         return "TTS playback test: type=$ttsServiceType, initialized=$initialized, triggered=$playbackTriggered"

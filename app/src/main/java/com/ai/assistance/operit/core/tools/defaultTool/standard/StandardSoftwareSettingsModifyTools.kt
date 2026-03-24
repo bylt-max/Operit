@@ -4,6 +4,7 @@ import android.content.Context
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.api.chat.llmprovider.ModelConfigConnectionTester
 import com.ai.assistance.operit.api.speech.SpeechServiceFactory
+import com.ai.assistance.operit.api.voice.TtsException
 import com.ai.assistance.operit.api.voice.VoiceServiceFactory
 import com.ai.assistance.operit.core.tools.FunctionModelBindingResultData
 import com.ai.assistance.operit.core.tools.FunctionModelConfigResultData
@@ -42,6 +43,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
+import java.net.ConnectException
+import java.net.ProtocolException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 /** 软件设置修改工具（包含 MCP 重启与日志收集） */
 class StandardSoftwareSettingsModifyTools(private val context: Context) {
@@ -558,24 +564,32 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
             )
         }
 
+        val prefs = SpeechServicesPreferences(context)
+        var ttsServiceTypeName = ""
+        var providerClass = ""
+        var initialized = false
+        var interrupt = true
+        var speechRate = 0f
+        var pitch = 0f
+
         return try {
-            val prefs = SpeechServicesPreferences(context)
             val ttsServiceType = prefs.ttsServiceTypeFlow.first()
+            ttsServiceTypeName = ttsServiceType.name
             val hasSpeechRateOverride = tool.parameters.any { it.name == "speech_rate" }
             val hasPitchOverride = tool.parameters.any { it.name == "pitch" }
-            val interrupt =
+            interrupt =
                 getParameterValue(tool, "interrupt")?.let { raw ->
                     parseBooleanParameter(raw)
                         ?: throw IllegalArgumentException("Invalid boolean parameter: interrupt")
                 } ?: true
-            val speechRate =
+            speechRate =
                 if (hasSpeechRateOverride) {
                     getParameterValue(tool, "speech_rate")?.trim()?.toFloatOrNull()
                         ?: throw IllegalArgumentException("Invalid number parameter: speech_rate")
                 } else {
                     prefs.ttsSpeechRateFlow.first()
                 }
-            val pitch =
+            pitch =
                 if (hasPitchOverride) {
                     getParameterValue(tool, "pitch")?.trim()?.toFloatOrNull()
                         ?: throw IllegalArgumentException("Invalid number parameter: pitch")
@@ -585,23 +599,25 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
 
             VoiceServiceFactory.resetInstance()
             val voiceService = VoiceServiceFactory.getInstance(context)
-            val initialized = voiceService.initialize()
+            providerClass = voiceService.javaClass.simpleName
+            initialized = voiceService.initialize()
             if (!initialized) {
+                val errorMessage = "TTS service initialization returned false"
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
-                    result =
-                        SpeechServicesTtsPlaybackTestResultData(
-                            ttsServiceType = ttsServiceType.name,
-                            providerClass = voiceService.javaClass.simpleName,
-                            initialized = false,
-                            playbackTriggered = false,
-                            interrupt = interrupt,
-                            textLength = text.length,
-                            speechRate = speechRate,
-                            pitch = pitch
-                        ),
-                    error = "TTS service initialization returned false"
+                    result = buildTtsPlaybackTestResult(
+                        ttsServiceTypeName = ttsServiceTypeName,
+                        providerClass = providerClass,
+                        initialized = false,
+                        playbackTriggered = false,
+                        interrupt = interrupt,
+                        textLength = text.length,
+                        speechRate = speechRate,
+                        pitch = pitch,
+                        errorMessageOverride = errorMessage
+                    ),
+                    error = errorMessage
                 )
             }
 
@@ -612,35 +628,60 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
                 pitch = pitch
             )
 
+            val errorMessage = if (playbackTriggered) null else "TTS playback did not start"
             ToolResult(
                 toolName = tool.name,
                 success = playbackTriggered,
-                result =
-                    SpeechServicesTtsPlaybackTestResultData(
-                        ttsServiceType = ttsServiceType.name,
-                        providerClass = voiceService.javaClass.simpleName,
-                        initialized = true,
-                        playbackTriggered = playbackTriggered,
-                        interrupt = interrupt,
-                        textLength = text.length,
-                        speechRate = speechRate,
-                        pitch = pitch
-                    ),
-                error = if (playbackTriggered) null else "TTS playback did not start"
+                result = buildTtsPlaybackTestResult(
+                    ttsServiceTypeName = ttsServiceTypeName,
+                    providerClass = providerClass,
+                    initialized = true,
+                    playbackTriggered = playbackTriggered,
+                    interrupt = interrupt,
+                    textLength = text.length,
+                    speechRate = speechRate,
+                    pitch = pitch,
+                    errorMessageOverride = errorMessage
+                ),
+                error = errorMessage
             )
         } catch (e: IllegalArgumentException) {
+            val errorMessage = e.message ?: "Invalid parameter"
             ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
-                error = e.message ?: "Invalid parameter"
+                result = buildTtsPlaybackTestResult(
+                    ttsServiceTypeName = ttsServiceTypeName,
+                    providerClass = providerClass,
+                    initialized = initialized,
+                    playbackTriggered = false,
+                    interrupt = interrupt,
+                    textLength = text.length,
+                    speechRate = speechRate,
+                    pitch = pitch,
+                    error = e,
+                    errorMessageOverride = errorMessage
+                ),
+                error = errorMessage
             )
         } catch (e: Exception) {
+            val errorMessage = formatTtsPlaybackError(e)
             ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
-                error = e.message ?: "Failed to test TTS playback"
+                result = buildTtsPlaybackTestResult(
+                    ttsServiceTypeName = ttsServiceTypeName,
+                    providerClass = providerClass,
+                    initialized = initialized,
+                    playbackTriggered = false,
+                    interrupt = interrupt,
+                    textLength = text.length,
+                    speechRate = speechRate,
+                    pitch = pitch,
+                    error = e,
+                    errorMessageOverride = errorMessage
+                ),
+                error = errorMessage
             )
         }
     }
@@ -1489,6 +1530,78 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
         return when {
             value.length <= 4 -> "*".repeat(value.length)
             else -> "${value.take(3)}***${value.takeLast(2)}"
+        }
+    }
+
+    private fun buildTtsPlaybackTestResult(
+        ttsServiceTypeName: String,
+        providerClass: String,
+        initialized: Boolean,
+        playbackTriggered: Boolean,
+        interrupt: Boolean,
+        textLength: Int,
+        speechRate: Float,
+        pitch: Float,
+        error: Throwable? = null,
+        errorMessageOverride: String? = null
+    ): SpeechServicesTtsPlaybackTestResultData {
+        val ttsError = error as? TtsException
+        return SpeechServicesTtsPlaybackTestResultData(
+            ttsServiceType = ttsServiceTypeName,
+            providerClass = providerClass,
+            initialized = initialized,
+            playbackTriggered = playbackTriggered,
+            interrupt = interrupt,
+            textLength = textLength,
+            speechRate = speechRate,
+            pitch = pitch,
+            errorType = error?.javaClass?.simpleName,
+            errorMessage = errorMessageOverride ?: error?.let { formatTtsPlaybackError(it) },
+            httpStatusCode = ttsError?.httpStatusCode,
+            errorBody = ttsError?.errorBody?.takeIf { it.isNotBlank() },
+            causeMessage = error?.cause?.message?.takeIf { it.isNotBlank() }
+        )
+    }
+
+    private fun formatTtsPlaybackError(error: Throwable): String {
+        return when (error) {
+            is TtsException -> {
+                val code = error.httpStatusCode
+                val body = error.errorBody?.takeIf { it.isNotBlank() }
+                when {
+                    code != null && body != null -> "TTS service error (HTTP $code): $body"
+                    code != null -> "TTS service error, status code: $code"
+                    body != null -> "TTS service error: $body"
+                    !error.message.isNullOrBlank() -> "TTS service error: ${error.message}"
+                    !error.cause?.message.isNullOrBlank() -> "TTS service error: ${error.cause?.message}"
+                    else -> "TTS service unknown error"
+                }
+            }
+
+            is UnknownHostException ->
+                "Network error: Unable to reach host, please check network connection and DNS settings."
+
+            is SocketTimeoutException ->
+                "Network timeout: Server response timeout, please check network status."
+
+            is ConnectException ->
+                "Network error: Unable to connect to server, please check server address and port."
+
+            is ProtocolException ->
+                "Network protocol error: ${error.message ?: error.javaClass.simpleName}"
+
+            is IOException ->
+                "Network IO error: ${error.message ?: "Please check device network connection."}"
+
+            else -> {
+                val directMessage = error.message?.takeIf { it.isNotBlank() }
+                val causeMessage = error.cause?.message?.takeIf { it.isNotBlank() }
+                listOfNotNull(
+                    directMessage?.let { "${error.javaClass.simpleName}: $it" }
+                        ?: error.javaClass.simpleName,
+                    causeMessage?.let { "Cause: $it" }
+                ).joinToString("\n")
+            }
         }
     }
 

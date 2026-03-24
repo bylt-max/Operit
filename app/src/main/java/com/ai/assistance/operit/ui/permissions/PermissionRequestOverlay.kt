@@ -99,6 +99,8 @@ private fun PermissionRequestContent(
         visible = true
     }
 
+    val contentScrollState = rememberScrollState()
+
     FloatingWindowTheme(colorScheme = colorScheme) {
         Box(
             modifier = Modifier
@@ -125,42 +127,44 @@ private fun PermissionRequestContent(
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Shield,
-                            contentDescription = "Permission Icon",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(36.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = stringResource(R.string.permission_request),
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontSize = 20.sp
-                            ),
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Text(
-                            text = stringResource(R.string.ai_assistant_requests_operation),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 15.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Box(
+                        Column(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
+                                .verticalScroll(contentScrollState),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
+                            Icon(
+                                imageVector = Icons.Default.Shield,
+                                contentDescription = "Permission Icon",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(36.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = stringResource(R.string.permission_request),
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontSize = 20.sp
+                                ),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Text(
+                                text = stringResource(R.string.ai_assistant_requests_operation),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 15.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
                             PermissionDetails(
                                 operationDescription = operationDescription,
                                 toolName = toolName,
@@ -245,12 +249,9 @@ private fun PermissionDetails(
     toolName: String,
     toolParameters: List<ToolParameter>? = null
 ) {
-    val scrollState = rememberScrollState()
-    
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .verticalScroll(scrollState)
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceContainer)
             .padding(horizontal = 16.dp, vertical = 16.dp),

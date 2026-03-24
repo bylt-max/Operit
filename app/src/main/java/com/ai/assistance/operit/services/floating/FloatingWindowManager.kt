@@ -146,6 +146,9 @@ class FloatingWindowManager(
         // Private flag to disable window move animations
         private const val PRIVATE_FLAG_NO_MOVE_ANIMATION = 0x00000040
         private const val FULLSCREEN_BLUR_RADIUS_DP = 48
+        private const val IME_FOCUS_DELAY_MS = 200L
+        private const val IME_FOCUS_RETRY_DELAY_MS = 50L
+        private const val MAX_IME_FOCUS_RETRIES = 4
     }
 
     private fun resolveSoftInputModeForMode(mode: FloatingMode): Int {
@@ -1132,13 +1135,9 @@ class FloatingWindowManager(
                 params.softInputMode = resolveSoftInputModeForMode(state.currentMode.value)
             }
 
-            // Step 2: 延迟请求焦点并显示键盘
-            // 延迟是必要的，以确保WindowManager有足够的时间处理窗口标志的变更
-            pendingImeFocusRunnable = Runnable {
-                view.requestFocus()
-                imm.showSoftInput(view.findFocus(), InputMethodManager.SHOW_IMPLICIT)
-            }
-            mainHandler.postDelayed(pendingImeFocusRunnable!!, 200)
+            // Step 2: 等待Compose真正建立输入焦点后再显示键盘
+            // 这里不能直接依赖固定延迟，否则在焦点宿主尚未准备好时会触发IMM空指针
+            scheduleImeShow(view, imm)
         } else {
             pendingImeFocusRunnable?.let { mainHandler.removeCallbacks(it) }
             pendingImeFocusRunnable = null
@@ -1177,6 +1176,84 @@ class FloatingWindowManager(
                 "setFocusable(false) applied: hasFocus=${view.hasFocus()}, findFocus=${view.findFocus() != null}, flags=${lp?.flags}"
             )
         }
+    }
+
+    private fun scheduleImeShow(
+        rootView: View,
+        imm: InputMethodManager,
+        retryCount: Int = 0,
+        delayMillis: Long = IME_FOCUS_DELAY_MS
+    ) {
+        lateinit var imeRunnable: Runnable
+        imeRunnable = Runnable {
+            if (pendingImeFocusRunnable !== imeRunnable) return@Runnable
+
+            if (composeView !== rootView || !isViewAdded) {
+                pendingImeFocusRunnable = null
+                AppLogger.d(TAG, "Skip IME request: floating view is no longer active.")
+                return@Runnable
+            }
+
+            if (!rootView.isAttachedToWindow || rootView.windowToken == null) {
+                if (retryCount >= MAX_IME_FOCUS_RETRIES) {
+                    pendingImeFocusRunnable = null
+                    AppLogger.w(
+                        TAG,
+                        "Skip IME request: floating view is still not attached after $MAX_IME_FOCUS_RETRIES retries."
+                    )
+                    return@Runnable
+                }
+
+                AppLogger.d(
+                    TAG,
+                    "Floating view not attached yet, retry=${retryCount + 1}/$MAX_IME_FOCUS_RETRIES"
+                )
+                scheduleImeShow(
+                    rootView = rootView,
+                    imm = imm,
+                    retryCount = retryCount + 1,
+                    delayMillis = IME_FOCUS_RETRY_DELAY_MS
+                )
+                return@Runnable
+            }
+
+            rootView.requestFocus()
+
+            val imeHost =
+                rootView.findFocus()?.takeIf {
+                    it.isAttachedToWindow && it.windowToken != null && it.onCheckIsTextEditor()
+                }
+
+            if (imeHost == null) {
+                if (retryCount >= MAX_IME_FOCUS_RETRIES) {
+                    pendingImeFocusRunnable = null
+                    AppLogger.w(
+                        TAG,
+                        "Skip IME request: no focused host after $MAX_IME_FOCUS_RETRIES retries."
+                    )
+                    return@Runnable
+                }
+
+                AppLogger.d(
+                    TAG,
+                    "IME host not ready, retry=${retryCount + 1}/$MAX_IME_FOCUS_RETRIES"
+                )
+                scheduleImeShow(
+                    rootView = rootView,
+                    imm = imm,
+                    retryCount = retryCount + 1,
+                    delayMillis = IME_FOCUS_RETRY_DELAY_MS
+                )
+                return@Runnable
+            }
+
+            pendingImeFocusRunnable = null
+            imm.showSoftInput(imeHost, InputMethodManager.SHOW_IMPLICIT)
+        }
+
+        pendingImeFocusRunnable?.let { mainHandler.removeCallbacks(it) }
+        pendingImeFocusRunnable = imeRunnable
+        mainHandler.postDelayed(imeRunnable, delayMillis)
     }
 
     /**

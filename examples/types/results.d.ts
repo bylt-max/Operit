@@ -1048,6 +1048,11 @@ export interface SpeechServicesTtsPlaybackTestResultData {
     textLength: number;
     speechRate: number;
     pitch: number;
+    errorType?: string | null;
+    errorMessage?: string | null;
+    httpStatusCode?: number | null;
+    errorBody?: string | null;
+    causeMessage?: string | null;
     toString(): string;
 }
 

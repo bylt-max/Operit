@@ -3194,7 +3194,7 @@
     <string name="settings_data_permissions">数据和权限</string>
     <string name="settings_tool_permissions_subtitle">工具权限和安全设置</string>
     <string name="settings_external_http_chat">外部 HTTP 调用</string>
-    <string name="settings_external_http_chat_subtitle">局域网聊天接口、端口和 Bearer Token</string>
+    <string name="settings_external_http_chat_subtitle">监听 0.0.0.0 的 HTTP 聊天接口、端口和 Bearer Token</string>
     <string name="settings_data_backup_subtitle">聊天记录备份管理</string>
     <string name="settings_token_usage_stats">Token使用统计</string>
     <string name="settings_function_label">功能</string>
@@ -4249,9 +4249,9 @@
     <string name="settings_summary_title">总结设置</string>
     <string name="settings_context_summary_subtitle">管理上下文长度、总结和截断设置</string>
     <string name="external_http_chat_enable">启用外部 HTTP 服务</string>
-    <string name="external_http_chat_enable_desc">开启后会启动局域网 HTTP 聊天接口，供同网络设备调用</string>
+    <string name="external_http_chat_enable_desc">开启后会启动外部 HTTP 聊天接口，实际监听 0.0.0.0，供能访问到该设备的客户端调用</string>
     <string name="external_http_chat_port">监听端口</string>
-    <string name="external_http_chat_port_desc">默认 8094。保存后会在启用状态下自动重启服务</string>
+    <string name="external_http_chat_port_desc">默认 8094。服务会监听 0.0.0.0:端口；保存后会在启用状态下自动重启服务</string>
     <string name="external_http_chat_save_port">保存端口</string>
     <string name="external_http_chat_port_saved">端口已保存</string>
     <string name="external_http_chat_invalid_port">端口无效，请输入 1-65535</string>
@@ -4263,11 +4263,12 @@
     <string name="external_http_chat_token_copied">Token 已复制</string>
     <string name="external_http_chat_token_reset">Token 已重置并复制</string>
     <string name="external_http_chat_status">当前状态</string>
-    <string name="external_http_chat_status_running">服务运行中，端口 %1$d</string>
+    <string name="external_http_chat_status_running">服务运行中，监听 0.0.0.0:%1$d</string>
     <string name="external_http_chat_status_stopped">服务未运行</string>
     <string name="external_http_chat_status_error">服务异常：%1$s</string>
-    <string name="external_http_chat_access_urls">局域网访问地址</string>
-    <string name="external_http_chat_no_lan_ip">暂未检测到可用的局域网 IPv4 地址，请确认设备已联网</string>
+    <string name="external_http_chat_access_urls">当前检测到的局域网地址</string>
+    <string name="external_http_chat_bind_hint">服务实际监听 0.0.0.0:%1$d，表示会接收设备所有网络接口上的请求。下方仅列出当前检测到的局域网 IPv4，方便复制。</string>
+    <string name="external_http_chat_no_lan_ip">暂未检测到可用的局域网 IPv4 地址；这不影响服务监听 0.0.0.0，请确认设备已联网或改用其他可达地址</string>
     <string name="external_http_chat_sync_example">同步调用示例</string>
     <string name="external_http_chat_async_example">异步回调示例</string>
     <string name="external_http_chat_health_example">健康检查示例</string>

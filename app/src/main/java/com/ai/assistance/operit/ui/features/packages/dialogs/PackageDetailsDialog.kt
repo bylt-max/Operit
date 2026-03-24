@@ -644,7 +644,7 @@ private fun EmptyToolsCard(message: String) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ToolCard(
     tool: PackageTool,
@@ -709,10 +709,10 @@ private fun ToolCard(
             if (tool.parameters.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Icon(
                         Icons.Default.Settings,
@@ -729,6 +729,8 @@ private fun ToolCard(
                                 text = param.name,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             )
                         }
