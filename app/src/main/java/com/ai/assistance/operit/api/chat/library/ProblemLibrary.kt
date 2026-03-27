@@ -246,7 +246,10 @@ object ProblemLibrary {
             val memoryRepository = MemoryRepository(context, profileId)
 
             // Prune tool results to reduce token usage
-            val prunedContent = pruneToolResultContent(context, content)
+            val prunedContent =
+                ChatUtils.stripGeminiThoughtSignatureMeta(
+                    pruneToolResultContent(context, content)
+                )
 
             // Process conversation history: remove system messages and clean user messages
             val processedHistory = conversationHistory
@@ -257,7 +260,9 @@ object ProblemLibrary {
                     } else {
                         msgContent
                     }
-                    role to pruneToolResultContent(context, cleanedContent)
+                    role to ChatUtils.stripGeminiThoughtSignatureMeta(
+                        pruneToolResultContent(context, cleanedContent)
+                    )
                 }
 
             if (processedHistory.isEmpty()) {

@@ -76,6 +76,10 @@ class ThinkToolsXmlNodeGrouper(
                     if (next.type != MarkdownProcessorType.XML_BLOCK) break
 
                     val nextTag = extractXmlTagName(next.content)
+                    if (isIgnorableXmlTagForToolGrouping(nextTag)) {
+                        j++
+                        continue
+                    }
                     val isThinkAgain = nextTag == "think" || nextTag == "thinking"
                     val isToolRelated = nextTag == "tool" || nextTag == "tool_result"
                     if (!isThinkAgain && !isToolRelated) break
@@ -128,6 +132,10 @@ class ThinkToolsXmlNodeGrouper(
                     if (next.type != MarkdownProcessorType.XML_BLOCK) break
 
                     val nextTag = extractXmlTagName(next.content)
+                    if (isIgnorableXmlTagForToolGrouping(nextTag)) {
+                        j++
+                        continue
+                    }
                     val isToolRelated = nextTag == "tool" || nextTag == "tool_result"
                     if (!isToolRelated) break
 
@@ -205,6 +213,7 @@ class ThinkToolsXmlNodeGrouper(
                     val tag = extractXmlTagName(node.content)
                     when (tag) {
                         "think", "thinking" -> true
+                        "meta" -> true
                         "tool", "tool_result" -> {
                             val toolName = extractToolNameFromToolOrResult(node.content)
                             if (toolName == null && !isXmlFullyClosed(node.content)) {
@@ -367,6 +376,10 @@ private fun extractToolNameFromToolOrResult(xml: String): String? {
         "tool", "tool_result" -> extractToolName(xml)
         else -> null
     }
+}
+
+private fun isIgnorableXmlTagForToolGrouping(tag: String?): Boolean {
+    return tag == "meta"
 }
 
 private fun shouldGroupToolByName(

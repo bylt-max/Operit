@@ -2,6 +2,23 @@ package com.ai.assistance.operit.util
 
 /** Utility functions for chat message handling */
 object ChatUtils {
+    fun stripGeminiThoughtSignatureMeta(content: String): String {
+        return ChatMarkupRegex.removeGeminiThoughtSignatureMeta(content)
+    }
+
+    fun stripGeminiThoughtSignatureMeta(messages: List<Pair<String, String>>): List<Pair<String, String>> {
+        return messages.map { (role, content) ->
+            role to stripGeminiThoughtSignatureMeta(content)
+        }
+    }
+
+    fun isGeminiProviderModel(providerModel: String): Boolean {
+        return when (providerModel.substringBefore(":").uppercase()) {
+            "GOOGLE", "GEMINI_GENERIC" -> true
+            else -> false
+        }
+    }
+
     /** 过滤掉内容中的思考部分和搜索来源 移除<think></think>、<thinking></thinking>和<search></search>标签及其中的内容，并处理未闭合的情况 */
     fun removeThinkingContent(content: String): String {
         // 使用正则表达式匹配<think>、<thinking>和<search>标签及其内容

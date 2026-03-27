@@ -713,6 +713,10 @@ class EnhancedAIService private constructor(private val context: Context) {
                         )
                     finalProcessedInput = beforeSendContext.processedInput ?: finalProcessedInput
                     finalPreparedHistory = beforeSendContext.preparedHistory.toRoleContentPairs()
+                    if (!ChatUtils.isGeminiProviderModel(serviceForFunction.providerModel)) {
+                        finalProcessedInput = ChatUtils.stripGeminiThoughtSignatureMeta(finalProcessedInput)
+                        finalPreparedHistory = ChatUtils.stripGeminiThoughtSignatureMeta(finalPreparedHistory)
+                    }
                     execContext.conversationHistory.clear()
                     execContext.conversationHistory.addAll(finalPreparedHistory)
                     

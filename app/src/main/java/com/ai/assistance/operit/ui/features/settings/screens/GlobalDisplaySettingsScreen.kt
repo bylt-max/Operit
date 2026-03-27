@@ -54,6 +54,8 @@ fun GlobalDisplaySettingsScreen(
     val toolCollapseMode by displayPreferencesManager.toolCollapseMode.collectAsState(initial = ToolCollapseMode.ALL)
     val showFpsCounter by displayPreferencesManager.showFpsCounter.collectAsState(initial = false)
     val enableReplyNotification by displayPreferencesManager.enableReplyNotification.collectAsState(initial = true)
+    val enableReplyNotificationSound by displayPreferencesManager.enableReplyNotificationSound.collectAsState(initial = false)
+    val enableReplyNotificationVibration by displayPreferencesManager.enableReplyNotificationVibration.collectAsState(initial = false)
     val enableEnterToSend by displayPreferencesManager.enableEnterToSend.collectAsState(initial = false)
     val enableExperimentalVirtualDisplay by displayPreferencesManager.enableExperimentalVirtualDisplay.collectAsState(initial = true)
     val globalUserName by displayPreferencesManager.globalUserName.collectAsState(initial = null)
@@ -331,6 +333,30 @@ fun GlobalDisplaySettingsScreen(
                 onCheckedChange = {
                     scope.launch {
                         displayPreferencesManager.saveDisplaySettings(enableReplyNotification = it)
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
+            DisplayToggleItem(
+                title = stringResource(R.string.enable_reply_notification_sound),
+                subtitle = stringResource(R.string.enable_reply_notification_sound_description),
+                checked = enableReplyNotificationSound,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(enableReplyNotificationSound = it)
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
+            DisplayToggleItem(
+                title = stringResource(R.string.enable_reply_notification_vibration),
+                subtitle = stringResource(R.string.enable_reply_notification_vibration_description),
+                checked = enableReplyNotificationVibration,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(enableReplyNotificationVibration = it)
                     }
                 },
                 backgroundColor = componentBackgroundColor

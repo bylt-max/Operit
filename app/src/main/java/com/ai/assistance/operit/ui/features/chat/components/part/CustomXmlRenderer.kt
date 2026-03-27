@@ -54,7 +54,7 @@ class CustomXmlRenderer(
 ) : XmlContentRenderer {
     // 定义渲染器能够处理的内置标签集合
     private val builtInTags =
-            setOf("think", "thinking", "search", "tool", "status", "tool_result", "html", "mood", "font", "details", "detail")
+            setOf("think", "thinking", "search", "tool", "status", "tool_result", "html", "mood", "font", "details", "detail", "meta")
 
     private data class ToolRequestRenderState(
         val rawToolName: String,
@@ -80,6 +80,10 @@ class CustomXmlRenderer(
     ) {
         val trimmedContent = xmlContent.trim()
         val tagName = extractTagName(trimmedContent)
+
+        if (shouldHideGeminiThoughtSignatureMeta(trimmedContent, tagName)) {
+            return
+        }
         
         // 无障碍朗读描述：只朗读块类型
         val accessibilityDesc = when (tagName) {
@@ -191,6 +195,12 @@ class CustomXmlRenderer(
 
     private fun extractRawTagName(content: String): String? {
         return ChatMarkupRegex.extractOpeningTagName(content)
+    }
+
+    private fun shouldHideGeminiThoughtSignatureMeta(content: String, tagName: String?): Boolean {
+        return tagName == "meta" &&
+            Regex("""\bprovider\s*=\s*["']gemini:thought_signature["']""", RegexOption.IGNORE_CASE)
+                .containsMatchIn(content)
     }
 
     /** 检查XML标签是否完全闭合。 支持标准配对标签 (<tag>...</tag>) 和自闭合标签 (<tag/>)。 */

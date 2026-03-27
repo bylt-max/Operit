@@ -98,8 +98,9 @@ class ConversationService(
         try {
             val useEnglish = LocaleUtils.getCurrentLanguage(context).lowercase().startsWith("en")
             val systemPrompt = FunctionalPrompts.buildSummarySystemPrompt(previousSummary, useEnglish)
+            val sanitizedMessages = ChatUtils.stripGeminiThoughtSignatureMeta(messages)
 
-            val finalMessages = listOf(Pair("system", systemPrompt)) + messages
+            val finalMessages = listOf(Pair("system", systemPrompt)) + sanitizedMessages
 
             // Get all model parameters from preferences (with enabled state)
             val modelParameters = multiServiceManager.getModelParametersForFunction(FunctionType.SUMMARY)

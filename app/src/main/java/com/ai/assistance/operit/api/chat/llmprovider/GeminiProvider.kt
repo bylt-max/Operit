@@ -189,18 +189,91 @@ class GeminiProvider(
                     .replace("&amp;", "&")
         }
     }
+
+    private data class GeminiThoughtSignaturePayload(
+        val contentWithoutMeta: String,
+        val thoughtSignature: String?
+    )
+
+    private data class GeminiFunctionCallPayload(
+        val textContent: String,
+        val functionCall: JSONObject?,
+        val thoughtSignature: String?
+    )
+
+    private fun encodeGeminiThoughtSignature(signature: String): String {
+        return Base64.encodeToString(signature.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+    }
+
+    private fun decodeGeminiThoughtSignature(signatureBase64: String): String? {
+        return try {
+            String(Base64.decode(signatureBase64, Base64.DEFAULT), Charsets.UTF_8)
+                .takeIf { it.isNotEmpty() }
+        } catch (e: IllegalArgumentException) {
+            logDebug("Gemini thoughtSignature meta base64 无法解码，已忽略")
+            null
+        }
+    }
+
+    private fun extractGeminiThoughtSignaturePayload(content: String): GeminiThoughtSignaturePayload {
+        val signatureBase64 = ChatMarkupRegex.extractGeminiThoughtSignature(content)
+        val contentWithoutMeta = ChatMarkupRegex.removeGeminiThoughtSignatureMeta(content)
+        val thoughtSignature = signatureBase64?.let { decodeGeminiThoughtSignature(it) }
+        return GeminiThoughtSignaturePayload(
+            contentWithoutMeta = contentWithoutMeta,
+            thoughtSignature = thoughtSignature
+        )
+    }
+
+    private fun appendGeminiThoughtSignatureMeta(
+        contentBuilder: StringBuilder,
+        thoughtSignature: String
+    ) {
+        if (contentBuilder.isNotEmpty() && contentBuilder[contentBuilder.length - 1] != '\n') {
+            contentBuilder.append('\n')
+        }
+        contentBuilder.append(
+            ChatMarkupRegex.geminiThoughtSignatureMetaTag(
+                encodeGeminiThoughtSignature(thoughtSignature)
+            )
+        )
+    }
+
+    private fun JSONObject.optGeminiThoughtSignature(): String? {
+        val camelCase = optString("thoughtSignature", "").trim()
+        if (camelCase.isNotEmpty()) {
+            return camelCase
+        }
+        val snakeCase = optString("thought_signature", "").trim()
+        if (snakeCase.isNotEmpty()) {
+            return snakeCase
+        }
+        return null
+    }
     
     /**
      * 解析XML格式的tool调用，转换为Gemini FunctionCall格式
-     * @return Pair<文本内容, functionCall对象>
+     * @return 文本内容、functionCall对象、以及挂在Part级别的thought signature
      */
-    private fun parseXmlToolCalls(content: String): Pair<String, JSONObject?> {
-        if (!enableToolCall) return Pair(content, null)
+    private fun parseXmlToolCalls(content: String): GeminiFunctionCallPayload {
+        if (!enableToolCall) {
+            return GeminiFunctionCallPayload(
+                textContent = content,
+                functionCall = null,
+                thoughtSignature = null
+            )
+        }
 
-        val match = ChatMarkupRegex.toolCallPattern.find(content) // Gemini 一次只能调用一个工具
+        val thoughtSignaturePayload = extractGeminiThoughtSignaturePayload(content)
+        val sanitizedContent = thoughtSignaturePayload.contentWithoutMeta
+        val match = ChatMarkupRegex.toolCallPattern.find(sanitizedContent) // Gemini 一次只能调用一个工具
         
         if (match == null) {
-            return Pair(content, null)
+            return GeminiFunctionCallPayload(
+                textContent = sanitizedContent,
+                functionCall = null,
+                thoughtSignature = null
+            )
         }
         
         val toolName = match.groupValues[2]
@@ -224,9 +297,13 @@ class GeminiProvider(
         AppLogger.d(TAG, "XML→GeminiFunctionCall: $toolName")
         
         // 从文本内容中移除tool标签
-        val textContent = content.replace(match.value, "").trim()
+        val textContent = sanitizedContent.replace(match.value, "").trim()
         
-        return Pair(textContent, functionCall)
+        return GeminiFunctionCallPayload(
+            textContent = textContent,
+            functionCall = functionCall,
+            thoughtSignature = thoughtSignaturePayload.thoughtSignature
+        )
     }
     
     /**
@@ -399,10 +476,18 @@ class GeminiProvider(
         var systemInstruction: JSONObject? = null
 
         // 使用TokenCacheManager计算token数量
-        val tokenCount = tokenCacheManager.calculateInputTokens(message, chatHistory, toolsJson)
+        val sanitizedMessageForTokenCount = ChatUtils.stripGeminiThoughtSignatureMeta(message)
+        val sanitizedHistoryForTokenCount = ChatUtils.stripGeminiThoughtSignatureMeta(chatHistory)
+        val tokenCount = tokenCacheManager.calculateInputTokens(
+            sanitizedMessageForTokenCount,
+            sanitizedHistoryForTokenCount,
+            toolsJson
+        )
 
         // 检查当前消息是否已经在历史记录的末尾（避免重复）
-        val isMessageInHistory = chatHistory.isNotEmpty() && chatHistory.last().second == message
+        val isMessageInHistory =
+            chatHistory.isNotEmpty() &&
+                ChatUtils.stripGeminiThoughtSignatureMeta(chatHistory.last().second) == sanitizedMessageForTokenCount
         
         // 如果消息已在历史中，只处理历史；否则需要处理历史+当前消息
         val effectiveHistory = if (isMessageInHistory) {
@@ -442,27 +527,31 @@ class GeminiProvider(
 
         for ((role, content) in mergedHistory) {
             val geminiRole = if (role == "assistant") "model" else role
+            val contentWithoutGeminiMeta = ChatMarkupRegex.removeGeminiThoughtSignatureMeta(content)
             
             // 当启用Tool Call API时，转换XML格式的工具调用
             if (enableToolCall) {
                 if (role == "assistant") {
                     // 解析assistant消息中的XML tool calls
-                    val (textContent, functionCall) = parseXmlToolCalls(content)
+                    val functionCallPayload = parseXmlToolCalls(content)
                     
                     val partsArray = JSONArray()
                     // 先添加文本内容
-                    if (textContent.isNotEmpty()) {
-                        val messageParts = buildPartsArray(textContent)
+                    if (functionCallPayload.textContent.isNotEmpty()) {
+                        val messageParts = buildPartsArray(functionCallPayload.textContent)
                         for (i in 0 until messageParts.length()) {
                             partsArray.put(messageParts.getJSONObject(i))
                         }
                     }
                     // 再添加functionCall
-                    if (functionCall != null) {
+                    if (functionCallPayload.functionCall != null) {
                         partsArray.put(JSONObject().apply {
-                            put("functionCall", functionCall)
+                            put("functionCall", functionCallPayload.functionCall)
+                            functionCallPayload.thoughtSignature?.let { signature ->
+                                put("thought_signature", signature)
+                            }
                         })
-                        logDebug("历史XML→GeminiFunctionCall: ${functionCall.optString("name")}")
+                        logDebug("历史XML→GeminiFunctionCall: ${functionCallPayload.functionCall.optString("name")}")
                     }
                     
                     val contentObject = JSONObject().apply {
@@ -472,7 +561,7 @@ class GeminiProvider(
                     contentsArray.put(contentObject)
                 } else if (role == "user") {
                     // 解析user消息中的XML tool_result
-                    val (textContent, functionResponses) = parseXmlToolResults(content)
+                    val (textContent, functionResponses) = parseXmlToolResults(contentWithoutGeminiMeta)
                     
                     val partsArray = JSONArray()
                     // 先添加所有functionResponse
@@ -495,7 +584,7 @@ class GeminiProvider(
                     // 如果没有任何内容，保留原始content
                     if (partsArray.length() == 0) {
                         partsArray.put(JSONObject().apply {
-                            put("text", content)
+                            put("text", contentWithoutGeminiMeta)
                         })
                     }
                     
@@ -508,7 +597,7 @@ class GeminiProvider(
                     // system等其他角色正常处理
                     val contentObject = JSONObject().apply {
                         put("role", geminiRole)
-                        put("parts", buildPartsArray(content))
+                        put("parts", buildPartsArray(contentWithoutGeminiMeta))
                     }
                     contentsArray.put(contentObject)
                 }
@@ -516,7 +605,7 @@ class GeminiProvider(
                 // 不启用Tool Call API时，保持原样
                 val contentObject = JSONObject().apply {
                     put("role", geminiRole)
-                    put("parts", buildPartsArray(content))
+                    put("parts", buildPartsArray(contentWithoutGeminiMeta))
                 }
                 contentsArray.put(contentObject)
             }
@@ -1340,6 +1429,7 @@ class GeminiProvider(
     ): String {
         val contentBuilder = StringBuilder()
         val searchSourcesBuilder = StringBuilder()
+        val pendingThoughtSignatures = mutableListOf<String>()
 
         try {
             // 检查是否有错误信息
@@ -1519,6 +1609,10 @@ class GeminiProvider(
                         // 输出工具结束标签
                         contentBuilder.append("\n</$toolTagName>\n")
                         logDebug("Gemini FunctionCall流式转XML: $toolName")
+
+                        part.optGeminiThoughtSignature()?.let { signature ->
+                            pendingThoughtSignatures.add(signature)
+                        }
                     }
                 }
 
@@ -1554,6 +1648,10 @@ class GeminiProvider(
                             tokenCacheManager.outputTokenCount
                     )
                 }
+            }
+
+            pendingThoughtSignatures.forEach { signature ->
+                appendGeminiThoughtSignatureMeta(contentBuilder, signature)
             }
 
             // 提取实际的token使用数据

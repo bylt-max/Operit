@@ -4,6 +4,7 @@ import java.security.SecureRandom
 
 object ChatMarkupRegex {
     private const val TOOL_TAG_SUFFIX_REGEX_SOURCE = "[A-Za-z0-9_]+"
+    private const val GEMINI_THOUGHT_SIGNATURE_PROVIDER = "gemini:thought_signature"
     const val TOOL_TAG_NAME_REGEX_SOURCE =
         "tool(?:_(?!result(?:_|$))$TOOL_TAG_SUFFIX_REGEX_SOURCE)?"
     const val TOOL_RESULT_TAG_NAME_REGEX_SOURCE = "tool_result(?:_${TOOL_TAG_SUFFIX_REGEX_SOURCE})?"
@@ -13,6 +14,11 @@ object ChatMarkupRegex {
     private val openingTagNameRegex = Regex("<([A-Za-z][A-Za-z0-9_]*)")
     private val toolStartTagRegex = Regex("<(?:$TOOL_TAG_NAME_REGEX_SOURCE)\\b", RegexOption.IGNORE_CASE)
     private val toolResultStartTagRegex = Regex("<(?:$TOOL_RESULT_TAG_NAME_REGEX_SOURCE)\\b", RegexOption.IGNORE_CASE)
+    private val metaProviderAttrRegex = Regex("""\bprovider\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+    private val metaBodyRegex = Regex(
+        """<meta\b[^>]*>([\s\S]*?)</meta>""",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+    )
     private val randomTagCodeChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
     private val randomTagCodeSource = SecureRandom()
 
@@ -136,6 +142,11 @@ object ChatMarkupRegex {
         RegexOption.IGNORE_CASE
     )
 
+    val metaTag = Regex(
+        """<meta\b[\s\S]*?</meta>""",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+    )
+
     val emotionTag = Regex(
         "<emotion\\b[\\s\\S]*?</emotion>",
         setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
@@ -221,6 +232,41 @@ object ChatMarkupRegex {
     fun generateRandomToolTagName(): String = "tool_${generateRandomTagCode()}"
 
     fun generateRandomToolResultTagName(): String = "tool_result_${generateRandomTagCode()}"
+
+    fun geminiThoughtSignatureMetaTag(signatureBase64: String): String {
+        return """<meta provider="$GEMINI_THOUGHT_SIGNATURE_PROVIDER">$signatureBase64</meta>"""
+    }
+
+    fun extractGeminiThoughtSignature(content: String): String? {
+        return metaTag.findAll(content)
+            .mapNotNull { match ->
+                val tagContent = match.value
+                val provider = metaProviderAttrRegex.find(tagContent)?.groupValues?.getOrNull(1)
+                if (!provider.equals(GEMINI_THOUGHT_SIGNATURE_PROVIDER, ignoreCase = true)) {
+                    return@mapNotNull null
+                }
+                metaBodyRegex.find(tagContent)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+            }
+            .lastOrNull()
+    }
+
+    fun removeGeminiThoughtSignatureMeta(content: String): String {
+        var removed = false
+        val result = metaTag.replace(content) { match ->
+            val provider = metaProviderAttrRegex.find(match.value)?.groupValues?.getOrNull(1)
+            if (provider.equals(GEMINI_THOUGHT_SIGNATURE_PROVIDER, ignoreCase = true)) {
+                removed = true
+                ""
+            } else {
+                match.value
+            }
+        }
+        return if (removed) result.trimEnd() else result
+    }
 
     private fun generateRandomTagCode(length: Int = 4): String {
         return buildString(length) {

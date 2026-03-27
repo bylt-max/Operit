@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.AudioRecordingConfiguration
 import android.net.Uri
@@ -102,7 +103,8 @@ class AIForegroundService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val REPLY_NOTIFICATION_ID = 2001
         private const val CHANNEL_ID = "AI_SERVICE_CHANNEL"
-        private const val REPLY_CHANNEL_ID = "AI_REPLY_CHANNEL"
+        private const val REPLY_CHANNEL_ID_PREFIX = "AI_REPLY_COMPLETE_CHANNEL"
+        private val REPLY_VIBRATION_PATTERN = longArrayOf(0L, 250L, 150L, 250L)
 
         private const val ACTION_CANCEL_CURRENT_OPERATION = "com.ai.assistance.operit.action.CANCEL_CURRENT_OPERATION"
         private const val REQUEST_CODE_CANCEL_CURRENT_OPERATION = 9002
@@ -172,21 +174,72 @@ class AIForegroundService : Service() {
             )
         }
 
-        private fun ensureReplyNotificationChannel(context: Context) {
+        private fun buildReplyNotificationChannelId(
+            enableSound: Boolean,
+            enableVibration: Boolean
+        ): String =
+            when {
+                enableSound && enableVibration -> "${REPLY_CHANNEL_ID_PREFIX}_sound_vibration"
+                enableSound -> "${REPLY_CHANNEL_ID_PREFIX}_sound"
+                enableVibration -> "${REPLY_CHANNEL_ID_PREFIX}_vibration"
+                else -> "${REPLY_CHANNEL_ID_PREFIX}_silent"
+            }
+
+        private fun getReplyNotificationChannelNameRes(
+            enableSound: Boolean,
+            enableVibration: Boolean
+        ): Int =
+            when {
+                enableSound && enableVibration -> R.string.service_chat_complete_reminder_sound_vibration
+                enableSound -> R.string.service_chat_complete_reminder_sound
+                enableVibration -> R.string.service_chat_complete_reminder_vibration
+                else -> R.string.service_chat_complete_reminder
+            }
+
+        private fun ensureReplyNotificationChannel(
+            context: Context,
+            enableSound: Boolean,
+            enableVibration: Boolean
+        ): String {
+            val channelId = buildReplyNotificationChannelId(enableSound, enableVibration)
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-                return
+                return channelId
             }
             val replyChannel =
                 NotificationChannel(
-                    REPLY_CHANNEL_ID,
-                    context.getString(R.string.service_chat_complete_reminder),
+                    channelId,
+                    context.getString(
+                        getReplyNotificationChannelNameRes(
+                            enableSound = enableSound,
+                            enableVibration = enableVibration
+                        )
+                    ),
                     NotificationManager.IMPORTANCE_HIGH
                 ).apply {
                     description = context.getString(R.string.service_notify_when_complete)
+                    setSound(
+                        if (enableSound) Settings.System.DEFAULT_NOTIFICATION_URI else null,
+                        if (enableSound) {
+                            AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build()
+                        } else {
+                            null
+                        }
+                    )
+                    enableVibration(enableVibration)
+                    vibrationPattern =
+                        if (enableVibration) {
+                            REPLY_VIBRATION_PATTERN
+                        } else {
+                            longArrayOf(0L)
+                        }
                 }
             val manager =
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(replyChannel)
+            return channelId
         }
 
         private fun loadBitmapFromUri(context: Context, uriString: String): Bitmap? {
@@ -256,11 +309,29 @@ class AIForegroundService : Service() {
                     return
                 }
 
-                ensureReplyNotificationChannel(appContext)
+                val enableReplyNotificationSound = runBlocking {
+                    displayPreferences.enableReplyNotificationSound.first()
+                }
+                val enableReplyNotificationVibration = runBlocking {
+                    displayPreferences.enableReplyNotificationVibration.first()
+                }
+                val replyChannelId =
+                    ensureReplyNotificationChannel(
+                        context = appContext,
+                        enableSound = enableReplyNotificationSound,
+                        enableVibration = enableReplyNotificationVibration
+                    )
 
                 val cleanedReplyContent = WaifuMessageProcessor.cleanContentForWaifu(rawReplyContent)
+                var notificationDefaults = NotificationCompat.DEFAULT_LIGHTS
+                if (enableReplyNotificationSound) {
+                    notificationDefaults = notificationDefaults or NotificationCompat.DEFAULT_SOUND
+                }
+                if (enableReplyNotificationVibration) {
+                    notificationDefaults = notificationDefaults or NotificationCompat.DEFAULT_VIBRATE
+                }
                 val notificationBuilder =
-                    NotificationCompat.Builder(appContext, REPLY_CHANNEL_ID)
+                    NotificationCompat.Builder(appContext, replyChannelId)
                         .setSmallIcon(android.R.drawable.ic_dialog_info)
                         .setContentTitle(
                             characterName
@@ -274,7 +345,7 @@ class AIForegroundService : Service() {
                                 }
                         )
                         .setPriority(NotificationCompat.PRIORITY_HIGH)
-                        .setDefaults(NotificationCompat.DEFAULT_ALL)
+                        .setDefaults(notificationDefaults)
                         .setCategory(NotificationCompat.CATEGORY_STATUS)
                         .setContentIntent(createMainActivityPendingIntent(appContext))
                         .setAutoCancel(true)
@@ -1120,7 +1191,6 @@ class AIForegroundService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channelName = getString(R.string.service_operit_running)
-            val replyChannelName = getString(R.string.service_chat_complete_reminder)
             val serviceChannel =
                     NotificationChannel(
                             CHANNEL_ID,
@@ -1130,19 +1200,8 @@ class AIForegroundService : Service() {
                     .apply {
                         description = getString(R.string.service_keep_background)
                     }
-
-            val replyChannel =
-                    NotificationChannel(
-                            REPLY_CHANNEL_ID,
-                            replyChannelName,
-                            NotificationManager.IMPORTANCE_HIGH
-                    )
-                    .apply {
-                        description = getString(R.string.service_notify_when_complete)
-                    }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(serviceChannel)
-            manager.createNotificationChannel(replyChannel)
         }
     }
 

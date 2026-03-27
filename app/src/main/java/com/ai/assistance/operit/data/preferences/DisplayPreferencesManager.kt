@@ -51,6 +51,10 @@ class DisplayPreferencesManager private constructor(private val context: Context
         // 显示相关设置的 Key
         private val KEY_SHOW_FPS_COUNTER = booleanPreferencesKey("show_fps_counter")
         private val KEY_ENABLE_REPLY_NOTIFICATION = booleanPreferencesKey("enable_reply_notification")
+        private val KEY_ENABLE_REPLY_NOTIFICATION_SOUND =
+            booleanPreferencesKey("enable_reply_notification_sound")
+        private val KEY_ENABLE_REPLY_NOTIFICATION_VIBRATION =
+            booleanPreferencesKey("enable_reply_notification_vibration")
         private val KEY_ENABLE_ENTER_TO_SEND = booleanPreferencesKey("enable_enter_to_send")
 
         // 自动化显示与行为相关设置的 Key
@@ -140,6 +144,24 @@ class DisplayPreferencesManager private constructor(private val context: Context
         }
 
     /**
+     * 是否启用回复通知提示音
+     * 默认值：false
+     */
+    val enableReplyNotificationSound: Flow<Boolean> =
+        context.displayPreferencesDataStore.data.map { preferences ->
+            preferences[KEY_ENABLE_REPLY_NOTIFICATION_SOUND] ?: false
+        }
+
+    /**
+     * 是否启用回复通知震动
+     * 默认值：false
+     */
+    val enableReplyNotificationVibration: Flow<Boolean> =
+        context.displayPreferencesDataStore.data.map { preferences ->
+            preferences[KEY_ENABLE_REPLY_NOTIFICATION_VIBRATION] ?: false
+        }
+
+    /**
      * 是否启用回车发送
      * 默认值：false
      */
@@ -195,6 +217,8 @@ class DisplayPreferencesManager private constructor(private val context: Context
         globalUserName: String? = null,
         showFpsCounter: Boolean? = null,
         enableReplyNotification: Boolean? = null,
+        enableReplyNotificationSound: Boolean? = null,
+        enableReplyNotificationVibration: Boolean? = null,
         enableEnterToSend: Boolean? = null,
         enableExperimentalVirtualDisplay: Boolean? = null,
         screenshotFormat: String? = null,
@@ -213,6 +237,12 @@ class DisplayPreferencesManager private constructor(private val context: Context
             globalUserName?.let { preferences[KEY_GLOBAL_USER_NAME] = it }
             showFpsCounter?.let { preferences[KEY_SHOW_FPS_COUNTER] = it }
             enableReplyNotification?.let { preferences[KEY_ENABLE_REPLY_NOTIFICATION] = it }
+            enableReplyNotificationSound?.let {
+                preferences[KEY_ENABLE_REPLY_NOTIFICATION_SOUND] = it
+            }
+            enableReplyNotificationVibration?.let {
+                preferences[KEY_ENABLE_REPLY_NOTIFICATION_VIBRATION] = it
+            }
             enableEnterToSend?.let { preferences[KEY_ENABLE_ENTER_TO_SEND] = it }
             enableExperimentalVirtualDisplay?.let {
                 preferences[KEY_ENABLE_EXPERIMENTAL_VIRTUAL_DISPLAY] = it
@@ -275,6 +305,8 @@ class DisplayPreferencesManager private constructor(private val context: Context
             preferences.remove(KEY_GLOBAL_USER_NAME)
             preferences[KEY_SHOW_FPS_COUNTER] = false
             preferences[KEY_ENABLE_REPLY_NOTIFICATION] = true
+            preferences[KEY_ENABLE_REPLY_NOTIFICATION_SOUND] = false
+            preferences[KEY_ENABLE_REPLY_NOTIFICATION_VIBRATION] = false
             preferences[KEY_ENABLE_ENTER_TO_SEND] = false
             preferences[KEY_ENABLE_EXPERIMENTAL_VIRTUAL_DISPLAY] = true
             preferences.remove(KEY_SCREENSHOT_FORMAT)
