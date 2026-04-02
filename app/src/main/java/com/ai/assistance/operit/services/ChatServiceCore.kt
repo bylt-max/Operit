@@ -230,7 +230,7 @@ class ChatServiceCore(
     }
 
     fun cancelMessage(chatId: String) {
-        messageCoordinationDelegate.cancelSummary()
+        messageCoordinationDelegate.cancelSummaryForChat(chatId)
         messageProcessingDelegate.cancelMessage(chatId)
     }
 

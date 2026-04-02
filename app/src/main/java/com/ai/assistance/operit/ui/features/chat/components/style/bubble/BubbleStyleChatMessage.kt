@@ -32,7 +32,8 @@ fun BubbleStyleChatMessage(
     onDeleteMessage: ((Int) -> Unit)? = null,
     index: Int = -1,
     enableDialogs: Boolean = true,  // 新增参数：是否启用弹窗功能，默认启用
-    onRoleAvatarLongPress: ((String) -> Unit)? = null
+    onRoleAvatarLongPress: ((String) -> Unit)? = null,
+    onEditSummary: ((ChatMessage) -> Unit)? = null
 ) {
     when (message.sender) {
         "user" -> {
@@ -71,7 +72,10 @@ fun BubbleStyleChatMessage(
                         onDeleteMessage?.invoke(index)
                     }
                 },
-                enableDialog = enableDialogs  // 传递弹窗启用状态
+                enableDialog = enableDialogs,  // 传递弹窗启用状态
+                onEdit = { editedMessage ->
+                    onEditSummary?.invoke(editedMessage)
+                }
             )
         }
     }

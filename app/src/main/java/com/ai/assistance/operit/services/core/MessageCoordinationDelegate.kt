@@ -42,6 +42,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.coroutines.coroutineContext
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 消息协调委托类
@@ -92,6 +93,16 @@ class MessageCoordinationDelegate(
     private val activePromptManager = ActivePromptManager.getInstance(context)
     private val displayPreferencesManager = DisplayPreferencesManager.getInstance(context)
     private val plannerServiceManager = MultiServiceManager(context)
+    private data class PendingAutoContinuationRequest(
+        val chatId: String,
+        val promptFunctionType: PromptFunctionType,
+        val chatModelConfigIdOverride: String?,
+        val chatModelIndexOverride: Int?,
+        var waitJob: Job? = null
+    )
+
+    private val pendingAutoContinuationByChatId =
+        ConcurrentHashMap<String, PendingAutoContinuationRequest>()
 
     init {
         ensureNonFatalErrorCollectorStarted()
@@ -202,6 +213,9 @@ class MessageCoordinationDelegate(
         if (chatId == null) {
             uiStateDelegate.showErrorMessage(context.getString(R.string.chat_no_active_conversation))
             return
+        }
+        if (!isAutoContinuation) {
+            cancelPendingAutoContinuation(chatId, restoreIdleIfPendingState = false)
         }
         if (
             enableGroupOrchestration &&
@@ -850,6 +864,107 @@ class MessageCoordinationDelegate(
         return completed
     }
 
+    private fun isSamePendingAutoContinuation(
+        chatId: String,
+        request: PendingAutoContinuationRequest
+    ): Boolean {
+        return pendingAutoContinuationByChatId[chatId] === request
+    }
+
+    private fun restoreIdleIfCurrentlySummarizing(chatId: String) {
+        val currentState = messageProcessingDelegate.inputProcessingStateByChatId.value[chatId]
+        if (currentState is InputProcessingState.Summarizing) {
+            messageProcessingDelegate.setInputProcessingStateForChat(chatId, InputProcessingState.Idle)
+        }
+    }
+
+    private fun removePendingAutoContinuation(chatId: String): PendingAutoContinuationRequest? {
+        return pendingAutoContinuationByChatId.remove(chatId)
+    }
+
+    private fun cancelPendingAutoContinuation(
+        chatId: String,
+        restoreIdleIfPendingState: Boolean
+    ) {
+        val removed = removePendingAutoContinuation(chatId) ?: return
+        removed.waitJob?.cancel()
+        messageProcessingDelegate.setSuppressIdleCompletedStateForChat(chatId, false)
+        if (restoreIdleIfPendingState) {
+            restoreIdleIfCurrentlySummarizing(chatId)
+        }
+        AppLogger.d(TAG, "已取消待派发的自动续聊: chatId=$chatId")
+    }
+
+    private fun queuePendingAutoContinuation(
+        chatId: String,
+        promptFunctionType: PromptFunctionType,
+        chatModelConfigIdOverride: String?,
+        chatModelIndexOverride: Int?
+    ) {
+        cancelPendingAutoContinuation(chatId, restoreIdleIfPendingState = false)
+        messageProcessingDelegate.setSuppressIdleCompletedStateForChat(chatId, true)
+        val request =
+            PendingAutoContinuationRequest(
+                chatId = chatId,
+                promptFunctionType = promptFunctionType,
+                chatModelConfigIdOverride = chatModelConfigIdOverride,
+                chatModelIndexOverride = chatModelIndexOverride
+            )
+        pendingAutoContinuationByChatId[chatId] = request
+        request.waitJob =
+            coroutineScope.launch {
+                try {
+                    while (isSamePendingAutoContinuation(chatId, request)) {
+                        if (!messageProcessingDelegate.isChatLoading(chatId)) {
+                            break
+                        }
+                        val targetCounter = messageProcessingDelegate.getTurnCompleteCounter(chatId) + 1L
+                        val completed = awaitTurnComplete(chatId, targetCounter)
+                        if (!completed) {
+                            AppLogger.w(TAG, "等待上一轮完成超时，取消自动续聊: chatId=$chatId")
+                            if (isSamePendingAutoContinuation(chatId, request)) {
+                                removePendingAutoContinuation(chatId)
+                                messageProcessingDelegate.setSuppressIdleCompletedStateForChat(chatId, false)
+                                restoreIdleIfCurrentlySummarizing(chatId)
+                            }
+                            return@launch
+                        }
+                    }
+                    if (!isSamePendingAutoContinuation(chatId, request)) {
+                        return@launch
+                    }
+                    AppLogger.d(TAG, "上一轮已完成，开始派发自动续聊: chatId=$chatId")
+                    sendMessageInternal(
+                        promptFunctionType = request.promptFunctionType,
+                        isContinuation = true,
+                        isAutoContinuation = true,
+                        chatIdOverride = chatId,
+                        chatModelConfigIdOverride = request.chatModelConfigIdOverride,
+                        chatModelIndexOverride = request.chatModelIndexOverride
+                    )
+                    val started = messageProcessingDelegate.isChatLoading(chatId)
+                    if (isSamePendingAutoContinuation(chatId, request)) {
+                        removePendingAutoContinuation(chatId)
+                        messageProcessingDelegate.setSuppressIdleCompletedStateForChat(chatId, false)
+                    }
+                    if (!started) {
+                        AppLogger.w(TAG, "自动续聊派发后未启动发送，恢复Idle: chatId=$chatId")
+                        restoreIdleIfCurrentlySummarizing(chatId)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "派发自动续聊时出错: ${e.message}", e)
+                    if (isSamePendingAutoContinuation(chatId, request)) {
+                        removePendingAutoContinuation(chatId)
+                        messageProcessingDelegate.setSuppressIdleCompletedStateForChat(chatId, false)
+                        restoreIdleIfCurrentlySummarizing(chatId)
+                    }
+                }
+            }
+        AppLogger.d(TAG, "已排队自动续聊，等待当前回合完全结束: chatId=$chatId")
+    }
+
     private suspend fun maybeSummarizeAfterGroupRound(
         chatId: String,
         promptFunctionType: PromptFunctionType
@@ -982,11 +1097,21 @@ class MessageCoordinationDelegate(
         val shouldCancelAsyncSummary =
             _isSendTriggeredSummarizing.value &&
                 (targetChatId == null || _sendTriggeredSummarizingChatId.value == targetChatId)
+        val shouldCancelPendingAutoContinuation =
+            if (targetChatId != null) {
+                pendingAutoContinuationByChatId.containsKey(targetChatId)
+            } else {
+                currentChatId != null && pendingAutoContinuationByChatId.containsKey(currentChatId)
+            }
         val shouldCancelCurrentSummarizingUi =
             currentChatId != null &&
                 messageProcessingDelegate.inputProcessingStateByChatId.value[currentChatId] is InputProcessingState.Summarizing
 
-        if (!shouldCancelSummary && !shouldCancelAsyncSummary && !shouldCancelCurrentSummarizingUi) {
+        if (!shouldCancelSummary &&
+            !shouldCancelAsyncSummary &&
+            !shouldCancelPendingAutoContinuation &&
+            !shouldCancelCurrentSummarizingUi
+        ) {
             if (targetChatId == null) {
                 // 兜住尚未被协调层标记，但底层 SUMMARY 请求仍在执行的场景。
                 cancelSummaryStreamingInternal()
@@ -1015,6 +1140,15 @@ class MessageCoordinationDelegate(
             _sendTriggeredSummarizingChatId.value = null
         }
 
+        if (shouldCancelPendingAutoContinuation) {
+            val pendingChatId = targetChatId ?: currentChatId
+            if (!pendingChatId.isNullOrBlank()) {
+                affectedChatIds.add(pendingChatId)
+                pendingAutoContinuationByChatId[pendingChatId]?.waitJob?.let { jobsToCancel.add(it) }
+                removePendingAutoContinuation(pendingChatId)
+            }
+        }
+
         if (shouldCancelCurrentSummarizingUi) {
             currentChatId?.let { affectedChatIds.add(it) }
         }
@@ -1030,7 +1164,7 @@ class MessageCoordinationDelegate(
             }
         }
 
-        messageProcessingDelegate.resetLoadingState()
+        messageProcessingDelegate.refreshGlobalLoadingState()
         affectedChatIds.forEach { chatId ->
             messageProcessingDelegate.setPendingAsyncSummaryUiForChat(chatId, false)
             messageProcessingDelegate.setSuppressIdleCompletedStateForChat(chatId, false)
@@ -1044,6 +1178,12 @@ class MessageCoordinationDelegate(
     fun cancelSummary() {
         coroutineScope.launch {
             cancelSummaryInternal()
+        }
+    }
+
+    fun cancelSummaryForChat(chatId: String) {
+        coroutineScope.launch {
+            cancelSummaryInternal(chatId)
         }
     }
 
@@ -1283,37 +1423,53 @@ class MessageCoordinationDelegate(
                 currentChatId != null &&
                     messageProcessingDelegate.inputProcessingStateByChatId.value[currentChatId] is InputProcessingState.Summarizing
 
-            // 确保加载状态被重置，避免阻塞自动续写
-            messageProcessingDelegate.resetLoadingState()
-
-            if (currentChatId != null) {
-                messageProcessingDelegate.setSuppressIdleCompletedStateForChat(currentChatId, false)
-            }
+            // 刷新聚合加载状态；这里只更新派生值，不会直接解除当前 chat 的加载锁
+            messageProcessingDelegate.refreshGlobalLoadingState()
 
             if (summarySuccess) {
                 if (autoContinue) {
-                    AppLogger.d(TAG, "总结成功，自动继续对话...")
-                    // 使用传入的 promptFunctionType 或当前保存的 promptFunctionType，保持提示词一致性
-                    val continuationPromptType = promptFunctionType ?: currentPromptFunctionType
-                    sendMessageInternal(
-                        promptFunctionType = continuationPromptType,
-                        isContinuation = true,
-                        isAutoContinuation = true,
-                        chatIdOverride = currentChatId,
-                        chatModelConfigIdOverride = effectiveChatModelConfigIdOverride,
-                        chatModelIndexOverride = effectiveChatModelIndexOverride
-                    )
+                    if (currentChatId != null) {
+                        val continuationPromptType = promptFunctionType ?: currentPromptFunctionType
+                        if (messageProcessingDelegate.isChatLoading(currentChatId)) {
+                            AppLogger.d(TAG, "总结成功，但上一轮仍在处理中，转为排队自动续聊...")
+                            queuePendingAutoContinuation(
+                                chatId = currentChatId,
+                                promptFunctionType = continuationPromptType,
+                                chatModelConfigIdOverride = effectiveChatModelConfigIdOverride,
+                                chatModelIndexOverride = effectiveChatModelIndexOverride
+                            )
+                        } else {
+                            messageProcessingDelegate.setSuppressIdleCompletedStateForChat(currentChatId, false)
+                            AppLogger.d(TAG, "总结成功，自动继续对话...")
+                            sendMessageInternal(
+                                promptFunctionType = continuationPromptType,
+                                isContinuation = true,
+                                isAutoContinuation = true,
+                                chatIdOverride = currentChatId,
+                                chatModelConfigIdOverride = effectiveChatModelConfigIdOverride,
+                                chatModelIndexOverride = effectiveChatModelIndexOverride
+                            )
+                            if (!messageProcessingDelegate.isChatLoading(currentChatId)) {
+                                AppLogger.w(TAG, "自动续聊未能启动，恢复Idle: chatId=$currentChatId")
+                                restoreIdleIfCurrentlySummarizing(currentChatId)
+                            }
+                        }
+                    }
                 } else if (wasSummarizing) {
                     // 总结成功且不自动续写时，主动恢复到Idle
                     if (currentChatId != null) {
+                        messageProcessingDelegate.setSuppressIdleCompletedStateForChat(currentChatId, false)
                         messageProcessingDelegate.setInputProcessingStateForChat(currentChatId, InputProcessingState.Idle)
                     }
                 }
             } else if (wasSummarizing) {
                 // 总结未成功时也恢复到Idle，避免卡在Summarizing状态
                 if (currentChatId != null) {
+                    messageProcessingDelegate.setSuppressIdleCompletedStateForChat(currentChatId, false)
                     messageProcessingDelegate.setInputProcessingStateForChat(currentChatId, InputProcessingState.Idle)
                 }
+            } else if (currentChatId != null) {
+                messageProcessingDelegate.setSuppressIdleCompletedStateForChat(currentChatId, false)
             }
         }
         return summarySuccess

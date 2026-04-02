@@ -71,6 +71,7 @@
 
 - `HttpResponseData` 包含 `statusCode`、`statusMessage`、`headers`、`contentType`、`content`
 - `VisitWebResultData` 除了页面正文外，还可能包含 `metadata`、`links`、`imageLinks`、`visitKey`
+- 当网页正文过长时，`VisitWebResultData` 还可能包含 `contentSavedTo`、`contentTruncated`、`originalContentLength`
 
 ### 3. 系统 / 设备 / 应用结果
 
@@ -267,6 +268,9 @@ console.log(file.size);
 const page = await Tools.Net.visit('https://example.com');
 console.log(page.title);
 console.log(page.links?.length ?? 0);
+if (page.contentSavedTo) {
+  console.log(page.contentSavedTo);
+}
 ```
 
 ### 使用 `WorkflowDetailResultData`

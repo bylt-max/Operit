@@ -580,8 +580,16 @@ data class VisitWebResultData(
         val metadata: Map<String, String> = emptyMap(),
         val links: List<LinkData> = emptyList(),
         val imageLinks: List<String> = emptyList(),
-        val visitKey: String? = null
+        val visitKey: String? = null,
+        val contentSavedTo: String? = null,
+        val contentTruncated: Boolean = false,
+        val originalContentLength: Int? = null
 ) : ToolResultData() {
+    companion object {
+        private const val MAX_INLINE_LINKS = 120
+        private const val MAX_INLINE_IMAGES = 120
+    }
+
     @Serializable
     data class LinkData(val url: String, val text: String)
 
@@ -591,22 +599,41 @@ data class VisitWebResultData(
 
         if (links.isNotEmpty()) {
             sb.appendLine("Results:")
-            links.forEachIndexed { index, link ->
+            links.take(MAX_INLINE_LINKS).forEachIndexed { index, link ->
                 sb.appendLine("[${index + 1}] ${link.text}")
+            }
+            val omittedCount = links.size - MAX_INLINE_LINKS
+            if (omittedCount > 0) {
+                sb.appendLine("... ($omittedCount more links omitted from inline preview)")
             }
             sb.appendLine()
         }
 
         if (imageLinks.isNotEmpty()) {
             sb.appendLine("Images:")
-            imageLinks.forEachIndexed { index, link ->
+            imageLinks.take(MAX_INLINE_IMAGES).forEachIndexed { index, link ->
                 val name = link.substringAfterLast('/').substringBefore('?').ifBlank { "image" }
                 sb.appendLine("[${index + 1}] $name")
+            }
+            val omittedCount = imageLinks.size - MAX_INLINE_IMAGES
+            if (omittedCount > 0) {
+                sb.appendLine("... ($omittedCount more images omitted from inline preview)")
             }
             sb.appendLine()
         }
 
-        sb.appendLine("Content:")
+        contentSavedTo?.let {
+            sb.appendLine("Full content saved to file: $it")
+            originalContentLength?.let { totalChars ->
+                sb.appendLine("Original content length: $totalChars chars")
+            }
+            if (contentTruncated) {
+                sb.appendLine("Use read_file_part or grep_code to inspect the saved file.")
+            }
+            sb.appendLine()
+        }
+
+        sb.appendLine(if (contentTruncated) "Content Preview:" else "Content:")
         sb.append(content)
 
         return sb.toString()

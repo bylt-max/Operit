@@ -246,11 +246,11 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
         LanguageFactory.init()
         AppLogger.d(TAG, "【启动计时】语言工厂初始化完成 - ${System.currentTimeMillis() - startTime}ms")
 
-        // 初始化TextSegmenter
+        // 后台预热 TextSegmenter，避免首次搜索记忆时才触发 Jieba 初始化
         applicationScope.launch {
             val segmenterStartTime = System.currentTimeMillis()
             TextSegmenter.initialize(applicationContext)
-            AppLogger.d(TAG, "【启动计时】TextSegmenter初始化完成（异步） - ${System.currentTimeMillis() - segmenterStartTime}ms")
+            AppLogger.d(TAG, "【启动计时】TextSegmenter预热完成（异步） - ${System.currentTimeMillis() - segmenterStartTime}ms")
         }
         
         // Initialize WaifuMessageProcessor

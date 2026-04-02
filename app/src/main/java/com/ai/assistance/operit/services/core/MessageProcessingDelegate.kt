@@ -329,6 +329,10 @@ class MessageProcessingDelegate(
         return _turnCompleteCounterByChatId.value[chatId] ?: 0L
     }
 
+    fun isChatLoading(chatId: String): Boolean {
+        return runtimeFor(chatId).isLoading.value
+    }
+
     fun setSpeakMessageHandler(handler: (String, Boolean) -> Unit) {
         speakMessageHandler = handler
     }
@@ -1159,10 +1163,10 @@ class MessageProcessingDelegate(
     }
 
     /**
-     * 强制重置加载状态，允许新的发送流程开始。
-     * 主要用于在执行内部流程（如历史总结）后确保状态不会阻塞后续操作。
+     * 刷新聚合后的加载状态。
+     * 仅重新计算全局/按会话的加载派生值，不会直接改写具体 chat 的 isLoading。
      */
-    fun resetLoadingState() {
+    fun refreshGlobalLoadingState() {
         updateGlobalLoadingState()
     }
 }

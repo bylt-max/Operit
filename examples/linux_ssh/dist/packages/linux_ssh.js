@@ -579,6 +579,24 @@ const linuxSshTools = (function () {
         const argv = Array.isArray(args) ? args.map((arg) => shellQuote(arg)).join(" ") : "";
         return `${prefix}sh -c ${shellQuote(script)} sh${argv ? ` ${argv}` : ""}`;
     }
+    function buildRemotePathResolveLines(rawVarName, resolvedVarName, options) {
+        const opts = options || {};
+        const fallbackToHome = !!opts.fallbackToHome;
+        return [
+            `${resolvedVarName}="$${rawVarName}"`,
+            `if [ -z "$${resolvedVarName}" ]; then`,
+            fallbackToHome ? `  ${resolvedVarName}="$HOME"` : `  ${resolvedVarName}=""`,
+            "fi",
+            `case "$${resolvedVarName}" in`,
+            '  "~")',
+            `    ${resolvedVarName}="$HOME"`,
+            "    ;;",
+            '  "~/"*)',
+            `    ${resolvedVarName}="$HOME/\${${resolvedVarName}#~/}"`,
+            "    ;;",
+            "esac"
+        ];
+    }
     async function ensureRemoteTmux(config) {
         const installScript = [
             "if command -v tmux >/dev/null 2>&1; then",
@@ -649,14 +667,16 @@ const linuxSshTools = (function () {
         }, "linux_ssh_tmux_window_output");
     }
     async function readRemoteFileContent(config, path, lineStart, lineEnd, useSudo) {
-        let readCmd = "cat \"$1\"";
+        let readCmd = "cat \"$resolved_path\"";
         if (lineStart !== undefined || lineEnd !== undefined) {
             const start = lineStart === undefined ? 1 : lineStart;
             const end = lineEnd === undefined ? "$" : String(lineEnd);
-            readCmd = `sed -n '${start},${end}p' "$1"`;
+            readCmd = `sed -n '${start},${end}p' "$resolved_path"`;
         }
         const script = [
-            "if [ ! -f \"$1\" ]; then",
+            "raw_path=\"$1\"",
+            ...buildRemotePathResolveLines("raw_path", "resolved_path", { fallbackToHome: false }),
+            "if [ ! -f \"$resolved_path\" ]; then",
             "  echo '__OPERIT_FILE_NOT_FOUND__'",
             "  exit 4",
             "fi",
@@ -678,8 +698,10 @@ const linuxSshTools = (function () {
     async function writeRemoteFileContent(config, path, content, appendMode, useSudo) {
         const redirectOperator = appendMode ? ">>" : ">";
         const script = [
-            "mkdir -p \"$(dirname -- \"$1\")\"",
-            `printf '%s' \"$2\" ${redirectOperator} \"$1\"`
+            "raw_path=\"$1\"",
+            ...buildRemotePathResolveLines("raw_path", "resolved_path", { fallbackToHome: false }),
+            "mkdir -p \"$(dirname -- \"$resolved_path\")\"",
+            `printf '%s' \"$2\" ${redirectOperator} \"$resolved_path\"`
         ].join("\n");
         const command = buildRemoteShellCommand(script, [path, content], useSudo);
         const result = await runRemoteCommandHidden(config, command, config.timeoutMs, "fs");
@@ -856,15 +878,23 @@ const linuxSshTools = (function () {
                 }, targetWindowReady);
             }
             const windowName = targetWindowReady.windowName;
-            const runLine = workdir ? `cd ${shellQuote(workdir)} && ${command}` : command;
             const targetWindow = `${tmuxSessionName}:${windowName}`;
             const script = [
-                `tmux send-keys -t ${shellQuote(targetWindow)} ${shellQuote(runLine)} C-m`,
+                "target_window=\"$1\"",
+                "raw_workdir=\"$2\"",
+                "run_command=\"$3\"",
+                ...buildRemotePathResolveLines("raw_workdir", "resolved_workdir", { fallbackToHome: false }),
+                "run_line=\"$run_command\"",
+                "if [ -n \"$raw_workdir\" ]; then",
+                "  escaped_workdir=$(printf '%s' \"$resolved_workdir\" | sed \"s/'/'\\\"'\\\"'/g\")",
+                "  run_line=\"cd -- '$escaped_workdir' && $run_command\"",
+                "fi",
+                "tmux send-keys -t \"$target_window\" \"$run_line\" C-m",
                 "printf '__OPERIT_TMUX_RUN_OK__\\n'",
                 `echo "session=${tmuxSessionName}"`,
                 `echo "window=${windowName}"`
             ].join("\n");
-            const result = await runRemoteCommandHidden(config, script, config.timeoutMs, "tmux");
+            const result = await runRemoteCommandHidden(config, buildRemoteShellCommand(script, [targetWindow, workdir, command], false), config.timeoutMs, "tmux");
             const success = result.exitCode === 0 && !result.timedOut && result.output.includes("__OPERIT_TMUX_RUN_OK__");
             return await persistResultOutputIfTooLong({
                 success,
@@ -1222,14 +1252,19 @@ const linuxSshTools = (function () {
                 allowParamConnection: false,
                 allowParamAuth: false
             });
-            const path = firstNonBlank(params && asText(params.path), "~");
-            const command = `ls -la ${shellQuote(path)}`;
-            const result = await runRemoteCommandHidden(config, command, config.timeoutMs, "fs");
+            const path = asText(params && params.path).trim();
+            const displayPath = firstNonBlank(path, "~");
+            const script = [
+                "raw_path=\"$1\"",
+                ...buildRemotePathResolveLines("raw_path", "resolved_path", { fallbackToHome: true }),
+                "ls -la -- \"$resolved_path\""
+            ].join("\n");
+            const result = await runRemoteCommandHidden(config, buildRemoteShellCommand(script, [path], false), config.timeoutMs, "fs");
             const success = result.exitCode === 0 && !result.timedOut;
             return await persistResultOutputIfTooLong({
                 success,
                 packageVersion: PACKAGE_VERSION,
-                path,
+                path: displayPath,
                 exitCode: result.exitCode,
                 timedOut: result.timedOut,
                 output: result.output,

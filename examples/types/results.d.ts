@@ -239,6 +239,9 @@ export interface VisitWebResultData {
     links?: Link[];
     imageLinks?: string[];
     visitKey?: string;
+    contentSavedTo?: string;
+    contentTruncated?: boolean;
+    originalContentLength?: number;
     toString(): string;
 }
 

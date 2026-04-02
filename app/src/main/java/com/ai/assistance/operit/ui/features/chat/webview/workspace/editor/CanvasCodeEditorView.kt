@@ -117,6 +117,11 @@ class CanvasCodeEditorView @JvmOverloads constructor(
         isSubpixelText = true
         color = Color.WHITE
     }
+    private val systemGlyphPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        isSubpixelText = true
+        color = Color.WHITE
+        typeface = Typeface.DEFAULT
+    }
     private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val cursorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val currentLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
@@ -175,6 +180,17 @@ class CanvasCodeEditorView @JvmOverloads constructor(
     private var isScaling = false
 
     private var textChangedListener: ((String) -> Unit)? = null
+    private var resolvedKeywordColor = Color.WHITE
+    private var resolvedTypeColor = Color.WHITE
+    private var resolvedStringColor = Color.WHITE
+    private var resolvedCommentColor = Color.WHITE
+    private var resolvedNumberColor = Color.WHITE
+    private var resolvedFunctionColor = Color.WHITE
+    private var resolvedVariableColor = Color.WHITE
+    private var resolvedTextColor = Color.WHITE
+    private var cachedGutterWidth = 0f
+    private var cachedGutterDigits = -1
+    private var cachedGutterTextSize = -1f
 
     private val scaleGestureDetector =
         ScaleGestureDetector(
@@ -906,33 +922,47 @@ class CanvasCodeEditorView @JvmOverloads constructor(
         textPaint.typeface = editorTypeface
         metrics.update(textSizePx)
 
-        lineNumberPaint.apply {
-            textSize = textSizePx * 0.82f
-            color = theme.lineNumberColor.toArgb()
-            typeface = editorTypeface
-        }
-        activeLineNumberPaint.apply {
-            textSize = textSizePx * 0.82f
-            color = theme.textColor.toArgb()
-            typeface = Typeface.create(editorTypeface, Typeface.BOLD)
-        }
-
-        textPaint.apply {
-            color = theme.textColor.toArgb()
-            typeface = editorTypeface
-        }
-
+        val textColor = theme.textColor.toArgb()
+        val lineNumberColor = theme.lineNumberColor.toArgb()
         val backgroundColor = theme.background.toArgb()
         val gutterBackgroundColor = theme.gutterBackground.toArgb()
         val gutterBorderColor = theme.gutterBorder.toArgb()
         val selectionColor = theme.selectionColor.toArgb()
         val cursorColor = theme.cursorColor.toArgb()
+        val keywordColor = theme.keywordColor.toArgb()
+        val typeColor = theme.typeColor.toArgb()
+        val stringColor = theme.stringColor.toArgb()
+        val commentColor = theme.commentColor.toArgb()
+        val numberColor = theme.numberColor.toArgb()
+        val functionColor = theme.codeColor.toArgb()
+        val variableColor = theme.attributeColor.toArgb()
+
+        lineNumberPaint.apply {
+            textSize = textSizePx * 0.82f
+            color = lineNumberColor
+            typeface = editorTypeface
+        }
+        activeLineNumberPaint.apply {
+            textSize = textSizePx * 0.82f
+            color = textColor
+            typeface = Typeface.create(editorTypeface, Typeface.BOLD)
+        }
+
+        textPaint.apply {
+            color = textColor
+            typeface = editorTypeface
+        }
+        systemGlyphPaint.apply {
+            textSize = textSizePx
+            color = textColor
+            typeface = Typeface.DEFAULT
+        }
 
         backgroundPaint.color = backgroundColor
         gutterPaint.color = gutterBackgroundColor
         gutterBorderPaint.color = gutterBorderColor
         indentGuidePaint.color = blendColors(backgroundColor, gutterBorderColor, 0.68f)
-        activeGutterLinePaint.color = blendColors(gutterBackgroundColor, theme.textColor.toArgb(), 0.08f)
+        activeGutterLinePaint.color = blendColors(gutterBackgroundColor, textColor, 0.08f)
         gutterAccentPaint.color = blendColors(gutterBackgroundColor, gutterBorderColor, 0.82f)
         selectionPaint.color = selectionColor
         cursorPaint.color = cursorColor
@@ -940,6 +970,18 @@ class CanvasCodeEditorView @JvmOverloads constructor(
         composingPaint.color = cursorColor
         handlePaint.color = cursorColor
         handleStrokePaint.color = backgroundColor
+
+        resolvedKeywordColor = keywordColor
+        resolvedTypeColor = typeColor
+        resolvedStringColor = stringColor
+        resolvedCommentColor = commentColor
+        resolvedNumberColor = numberColor
+        resolvedFunctionColor = functionColor
+        resolvedVariableColor = variableColor
+        resolvedTextColor = textColor
+        cachedGutterDigits = -1
+        cachedGutterTextSize = -1f
+        cachedGutterWidth = 0f
     }
 
     private fun blendColors(baseColor: Int, overlayColor: Int, overlayRatio: Float): Int {
@@ -968,6 +1010,7 @@ class CanvasCodeEditorView @JvmOverloads constructor(
         }
 
         val gutterWidth = gutterWidth()
+        val textRegionLeft = if (showLineNumbers) gutterWidth else horizontalPaddingPx
         if (showLineNumbers && gutterWidth > 0f) {
             canvas.drawRect(0f, 0f, gutterWidth, canvas.height.toFloat(), gutterPaint)
         }
@@ -999,7 +1042,7 @@ class CanvasCodeEditorView @JvmOverloads constructor(
                 )
             }
             canvas.drawRect(
-                textRegionLeft(),
+                textRegionLeft,
                 lineTop,
                 canvas.width.toFloat(),
                 lineTop + metrics.lineHeight,
@@ -1010,19 +1053,19 @@ class CanvasCodeEditorView @JvmOverloads constructor(
         for (line in firstVisibleLine..lastVisibleLine) {
             val lineTop = verticalPaddingPx + line * metrics.lineHeight - scrollOffsetY
             if (showLineNumbers) {
-                drawLineNumber(canvas, line, lineTop)
+                drawLineNumber(canvas, line, lineTop, cursorLine, gutterWidth)
             }
         }
 
         canvas.save()
-        canvas.clipRect(textRegionLeft(), 0f, canvas.width.toFloat(), canvas.height.toFloat())
+        canvas.clipRect(textRegionLeft, 0f, canvas.width.toFloat(), canvas.height.toFloat())
         for (line in firstVisibleLine..lastVisibleLine) {
             val lineTop = verticalPaddingPx + line * metrics.lineHeight - scrollOffsetY
-            drawIndentGuides(canvas, line, lineTop)
-            drawTextForLine(canvas, line, lineTop)
-            drawSelectionForLine(canvas, line, lineTop)
-            drawComposingUnderline(canvas, line, lineTop)
-            drawCursorForLine(canvas, line, lineTop)
+            drawIndentGuides(canvas, line, lineTop, textRegionLeft)
+            drawTextForLine(canvas, line, lineTop, textRegionLeft)
+            drawSelectionForLine(canvas, line, lineTop, textRegionLeft)
+            drawComposingUnderline(canvas, line, lineTop, textRegionLeft)
+            drawCursorForLine(canvas, line, lineTop, cursorLine, textRegionLeft)
         }
         canvas.restore()
 
@@ -1031,14 +1074,19 @@ class CanvasCodeEditorView @JvmOverloads constructor(
         }
     }
 
-    private fun drawLineNumber(canvas: Canvas, line: Int, lineTop: Float) {
+    private fun drawLineNumber(
+        canvas: Canvas,
+        line: Int,
+        lineTop: Float,
+        currentLine: Int,
+        gutterWidth: Float
+    ) {
         val baseline = lineTop + metrics.baseline
         if (baseline < 0f || baseline > canvas.height + metrics.lineHeight) {
             return
         }
-        val currentLine = document.getLineForOffset(document.selectionEnd)
         val label = (line + 1).toString()
-        val x = gutterWidth() - gutterTrailingPaddingPx()
+        val x = gutterWidth - gutterTrailingPaddingPx()
         if (line == currentLine) {
             canvas.drawText(label, x, baseline, activeLineNumberPaint)
             return
@@ -1046,7 +1094,7 @@ class CanvasCodeEditorView @JvmOverloads constructor(
         canvas.drawText(label, x, baseline, lineNumberPaint)
     }
 
-    private fun drawIndentGuides(canvas: Canvas, line: Int, lineTop: Float) {
+    private fun drawIndentGuides(canvas: Canvas, line: Int, lineTop: Float, textRegionLeft: Float) {
         val lineStart = document.getLineStart(line)
         val lineEnd = document.getLineEnd(line)
         val text = document.text()
@@ -1069,11 +1117,11 @@ class CanvasCodeEditorView @JvmOverloads constructor(
 
         for (level in 1..indentLevels) {
             val x =
-                textRegionLeft() +
+                textRegionLeft +
                     level * TAB_SPACES * metrics.charWidth -
                     scrollOffsetX -
                     metrics.charWidth * 0.5f
-            if (x < textRegionLeft() || x > width.toFloat()) {
+            if (x < textRegionLeft || x > width.toFloat()) {
                 continue
             }
             canvas.drawLine(
@@ -1086,7 +1134,12 @@ class CanvasCodeEditorView @JvmOverloads constructor(
         }
     }
 
-    private fun drawSelectionForLine(canvas: Canvas, line: Int, lineTop: Float) {
+    private fun drawSelectionForLine(
+        canvas: Canvas,
+        line: Int,
+        lineTop: Float,
+        textRegionLeft: Float
+    ) {
         if (!document.hasSelection()) {
             return
         }
@@ -1109,22 +1162,22 @@ class CanvasCodeEditorView @JvmOverloads constructor(
 
         val left =
             if (selectionStart < lineStart) {
-                textRegionLeft()
+                textRegionLeft
             } else {
-                textRegionLeft() + xForOffsetInLine(start) - scrollOffsetX
+                textRegionLeft + xForOffsetInLine(start) - scrollOffsetX
             }
         val right =
             if (selectionEnd > lineEnd) {
-                textRegionLeft() + xForOffsetInLine(lineEnd) - scrollOffsetX
+                textRegionLeft + xForOffsetInLine(lineEnd) - scrollOffsetX
             } else {
-                textRegionLeft() + xForOffsetInLine(end) - scrollOffsetX
+                textRegionLeft + xForOffsetInLine(end) - scrollOffsetX
             }
         if (right <= left) {
             return
         }
 
         canvas.drawRect(
-            left.coerceAtLeast(textRegionLeft()),
+            left.coerceAtLeast(textRegionLeft),
             lineTop,
             right.coerceAtMost(width.toFloat()),
             lineTop + metrics.lineHeight,
@@ -1132,16 +1185,36 @@ class CanvasCodeEditorView @JvmOverloads constructor(
         )
     }
 
-    private fun drawTextForLine(canvas: Canvas, line: Int, lineTop: Float) {
+    private fun drawTextForLine(
+        canvas: Canvas,
+        line: Int,
+        lineTop: Float,
+        textRegionLeft: Float
+    ) {
         val lineStart = document.getLineStart(line)
         val lineEnd = document.getLineEnd(line)
         val text = document.text()
-        var x = textRegionLeft() - scrollOffsetX
+        var x = textRegionLeft - scrollOffsetX
         val baseline = lineTop + metrics.baseline
-        val leftClip = textRegionLeft() - metrics.charWidth * TAB_SPACES
+        val leftClip = textRegionLeft - metrics.charWidth * TAB_SPACES
         val rightClip = width.toFloat() + metrics.charWidth * TAB_SPACES
 
         var offset = lineStart
+        var runStart = -1
+        var runEnd = -1
+        var runX = 0f
+        var runColor = resolvedTextColor
+
+        fun flushRun() {
+            if (runStart < 0 || runEnd <= runStart) {
+                return
+            }
+            textPaint.color = runColor
+            canvas.drawText(text, runStart, runEnd, runX, baseline, textPaint)
+            runStart = -1
+            runEnd = -1
+        }
+
         while (offset < lineEnd) {
             val nextOffset = editorNextSymbolOffset(text, offset, lineEnd)
             val cellWidth = editorCellWidth(text, offset, lineEnd)
@@ -1152,25 +1225,54 @@ class CanvasCodeEditorView @JvmOverloads constructor(
                 continue
             }
             if (x > rightClip) {
+                flushRun()
                 break
             }
 
             if (text[offset] != '\t') {
-                textPaint.color = colorForOffset(offset)
-                textPaint.typeface =
-                    if (shouldRenderWithSystemGlyphs(text, offset, nextOffset)) {
-                        Typeface.DEFAULT
+                val usesSystemGlyphPaint =
+                    if (nextOffset == offset + 1) {
+                        shouldRenderWithSystemGlyphs(text[offset].code)
                     } else {
-                        editorTypeface
+                        shouldRenderWithSystemGlyphs(text, offset, nextOffset)
                     }
-                canvas.drawText(text, offset, nextOffset, x, baseline, textPaint)
+                val color = colorForOffset(offset)
+                val canBatch =
+                    !usesSystemGlyphPaint &&
+                        cellWidth == 1 &&
+                        nextOffset == offset + 1
+
+                if (canBatch) {
+                    if (runStart >= 0 && runColor == color && runEnd == offset) {
+                        runEnd = nextOffset
+                    } else {
+                        flushRun()
+                        runStart = offset
+                        runEnd = nextOffset
+                        runX = x
+                        runColor = color
+                    }
+                } else {
+                    flushRun()
+                    val paint = if (usesSystemGlyphPaint) systemGlyphPaint else textPaint
+                    paint.color = color
+                    canvas.drawText(text, offset, nextOffset, x, baseline, paint)
+                }
+            } else {
+                flushRun()
             }
             x += advance
             offset = nextOffset
         }
+        flushRun()
     }
 
-    private fun drawComposingUnderline(canvas: Canvas, line: Int, lineTop: Float) {
+    private fun drawComposingUnderline(
+        canvas: Canvas,
+        line: Int,
+        lineTop: Float,
+        textRegionLeft: Float
+    ) {
         if (!document.hasComposingRegion()) {
             return
         }
@@ -1183,17 +1285,23 @@ class CanvasCodeEditorView @JvmOverloads constructor(
         if (start >= end) {
             return
         }
-        val left = textRegionLeft() + xForOffsetInLine(start) - scrollOffsetX
-        val right = textRegionLeft() + xForOffsetInLine(end) - scrollOffsetX
+        val left = textRegionLeft + xForOffsetInLine(start) - scrollOffsetX
+        val right = textRegionLeft + xForOffsetInLine(end) - scrollOffsetX
         val y = lineTop + metrics.lineHeight - density * 3f
         canvas.drawLine(left, y, right, y, composingPaint)
     }
 
-    private fun drawCursorForLine(canvas: Canvas, line: Int, lineTop: Float) {
-        if (document.hasSelection() || line != document.getLineForOffset(document.selectionEnd)) {
+    private fun drawCursorForLine(
+        canvas: Canvas,
+        line: Int,
+        lineTop: Float,
+        cursorLine: Int,
+        textRegionLeft: Float
+    ) {
+        if (document.hasSelection() || line != cursorLine) {
             return
         }
-        val x = textRegionLeft() + xForOffsetInLine(document.selectionEnd) - scrollOffsetX
+        val x = textRegionLeft + xForOffsetInLine(document.selectionEnd) - scrollOffsetX
         canvas.drawRect(
             x,
             lineTop + density,
@@ -1229,16 +1337,16 @@ class CanvasCodeEditorView @JvmOverloads constructor(
                 LanguageSupport.DEFAULT_COLOR
             }
         return when (color) {
-            LanguageSupport.KEYWORD_COLOR -> theme.keywordColor.toArgb()
-            LanguageSupport.TYPE_COLOR -> theme.typeColor.toArgb()
-            LanguageSupport.STRING_COLOR -> theme.stringColor.toArgb()
-            LanguageSupport.COMMENT_COLOR -> theme.commentColor.toArgb()
-            LanguageSupport.NUMBER_COLOR -> theme.numberColor.toArgb()
-            LanguageSupport.FUNCTION_COLOR -> theme.codeColor.toArgb()
-            LanguageSupport.VARIABLE_COLOR -> theme.attributeColor.toArgb()
+            LanguageSupport.KEYWORD_COLOR -> resolvedKeywordColor
+            LanguageSupport.TYPE_COLOR -> resolvedTypeColor
+            LanguageSupport.STRING_COLOR -> resolvedStringColor
+            LanguageSupport.COMMENT_COLOR -> resolvedCommentColor
+            LanguageSupport.NUMBER_COLOR -> resolvedNumberColor
+            LanguageSupport.FUNCTION_COLOR -> resolvedFunctionColor
+            LanguageSupport.VARIABLE_COLOR -> resolvedVariableColor
             LanguageSupport.OPERATOR_COLOR,
             LanguageSupport.DEFAULT_COLOR,
-            0 -> theme.textColor.toArgb()
+            0 -> resolvedTextColor
             else -> color
         }
     }
@@ -1255,10 +1363,17 @@ class CanvasCodeEditorView @JvmOverloads constructor(
         if (!showLineNumbers) {
             return 0f
         }
-        val digitsText = "9".repeat(document.lineDigits())
-        val lineNumberWidth = lineNumberPaint.measureText(digitsText)
-        val padding = gutterLeadingPaddingPx() + gutterTrailingPaddingPx()
-        return max(lineNumberWidth + padding, density * 24f)
+        val digits = document.lineDigits()
+        val textSize = lineNumberPaint.textSize
+        if (digits != cachedGutterDigits || abs(textSize - cachedGutterTextSize) >= 0.5f) {
+            val digitsText = "9".repeat(digits)
+            val lineNumberWidth = lineNumberPaint.measureText(digitsText)
+            val padding = gutterLeadingPaddingPx() + gutterTrailingPaddingPx()
+            cachedGutterWidth = max(lineNumberWidth + padding, density * 24f)
+            cachedGutterDigits = digits
+            cachedGutterTextSize = textSize
+        }
+        return cachedGutterWidth
     }
 
     private fun textRegionLeft(): Float {
@@ -1580,6 +1695,16 @@ class CanvasCodeEditorView @JvmOverloads constructor(
         }
     }
 
+    private fun shouldRenderWithSystemGlyphs(codePoint: Int): Boolean {
+        return codePoint in 0x1F000..0x1FAFF ||
+            codePoint in 0x2600..0x27BF ||
+            codePoint in 0x1F3FB..0x1F3FF ||
+            codePoint in 0x1F1E6..0x1F1FF ||
+            codePoint in 0xFE00..0xFE0F ||
+            codePoint == 0x200D ||
+            codePoint == 0x20E3
+    }
+
     private fun shouldRenderWithSystemGlyphs(
         text: CharSequence,
         start: Int,
@@ -1589,15 +1714,7 @@ class CanvasCodeEditorView @JvmOverloads constructor(
         val safeEnd = end.coerceAtMost(text.length)
         while (index < safeEnd) {
             val codePoint = Character.codePointAt(text, index)
-            if (
-                codePoint in 0x1F000..0x1FAFF ||
-                    codePoint in 0x2600..0x27BF ||
-                    codePoint in 0x1F3FB..0x1F3FF ||
-                    codePoint in 0x1F1E6..0x1F1FF ||
-                    codePoint in 0xFE00..0xFE0F ||
-                    codePoint == 0x200D ||
-                    codePoint == 0x20E3
-            ) {
+            if (shouldRenderWithSystemGlyphs(codePoint)) {
                 return true
             }
             index += Character.charCount(codePoint)

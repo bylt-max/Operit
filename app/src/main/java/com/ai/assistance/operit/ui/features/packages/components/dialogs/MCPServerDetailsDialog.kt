@@ -1,6 +1,5 @@
 package com.ai.assistance.operit.ui.features.packages.components.dialogs
 
-import com.ai.assistance.operit.util.AppLogger
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -16,7 +15,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,9 +28,6 @@ import com.ai.assistance.operit.ui.features.packages.components.dialogs.content.
 import com.ai.assistance.operit.ui.features.packages.components.dialogs.header.MCPServerDetailsHeader
 import com.ai.assistance.operit.ui.features.packages.components.dialogs.tabs.MCPServerDetailsTabs
 import com.ai.assistance.operit.data.mcp.MCPLocalServer
-import java.io.File
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 /**
  * A dialog that displays detailed information about an MCP server.
@@ -59,13 +54,9 @@ fun MCPServerDetailsDialog(
         onUpdateConfig: (String) -> Unit = {},
         mdFontSize: Float = 14f
 ) {
-    // Local state for loaded README content
-    var readmeContent by remember { mutableStateOf<String?>(null) }
     val isInstalled = server.isInstalled
-    val coroutineScope = rememberCoroutineScope()
     val configuration = LocalConfiguration.current
     val screenHeight = configuration.screenHeightDp.dp
-    val screenWidth = configuration.screenWidthDp.dp
 
     // 添加标签页状态
     var selectedTabIndex by remember { mutableStateOf(0) }
@@ -75,31 +66,6 @@ fun MCPServerDetailsDialog(
 
     // 编辑结果同步到父组件
     LaunchedEffect(localPluginConfig) { onUpdateConfig(localPluginConfig) }
-
-    // Load README content for installed plugins
-    LaunchedEffect(server.id, installedPath) {
-        if (isInstalled && installedPath != null) {
-            coroutineScope.launch(Dispatchers.IO) {
-                try {
-                    val readmeFile = File(installedPath, "README.md")
-                    if (readmeFile.exists()) {
-                        readmeContent = readmeFile.readText()
-                    } else {
-                        // Try to find any markdown file
-                        val mdFiles =
-                                File(installedPath).listFiles { file ->
-                                    file.extension.equals("md", ignoreCase = true)
-                                }
-                        if (mdFiles?.isNotEmpty() == true) {
-                            readmeContent = mdFiles[0].readText()
-                        }
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e("MCPServerDetails", "Error reading README for ${server.id}", e)
-                }
-            }
-        }
-    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -142,8 +108,6 @@ fun MCPServerDetailsDialog(
                             // Details tab
                             MCPServerDetailsContent(
                                     server = server,
-                                    isInstalled = isInstalled,
-                                    readmeContent = readmeContent,
                                     modifier = Modifier.fillMaxSize(), // Fill the available space
                                     mdFontSize = mdFontSize.sp // Pass the font size parameter
                             )

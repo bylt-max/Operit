@@ -6286,6 +6286,9 @@
     <string name="skill_error_import_no_skill_md_in_path">导入失败：指定路径下未找到 SKILL.md</string>
     <string name="skill_error_import_skill_md_path_invalid">导入失败：SKILL.md 路径异常</string>
     <string name="skill_error_import_duplicate_name">导入失败：已存在同名 Skill：%1$s</string>
+    <string name="skill_error_missing_skill_md">未找到 SKILL.md：%1$s</string>
+    <string name="skill_error_duplicate_scanned_name">扫描到重复的 Skill 名称：%1$s（已被目录 %2$s 占用）</string>
+    <string name="skill_error_scan_failed">扫描 Skill 失败：%1$s</string>
     <string name="skill_imported_with_desc">已导入 Skill: %1$s（%2$s）</string>
     <string name="skill_imported">已导入 Skill: %1$s</string>
     <string name="skill_error_import_failed">导入失败: %1$s</string>

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Store
@@ -44,6 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
@@ -92,6 +94,8 @@ fun SkillConfigScreen(
 
     var selectedSkillName by remember { mutableStateOf<String?>(null) }
     var selectedSkillContent by remember { mutableStateOf<String?>(null) }
+    var skillLoadErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var showSkillLoadErrorsDialog by remember { mutableStateOf(false) }
 
     var showImportDialog by remember { mutableStateOf(false) }
     var importTabIndex by remember { mutableStateOf(0) }
@@ -109,9 +113,10 @@ fun SkillConfigScreen(
         try {
             val loaded =
                 withContext(Dispatchers.IO) {
-                    skillRepository.getAvailableSkillPackages()
+                    skillRepository.getAvailableSkillPackagesSnapshot()
                 }
-            skills = loaded
+            skills = loaded.first
+            skillLoadErrors = loaded.second
         } finally {
             isLoading = false
         }
@@ -248,6 +253,19 @@ fun SkillConfigScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.End
         ) {
+            if (skillLoadErrors.isNotEmpty()) {
+                SmallFloatingActionButton(
+                    onClick = { showSkillLoadErrorsDialog = true },
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Error,
+                        contentDescription = stringResource(R.string.error_occurred_simple)
+                    )
+                }
+            }
+
             FloatingActionButton(
                 onClick = onNavigateToSkillMarket,
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer,
@@ -621,6 +639,13 @@ fun SkillConfigScreen(
         )
     }
 
+    if (showSkillLoadErrorsDialog) {
+        SkillLoadErrorsDialog(
+            errors = skillLoadErrors,
+            onDismiss = { showSkillLoadErrorsDialog = false }
+        )
+    }
+
     if (selectedSkillName != null && selectedSkillContent != null) {
         val skillName = selectedSkillName!!
         AlertDialog(
@@ -711,6 +736,47 @@ private fun resolveUriDisplayName(context: Context, uri: Uri, fallback: String =
 
     val uriFallback = uri.lastPathSegment?.substringAfterLast('/').orEmpty()
     return uriFallback.ifBlank { fallback }
+}
+
+@Composable
+private fun SkillLoadErrorsDialog(
+    errors: Map<String, String>,
+    onDismiss: () -> Unit
+) {
+    val scrollState = rememberScrollState()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.error_occurred_simple)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(scrollState)
+            ) {
+                errors.toSortedMap().forEach { (skillFolderName, errorText) ->
+                    Text(
+                        text = skillFolderName,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = errorText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.ok))
+            }
+        }
+    )
 }
 
 @Composable

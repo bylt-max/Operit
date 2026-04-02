@@ -149,13 +149,15 @@ fun SummaryMessageComposable(
                         modifier = Modifier.align(Alignment.End),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        TextButton(
-                            onClick = {
-                                onEdit?.invoke(message)
-                                showSummaryDialog = false
+                        if (onEdit != null) {
+                            TextButton(
+                                onClick = {
+                                    onEdit.invoke(message)
+                                    showSummaryDialog = false
+                                }
+                            ) {
+                                Text(context.getString(R.string.edit))
                             }
-                        ) {
-                            Text(context.getString(R.string.edit))
                         }
                         TextButton(
                             onClick = {

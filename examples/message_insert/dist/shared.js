@@ -27,6 +27,8 @@ const LEGACY_ATTACHMENT_ID_PREFIXES = [
     "message_insert_extra_notifications_",
 ];
 const NOTIFICATION_FETCH_LIMIT = 5;
+const MEMORY_QUERY_TOKEN_LIMIT = 32;
+const MEMORY_QUERY_CLAUSE_SPLIT_REGEX = /[。！？!?；;，,、]+/;
 const ZH_CN_I18N = {
     menuTitle: "额外信息注入",
     menuDescription: "发送消息时自动附加时间、电量、天气、位置、通知、记忆等额外信息，并与设置页开关同步",
@@ -548,6 +550,61 @@ function expandHanKeywordSegment(segment) {
     }
     return Array.from(tokens);
 }
+function collectMemorySearchTokensFromClause(clause) {
+    const rawSegments = clause.match(/[\u3400-\u9FFF]+|[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*/g) || [];
+    const tokens = [];
+    const seen = new Set();
+    const pushToken = (token) => {
+        const normalizedToken = String(token || "").trim().toLowerCase();
+        if (normalizedToken.length < 2 || seen.has(normalizedToken)) {
+            return;
+        }
+        seen.add(normalizedToken);
+        tokens.push(normalizedToken);
+    };
+    rawSegments.forEach(segment => {
+        if (/^[\u3400-\u9FFF]+$/.test(segment)) {
+            expandHanKeywordSegment(segment).forEach(pushToken);
+            return;
+        }
+        const normalizedToken = segment.trim().toLowerCase();
+        pushToken(normalizedToken);
+        normalizedToken
+            .split(/[._-]+/)
+            .forEach(pushToken);
+    });
+    return tokens;
+}
+function buildBalancedMemorySearchTokens(tokenGroups, limit) {
+    const results = [];
+    const seen = new Set();
+    const cursors = tokenGroups.map(() => 0);
+    // Round-robin token picking keeps later feedback clauses from being crowded out.
+    while (results.length < limit) {
+        let advanced = false;
+        for (let index = 0; index < tokenGroups.length; index += 1) {
+            const group = tokenGroups[index];
+            while (cursors[index] < group.length) {
+                const token = group[cursors[index]];
+                cursors[index] += 1;
+                if (!token || seen.has(token)) {
+                    continue;
+                }
+                seen.add(token);
+                results.push(token);
+                advanced = true;
+                break;
+            }
+            if (results.length >= limit) {
+                break;
+            }
+        }
+        if (!advanced) {
+            break;
+        }
+    }
+    return results;
+}
 function buildMemorySearchQuery(messageText) {
     const normalized = String(messageText || "")
         .replace(/<attachment\b[\s\S]*?<\/attachment>/gi, " ")
@@ -558,28 +615,14 @@ function buildMemorySearchQuery(messageText) {
     if (!normalized) {
         return "";
     }
-    const rawSegments = normalized.match(/[\u3400-\u9FFF]+|[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*/g) || [];
-    const tokens = new Set();
-    rawSegments.forEach(segment => {
-        if (/^[\u3400-\u9FFF]+$/.test(segment)) {
-            expandHanKeywordSegment(segment).forEach(token => {
-                if (token.length >= 2) {
-                    tokens.add(token);
-                }
-            });
-            return;
-        }
-        const normalizedToken = segment.trim().toLowerCase();
-        if (normalizedToken.length >= 2) {
-            tokens.add(normalizedToken);
-        }
-        normalizedToken
-            .split(/[._-]+/)
-            .map(part => part.trim().toLowerCase())
-            .filter(part => part.length >= 2)
-            .forEach(part => tokens.add(part));
-    });
-    return Array.from(tokens).slice(0, 16).join("|");
+    const clauses = normalized
+        .split(MEMORY_QUERY_CLAUSE_SPLIT_REGEX)
+        .map(item => item.trim())
+        .filter(Boolean);
+    const tokenGroups = (clauses.length ? clauses : [normalized])
+        .map(collectMemorySearchTokensFromClause)
+        .filter(group => group.length);
+    return buildBalancedMemorySearchTokens(tokenGroups, MEMORY_QUERY_TOKEN_LIMIT).join("|");
 }
 async function buildMemoryContent(messageText, chatId) {
     const text = resolveExtraInfoI18n();

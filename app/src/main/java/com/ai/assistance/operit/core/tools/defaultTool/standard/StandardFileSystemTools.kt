@@ -86,6 +86,7 @@ open class StandardFileSystemTools(protected val context: Context) {
     companion object {
         protected const val TAG = "FileSystemTools"
         private const val RIPGREP_EXECUTOR_POOL_SIZE = 4
+        private const val RIPGREP_COMMAND_TIMEOUT_MS = 10_000L
         private val ripgrepInstallMutex = Mutex()
         @Volatile
         private var ripgrepAvailabilityVerified = false
@@ -647,7 +648,8 @@ open class StandardFileSystemTools(protected val context: Context) {
             result =
                 executeInRipgrepExecutor(
                     command = command,
-                    executorKey = executorKey
+                    executorKey = executorKey,
+                    timeoutMs = RIPGREP_COMMAND_TIMEOUT_MS
                 )
         )
     }

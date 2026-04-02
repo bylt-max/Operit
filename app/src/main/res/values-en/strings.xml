@@ -6259,6 +6259,9 @@
     <string name="skill_error_import_no_skill_md_in_path">Import failed: SKILL.md not found in specified path</string>
     <string name="skill_error_import_skill_md_path_invalid">Import failed: SKILL.md path is invalid</string>
     <string name="skill_error_import_duplicate_name">Import failed: Skill with same name already exists: %1$s</string>
+    <string name="skill_error_missing_skill_md">SKILL.md not found: %1$s</string>
+    <string name="skill_error_duplicate_scanned_name">Duplicate Skill name detected during scan: %1$s (already used by directory %2$s)</string>
+    <string name="skill_error_scan_failed">Failed to scan Skill: %1$s</string>
     <string name="skill_imported_with_desc">Imported Skill: %1$s (%2$s)</string>
     <string name="skill_imported">Imported Skill: %1$s</string>
     <string name="skill_error_import_failed">Import failed: %1$s</string>

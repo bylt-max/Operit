@@ -6,16 +6,23 @@ import java.io.File
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
 import java.util.concurrent.ConcurrentHashMap
-import java.nio.file.Path
 
 /**
  * 文本分词工具类 - 提供中文和多语言文本的分词功能
  */
 object TextSegmenter {
     private const val TAG = "TextSegmenter"
-    
+    private const val PREWARM_TEXT = "搜索记忆 分词预热"
+
     // 使用延迟初始化，避免不必要的资源消耗
     private val segmenter by lazy { JiebaSegmenter() }
+
+    private val initLock = Any()
+
+    @Volatile
+    private var baseInitialized = false
+
+    private val loadedUserDictPaths = ConcurrentHashMap.newKeySet<String>()
     
     // 关键词缓存，提高性能
     private val segmentCache = ConcurrentHashMap<String, List<String>>()
@@ -28,21 +35,45 @@ object TextSegmenter {
      * @param context 应用上下文
      * @param customDictPath 自定义词典路径（可选）
      */
+    @Suppress("UNUSED_PARAMETER")
     fun initialize(context: Context, customDictPath: String? = null) {
-        try {
-            // Jieba 分词器默认会加载内置词典
+        if (baseInitialized && customDictPath.isNullOrBlank()) return
 
-            // 如果提供了自定义词典，加载它
-            customDictPath?.let {
-                val dictFile = File(it)
-                if (dictFile.exists()) {
-                    WordDictionary.getInstance().loadUserDict(dictFile.toPath())
-                    AppLogger.d(TAG, "已加载自定义词典: $it")
+        val startTime = System.currentTimeMillis()
+        try {
+            synchronized(initLock) {
+                val dictionary = WordDictionary.getInstance()
+
+                // 如果提供了自定义词典，加载它
+                customDictPath
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { loadCustomDictionaryIfNeeded(dictionary, it) }
+
+                if (!baseInitialized) {
+                    // 通过一次真实分词触发 Jieba 词典加载，避免首个搜索请求卡顿。
+                    segmenter.process(PREWARM_TEXT, JiebaSegmenter.SegMode.SEARCH)
+                    baseInitialized = true
+                    AppLogger.d(
+                        TAG,
+                        "分词器预热完成 - ${System.currentTimeMillis() - startTime}ms"
+                    )
                 }
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "初始化分词器失败", e)
         }
+    }
+
+    private fun loadCustomDictionaryIfNeeded(dictionary: WordDictionary, customDictPath: String) {
+        val dictFile = File(customDictPath)
+        if (!dictFile.exists()) return
+
+        val normalizedPath = dictFile.absolutePath
+        if (normalizedPath in loadedUserDictPaths) return
+
+        dictionary.loadUserDict(dictFile.toPath())
+        loadedUserDictPaths.add(normalizedPath)
+        AppLogger.d(TAG, "已加载自定义词典: $normalizedPath")
     }
     
     /**

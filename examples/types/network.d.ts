@@ -22,7 +22,10 @@ export namespace Net {
     function httpPost(url: string, body: string | object, ignore_ssl?: boolean): Promise<HttpResponseData>;
 
     /**
-     * Visit a webpage and extract its content
+     * Visit a webpage and extract readable webpage content.
+     * Not a replacement for raw HTTP GET/POST: when you actually need API
+     * responses or precise response bodies, use httpGet/httpPost/http instead,
+     * otherwise this may return empty or incomplete content.
      * @param urlOrParams - URL to visit, or an object with visit parameters.
      */
     function visit(urlOrParams: string | {

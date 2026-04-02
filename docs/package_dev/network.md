@@ -92,6 +92,10 @@ visit(
 
 - 既支持直接访问 URL。
 - 也支持基于已有 `visit_key` 继续访问某个链接。
+- 这是“访问网页并提取可读内容”的工具，不是原始 HTTP GET/POST 的替代品。
+- 如果你真正需要的是接口响应体、AJAX 返回值、精确 headers/status/body，应该使用 `httpGet()`、`httpPost()` 或 `http()`；误用 `visit()` 时可能出现空返回或内容不完整。
+- 当正文过长时，`VisitWebResultData.content` 可能只保留预览，完整内容会写入 `contentSavedTo` 指向的本地文件。
+- 遇到 `contentSavedTo` 时，优先对该路径使用 `read_file_part`、`read_file_full` 或 `grep_code`。
 
 ### 持久浏览器会话
 
@@ -188,6 +192,9 @@ const page = await Tools.Net.visit({
 });
 console.log(page.title);
 console.log(page.content);
+
+// If you need raw API responses instead of webpage extraction,
+// use httpGet/httpPost/http rather than visit().
 ```
 
 ### 持久会话中执行点击

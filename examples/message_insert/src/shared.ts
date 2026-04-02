@@ -19,6 +19,8 @@ const LEGACY_ATTACHMENT_ID_PREFIXES = [
 ] as const;
 
 const NOTIFICATION_FETCH_LIMIT = 5;
+const MEMORY_QUERY_TOKEN_LIMIT = 32;
+const MEMORY_QUERY_CLAUSE_SPLIT_REGEX = /[。！？!?；;，,、]+/;
 
 export type ExtraInfoInjectionSettings = {
   masterEnabled: boolean;
@@ -715,6 +717,80 @@ function expandHanKeywordSegment(segment: string): string[] {
   return Array.from(tokens);
 }
 
+function collectMemorySearchTokensFromClause(clause: string): string[] {
+  const rawSegments =
+    clause.match(/[\u3400-\u9FFF]+|[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*/g) || [];
+  const tokens: string[] = [];
+  const seen = new Set<string>();
+
+  const pushToken = (token: string) => {
+    const normalizedToken = String(token || "").trim().toLowerCase();
+    if (normalizedToken.length < 2 || seen.has(normalizedToken)) {
+      return;
+    }
+    seen.add(normalizedToken);
+    tokens.push(normalizedToken);
+  };
+
+  rawSegments.forEach(segment => {
+    if (/^[\u3400-\u9FFF]+$/.test(segment)) {
+      expandHanKeywordSegment(segment).forEach(pushToken);
+      return;
+    }
+
+    const normalizedToken = segment.trim().toLowerCase();
+    pushToken(normalizedToken);
+
+    normalizedToken
+      .split(/[._-]+/)
+      .forEach(pushToken);
+  });
+
+  return tokens;
+}
+
+function buildBalancedMemorySearchTokens(
+  tokenGroups: string[][],
+  limit: number
+): string[] {
+  const results: string[] = [];
+  const seen = new Set<string>();
+  const cursors = tokenGroups.map(() => 0);
+
+  // Round-robin token picking keeps later feedback clauses from being crowded out.
+  while (results.length < limit) {
+    let advanced = false;
+
+    for (let index = 0; index < tokenGroups.length; index += 1) {
+      const group = tokenGroups[index];
+
+      while (cursors[index] < group.length) {
+        const token = group[cursors[index]];
+        cursors[index] += 1;
+
+        if (!token || seen.has(token)) {
+          continue;
+        }
+
+        seen.add(token);
+        results.push(token);
+        advanced = true;
+        break;
+      }
+
+      if (results.length >= limit) {
+        break;
+      }
+    }
+
+    if (!advanced) {
+      break;
+    }
+  }
+
+  return results;
+}
+
 function buildMemorySearchQuery(messageText: string): string {
   const normalized = String(messageText || "")
     .replace(/<attachment\b[\s\S]*?<\/attachment>/gi, " ")
@@ -727,33 +803,19 @@ function buildMemorySearchQuery(messageText: string): string {
     return "";
   }
 
-  const rawSegments =
-    normalized.match(/[\u3400-\u9FFF]+|[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*/g) || [];
-  const tokens = new Set<string>();
+  const clauses = normalized
+    .split(MEMORY_QUERY_CLAUSE_SPLIT_REGEX)
+    .map(item => item.trim())
+    .filter(Boolean);
 
-  rawSegments.forEach(segment => {
-    if (/^[\u3400-\u9FFF]+$/.test(segment)) {
-      expandHanKeywordSegment(segment).forEach(token => {
-        if (token.length >= 2) {
-          tokens.add(token);
-        }
-      });
-      return;
-    }
+  const tokenGroups = (clauses.length ? clauses : [normalized])
+    .map(collectMemorySearchTokensFromClause)
+    .filter(group => group.length);
 
-    const normalizedToken = segment.trim().toLowerCase();
-    if (normalizedToken.length >= 2) {
-      tokens.add(normalizedToken);
-    }
-
-    normalizedToken
-      .split(/[._-]+/)
-      .map(part => part.trim().toLowerCase())
-      .filter(part => part.length >= 2)
-      .forEach(part => tokens.add(part));
-  });
-
-  return Array.from(tokens).slice(0, 16).join("|");
+  return buildBalancedMemorySearchTokens(
+    tokenGroups,
+    MEMORY_QUERY_TOKEN_LIMIT
+  ).join("|");
 }
 
 async function buildMemoryContent(

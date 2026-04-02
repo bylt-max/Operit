@@ -517,7 +517,12 @@ private fun MessageItem(
                     bubbleAiContentPaddingLeft = bubbleAiContentPaddingLeft,
                     bubbleAiContentPaddingRight = bubbleAiContentPaddingRight,
                     isHidden = isHidden,
-                    onRoleAvatarLongPress = onMentionRoleFromAvatar
+                    onDeleteMessage = onDeleteMessage,
+                    index = index,
+                    onRoleAvatarLongPress = onMentionRoleFromAvatar,
+                    onEditSummary = { summaryMessage ->
+                        onSelectMessageToEdit?.invoke(index, summaryMessage, "summary")
+                    }
                 )
             }
         }

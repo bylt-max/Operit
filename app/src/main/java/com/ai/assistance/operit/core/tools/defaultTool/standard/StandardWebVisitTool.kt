@@ -73,6 +73,8 @@ import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.model.ToolValidationResult
+import com.ai.assistance.operit.util.OperitPaths
+import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -97,6 +99,9 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
 
         private const val USER_AGENT_MOBILE_ANDROID =
                 "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+        private const val MAX_INLINE_VISIT_CONTENT_CHARS = 12_000
+        private const val MAX_INLINE_VISIT_CONTENT_PREVIEW_CHARS = 8_000
 
         // Cache to store visit results
         private val visitCache = ConcurrentHashMap<String, VisitWebResultData>()
@@ -445,13 +450,99 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
                     imageLinks = if (includeImageLinks) result.imageLinks else emptyList(),
                     visitKey = visitKey
             )
-            visitCache[visitKey] = resultData
-            resultData
+            val compactResultData = persistVisitContentIfNeeded(resultData)
+            visitCache[visitKey] = compactResultData
+            compactResultData
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error parsing extracted web content", e)
             // Fallback for old format or error
-            VisitWebResultData(url = url, title = "Error", content = extractedJson)
+            persistVisitContentIfNeeded(
+                    VisitWebResultData(url = url, title = "Error", content = extractedJson)
+            )
         }
+    }
+
+    private fun persistVisitContentIfNeeded(resultData: VisitWebResultData): VisitWebResultData {
+        val fullContent = resultData.content
+        if (fullContent.length <= MAX_INLINE_VISIT_CONTENT_CHARS) {
+            return resultData
+        }
+
+        val outputFile = writeVisitResultToFile(resultData)
+        val preview = buildInlineContentPreview(fullContent, outputFile.absolutePath)
+
+        return resultData.copy(
+                content = preview,
+                contentSavedTo = outputFile.absolutePath,
+                contentTruncated = true,
+                originalContentLength = fullContent.length
+        )
+    }
+
+    private fun writeVisitResultToFile(resultData: VisitWebResultData): File {
+        val outputDir = OperitPaths.cleanOnExitInternalDir(context)
+        val host =
+                runCatching { android.net.Uri.parse(resultData.url).host.orEmpty() }
+                        .getOrDefault("")
+                        .replace(Regex("[^A-Za-z0-9._-]+"), "_")
+                        .trim('_')
+                        .ifBlank { "page" }
+        val file =
+                File(
+                        outputDir,
+                        "visit_web_${host}_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}.txt"
+                )
+        file.writeText(buildFullVisitResultText(resultData), Charsets.UTF_8)
+        return file
+    }
+
+    private fun buildInlineContentPreview(fullContent: String, savedPath: String): String {
+        val preview = fullContent.take(MAX_INLINE_VISIT_CONTENT_PREVIEW_CHARS).trimEnd()
+        val note = "\n\n[Content truncated. Full content saved to file: $savedPath]"
+        return preview + note
+    }
+
+    private fun buildFullVisitResultText(resultData: VisitWebResultData): String {
+        val sb = StringBuilder()
+
+        resultData.visitKey?.let { sb.appendLine("Visit key: $it") }
+        if (resultData.title.isNotBlank()) {
+            sb.appendLine("Title: ${resultData.title}")
+        }
+        sb.appendLine("URL: ${resultData.url}")
+
+        if (resultData.metadata.isNotEmpty()) {
+            sb.appendLine()
+            sb.appendLine("Metadata:")
+            resultData.metadata.forEach { (key, value) ->
+                sb.appendLine("$key: $value")
+            }
+        }
+
+        if (resultData.links.isNotEmpty()) {
+            sb.appendLine()
+            sb.appendLine("Results:")
+            resultData.links.forEachIndexed { index, link ->
+                sb.appendLine("[${index + 1}] ${link.text}")
+                sb.appendLine("    URL: ${link.url}")
+            }
+        }
+
+        if (resultData.imageLinks.isNotEmpty()) {
+            sb.appendLine()
+            sb.appendLine("Images:")
+            resultData.imageLinks.forEachIndexed { index, link ->
+                val name = link.substringAfterLast('/').substringBefore('?').ifBlank { "image" }
+                sb.appendLine("[${index + 1}] $name")
+                sb.appendLine("    URL: $link")
+            }
+        }
+
+        sb.appendLine()
+        sb.appendLine("Content:")
+        sb.append(resultData.content)
+
+        return sb.toString()
     }
 
     /** 使用WebView加载页面并提取内容 */

@@ -25,6 +25,7 @@ class SkillManager private constructor(private val context: Context) {
     }
 
     private val availableSkills = mutableMapOf<String, SkillPackage>()
+    private val skillLoadErrors = mutableMapOf<String, String>()
 
     private fun getSkillsRootDir(): File {
         val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
@@ -42,11 +43,14 @@ class SkillManager private constructor(private val context: Context) {
 
     fun refreshAvailableSkills() {
         availableSkills.clear()
+        skillLoadErrors.clear()
 
         val skillsDir = try {
             getSkillsRootDir()
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error getting skills directory", e)
+            skillLoadErrors[context.getString(R.string.skills)] =
+                context.getString(R.string.skill_error_cannot_access_dir, e.message ?: "")
             return
         }
 
@@ -62,14 +66,28 @@ class SkillManager private constructor(private val context: Context) {
                 if (primary.exists()) primary else File(child, "skill.md")
             }
 
-            if (!skillFile.exists() || !skillFile.isFile) continue
+            if (!skillFile.exists() || !skillFile.isFile) {
+                skillLoadErrors[child.name] = context.getString(
+                    R.string.skill_error_missing_skill_md,
+                    child.absolutePath
+                )
+                continue
+            }
 
             try {
                 val (name, description) = parseSkillMetadata(skillFile)
                 val skillName = name.ifBlank { child.name }
                 val skillDesc = description.ifBlank { "" }
 
-                if (availableSkills.containsKey(skillName)) continue
+                if (availableSkills.containsKey(skillName)) {
+                    val existingDirName = availableSkills[skillName]?.directory?.name ?: skillName
+                    skillLoadErrors[child.name] = context.getString(
+                        R.string.skill_error_duplicate_scanned_name,
+                        skillName,
+                        existingDirName
+                    )
+                    continue
+                }
 
                 availableSkills[skillName] = SkillPackage(
                     name = skillName,
@@ -79,6 +97,10 @@ class SkillManager private constructor(private val context: Context) {
                 )
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Error loading skill from ${skillFile.absolutePath}", e)
+                skillLoadErrors[child.name] = context.getString(
+                    R.string.skill_error_scan_failed,
+                    e.message ?: e.javaClass.simpleName
+                )
             }
         }
     }
@@ -135,6 +157,16 @@ class SkillManager private constructor(private val context: Context) {
     fun getAvailableSkills(): Map<String, SkillPackage> {
         refreshAvailableSkills()
         return availableSkills.toMap()
+    }
+
+    fun getAvailableSkillsSnapshot(): Pair<Map<String, SkillPackage>, Map<String, String>> {
+        refreshAvailableSkills()
+        return availableSkills.toMap() to skillLoadErrors.toMap()
+    }
+
+    fun getSkillLoadErrors(): Map<String, String> {
+        refreshAvailableSkills()
+        return skillLoadErrors.toMap()
     }
 
     fun readSkillContent(skillName: String): String? {

@@ -722,7 +722,7 @@ exports.hello_world = MyNewScript.hello_world;
 这个脚本实现了一个实用的多平台搜索引擎聚合工具，是学习网络操作的最佳范例。
 
 *   **学习重点**:
-    *   **网络请求**: 演示了如何使用 `Tools.Net.visit` 来访问网页并获取内容。
+    *   **网络请求**: 演示了如何使用 `Tools.Net.visit` 来访问网页并获取可读内容。它不等价于原始 HTTP GET/POST；如果你需要接口响应体，请改用 `httpGet` / `httpPost` / `http`。
     *   **多工具聚合**: `combined_search` 函数展示了如何在一个工具内部调用其他多个工具的逻辑，并使用 `Promise.all` 来并发执行它们，极大地提升了效率。
     *   **代码复用**: `performSearch` 作为一个内部辅助函数，被多个导出的工具复用，展示了良好的代码组织。
 

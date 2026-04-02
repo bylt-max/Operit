@@ -12,6 +12,7 @@
   },
   "env": [
     "NANOBANANA_API_KEY",
+    "NANOBANANA_API_BASE_URL",
     "BEEIMG_API_KEY"
   ],
   "category": "Draw",
@@ -49,8 +50,9 @@ const nanobananaDraw = (function () {
     const BEEIMG_UPLOAD_ENDPOINT = "https://beeimg.com/api/upload/file/json/";
 
     // API配置
-    const API_ENDPOINT = "https://grsai.dakka.com.cn/v1/draw/nano-banana";
-    const RESULT_ENDPOINT = "https://grsai.dakka.com.cn/v1/draw/result";
+    const DEFAULT_API_BASE_URL = "https://grsai.dakka.com.cn";
+    const DRAW_API_PATH = "v1/draw/nano-banana";
+    const RESULT_API_PATH = "v1/draw/result";
     const MODEL_PRO = "nano-banana-pro";
     const MODEL_NANO = "nano-banana";
     const DEFAULT_MODEL = MODEL_PRO;
@@ -118,6 +120,39 @@ const nanobananaDraw = (function () {
 
     function getBeeimgApiKey(): string {
         return getEnv("BEEIMG_API_KEY") || "";
+    }
+
+    function joinUrl(baseUrl: string, path: string): string {
+        const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+        const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
+        return `${normalizedBase}${normalizedPath}`;
+    }
+
+    function getApiBaseUrl(): string {
+        const fromEnv = (getEnv("NANOBANANA_API_BASE_URL") || "").trim();
+        if (fromEnv) return fromEnv;
+        return DEFAULT_API_BASE_URL;
+    }
+
+    function getDrawEndpoint(baseUrl: string): string {
+        const trimmed = baseUrl.trim();
+        if (!trimmed) return joinUrl(DEFAULT_API_BASE_URL, DRAW_API_PATH);
+        if (trimmed.includes("/v1/draw/nano-banana")) return trimmed;
+        if (trimmed.endsWith("/v1")) return joinUrl(trimmed, "draw/nano-banana");
+        if (trimmed.endsWith("/v1/")) return joinUrl(trimmed, "draw/nano-banana");
+        return joinUrl(trimmed, DRAW_API_PATH);
+    }
+
+    function getResultEndpoint(baseUrl: string): string {
+        const trimmed = baseUrl.trim();
+        if (!trimmed) return joinUrl(DEFAULT_API_BASE_URL, RESULT_API_PATH);
+        if (trimmed.includes("/v1/draw/result")) return trimmed;
+        if (trimmed.includes("/v1/draw/nano-banana")) {
+            return trimmed.replace("/v1/draw/nano-banana", "/v1/draw/result");
+        }
+        if (trimmed.endsWith("/v1")) return joinUrl(trimmed, "draw/result");
+        if (trimmed.endsWith("/v1/")) return joinUrl(trimmed, "draw/result");
+        return joinUrl(trimmed, RESULT_API_PATH);
     }
 
     function guessMimeTypeFromPath(filePath: string): string {
@@ -327,6 +362,7 @@ const nanobananaDraw = (function () {
         max_wait_time_ms?: number;
     }): Promise<string> {
         const apiKey = getApiKey();
+        const endpoint = getDrawEndpoint(getApiBaseUrl());
 
         // 构建请求体 - 使用异步模式（webHook: "-1"）
         const body: Record<string, unknown> = {
@@ -361,7 +397,7 @@ const nanobananaDraw = (function () {
 
         const request = client
             .newRequest()
-            .url(API_ENDPOINT)
+            .url(endpoint)
             .method("POST")
             .headers(headers)
             .body(JSON.stringify(body), "json");
@@ -401,84 +437,100 @@ const nanobananaDraw = (function () {
         return taskId;
     }
 
-    async function pollForResult(taskId: string, options?: { poll_interval_ms?: number; max_wait_time_ms?: number }): Promise<string> {
+    async function pollForResult(taskId: string, options: { poll_interval_ms?: number; max_wait_time_ms?: number } = {}): Promise<string> {
         const apiKey = getApiKey();
+        const endpoint = getResultEndpoint(getApiBaseUrl());
+        const pollIntervalMs = normalizePositiveInt(options.poll_interval_ms, POLL_INTERVAL);
+        const maxWaitTimeMs = normalizePositiveInt(options.max_wait_time_ms, MAX_WAIT_TIME);
         const startTime = Date.now();
-        let attempts = 0;
+        let attempt = 0;
 
-        const pollIntervalMs = normalizePositiveInt(options?.poll_interval_ms, POLL_INTERVAL);
-        const maxWaitTimeMs = normalizePositiveInt(options?.max_wait_time_ms, MAX_WAIT_TIME);
-
-        // 构建结果查询请求
-        const requestBody = JSON.stringify({ id: taskId });
-        const headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "Authorization": `Bearer ${apiKey}`
+        const doSleep = async (ms: number): Promise<void> => {
+            await Tools.System.sleep(ms);
         };
 
         while (Date.now() - startTime < maxWaitTimeMs) {
-            attempts++;
-            console.log(`第${attempts}次查询任务状态...`);
+            attempt++;
+            console.log(`第${attempt}次查询任务状态...`);
 
-            // 查询结果
-            const request = client
-                .newRequest()
-                .url(RESULT_ENDPOINT)
-                .method("POST")
-                .headers(headers)
-                .body(requestBody, "json");
-
-            const response = await request.build().execute();
-
-            if (!response.isSuccessful()) {
-                throw new Error(`查询结果失败: ${response.statusCode} - ${response.content}`);
-            }
-
-            let parsed: unknown;
             try {
-                parsed = JSON.parse(response.content) as unknown;
-            } catch (e: unknown) {
-                throw new Error(`解析结果响应失败: ${getErrorMessage(e)}`);
-            }
+                const request = client
+                    .newRequest()
+                    .url(endpoint)
+                    .method("POST")
+                    .headers({
+                        "accept": "application/json",
+                        "content-type": "application/json",
+                        "Authorization": `Bearer ${apiKey}`
+                    })
+                    .body(JSON.stringify({ id: taskId }), "json");
 
-            if (!isRecord(parsed)) {
-                console.warn(`查询响应异常: ${JSON.stringify(parsed)}`);
-                await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-                continue;
-            }
+                const response = await request.build().execute();
 
-            if (!isApiSuccessResponse(parsed)) {
-                throw new Error(`查询结果失败: ${extractMessage(parsed, response.content)}`);
-            }
-
-            const data = extractTaskPayload(parsed);
-            if (!data) {
-                console.warn(`查询响应异常: ${JSON.stringify(parsed)}`);
-                await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-                continue;
-            }
-
-            const progress: number = normalizeProgress(data["progress"]);
-            const status: string = normalizeStatus(data["status"]);
-            const imageUrl = extractImageUrlFromPayload(data);
-
-            console.log(`当前进度: ${progress}% | 状态: ${status || "unknown"}`);
-
-            if (isSuccessStatus(status) || (progress >= 100 && imageUrl.length > 0)) {
-                console.log("✅ 任务完成!");
-                if (imageUrl.length === 0) {
-                    throw new Error("任务完成但响应中未找到图片URL: " + JSON.stringify(data));
+                if (!response.isSuccessful()) {
+                    console.warn(`⚠️ 查询请求未成功 (HTTP ${response.statusCode}): ${response.content}，将重试...`);
+                    await doSleep(pollIntervalMs);
+                    continue;
                 }
-                return imageUrl;
-            } else if (isFailureStatus(status)) {
-                throw new Error(`任务执行失败: ${extractMessage(data, JSON.stringify(data))}`);
-            } else if ((status === "running" || status === "processing") && progress > 0) {
-                console.log(`生成中... 进度: ${progress}%`);
+
+                let parsed: unknown;
+                try {
+                    parsed = JSON.parse(response.content) as unknown;
+                } catch (_error: unknown) {
+                    console.warn("⚠️ 解析结果响应失败，将重试");
+                    await doSleep(pollIntervalMs);
+                    continue;
+                }
+
+                if (!isRecord(parsed)) {
+                    console.warn(`查询响应异常: ${JSON.stringify(parsed)}`);
+                    await doSleep(pollIntervalMs);
+                    continue;
+                }
+
+                if (parsed["code"] === -22 || parsed["code"] === "-22") {
+                    console.log("任务排队/处理中... (等待服务器生成)");
+                    await doSleep(pollIntervalMs);
+                    continue;
+                }
+
+                if (!isApiSuccessResponse(parsed)) {
+                    console.warn(`⚠️ API 返回异常状态，将重试: ${JSON.stringify(parsed)}`);
+                    await doSleep(pollIntervalMs);
+                    continue;
+                }
+
+                const data = extractTaskPayload(parsed);
+                if (!data) {
+                    console.warn(`查询响应异常 (无有效数据): ${JSON.stringify(parsed)}`);
+                    await doSleep(pollIntervalMs);
+                    continue;
+                }
+
+                const progress = normalizeProgress(data["progress"]);
+                const status = normalizeStatus(data["status"]);
+                const imageUrl = extractImageUrlFromPayload(data);
+
+                console.log(`当前进度: ${progress}% | 状态: ${status || "unknown"}`);
+
+                if (isSuccessStatus(status) || (progress >= 100 && imageUrl.length > 0)) {
+                    console.log("✅ 任务完成!");
+                    if (imageUrl.length === 0) {
+                        throw new Error("任务完成但响应中未找到图片URL: " + JSON.stringify(data));
+                    }
+                    return imageUrl;
+                }
+                if (isFailureStatus(status)) {
+                    throw new Error(`任务执行失败: ${JSON.stringify(data)}`);
+                }
+                if ((status === "running" || status === "processing") && progress > 0) {
+                    console.log(`生成中... 进度: ${progress}%`);
+                }
+            } catch (error: unknown) {
+                console.log(`⚠️ 第${attempt}次查询发生不可预知的异常: ${getErrorMessage(error)}，程序将自动进行下一次尝试...`);
             }
 
-            // 等待后再次查询
-            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+            await doSleep(pollIntervalMs);
         }
 
         throw new Error(`任务超时: 等待超过${Math.ceil(maxWaitTimeMs / 60000)}分钟仍未完成`);

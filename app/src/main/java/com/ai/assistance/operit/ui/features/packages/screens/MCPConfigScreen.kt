@@ -42,6 +42,7 @@ import com.ai.assistance.operit.data.mcp.MCPLocalServer
 import com.ai.assistance.operit.data.mcp.MCPRepository
 import com.ai.assistance.operit.data.mcp.plugins.MCPDeployer
 import com.ai.assistance.operit.ui.features.packages.components.dialogs.MCPServerDetailsDialog
+import com.ai.assistance.operit.ui.features.packages.dialogs.MCPPackageDetailsDialog
 import com.ai.assistance.operit.ui.features.packages.screens.mcp.components.MCPCommandsEditDialog
 import com.ai.assistance.operit.ui.features.packages.screens.mcp.components.MCPDeployConfirmDialog
 import com.ai.assistance.operit.ui.features.packages.screens.mcp.components.MCPDeployProgressDialog
@@ -198,6 +199,9 @@ fun MCPConfigScreen(
         mutableStateOf<MCPLocalServer.PluginMetadata?>(
                 null
         )
+    }
+    var selectedPluginForToolDetails by remember {
+        mutableStateOf<MCPLocalServer.PluginMetadata?>(null)
     }
     var pluginToDeploy by remember { mutableStateOf<String?>(null) }
 
@@ -397,6 +401,15 @@ fun MCPConfigScreen(
                     }
                 },
                 onUpdateConfig = { newConfig -> pluginConfigJson = newConfig }
+        )
+    }
+
+    if (selectedPluginForToolDetails != null) {
+        val installedPath = viewModel.getInstalledPath(selectedPluginForToolDetails!!.id)
+        MCPPackageDetailsDialog(
+                server = selectedPluginForToolDetails!!,
+                installedPath = installedPath,
+                onDismiss = { selectedPluginForToolDetails = null }
         )
     }
 
@@ -1209,6 +1222,15 @@ fun MCPConfigScreen(
                                             context
                                         )
                                     },
+                                    onToolsClick = {
+                                        selectedPluginForToolDetails = getPluginAsServer(
+                                            pluginId,
+                                            mcpRepository,
+                                            mcpConfigSnapshot,
+                                            discoveredInstalledPluginIds,
+                                            context
+                                        )
+                                    },
                                     onDeploy = {
                                         pluginToDeploy = pluginId
                                         showConfirmDialog = true // 显示确认对话框而不是直接进入命令编辑
@@ -1356,6 +1378,7 @@ private fun PluginListItem(
     isRemote: Boolean,
     toolNames: List<String>,
     onClick: () -> Unit,
+    onToolsClick: () -> Unit,
     onDeploy: () -> Unit,
     onEdit: () -> Unit,
     isEnabled: Boolean,
@@ -1528,42 +1551,64 @@ private fun PluginListItem(
             // 工具标签区域（如果有）
             if (toolNames.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f))
+                        .clickable(onClick = onToolsClick)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
-                    items(toolNames.take(5)) { toolName ->
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        LazyRow(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text(
-                                text = toolName,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                fontSize = 9.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                    
-                    // 如果工具数量超过5个，显示"更多"
-                    if (toolNames.size > 5) {
-                        item {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.more) + "${toolNames.size - 5}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    fontSize = 9.sp
-                                )
+                            items(toolNames.take(5)) { toolName ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                                ) {
+                                    Text(
+                                        text = toolName,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        fontSize = 9.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            if (toolNames.size > 5) {
+                                item {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.more) + "${toolNames.size - 5}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            fontSize = 9.sp
+                                        )
+                                    }
+                                }
                             }
                         }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
                     }
                 }
             }

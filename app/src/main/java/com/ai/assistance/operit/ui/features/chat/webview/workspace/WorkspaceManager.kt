@@ -276,13 +276,12 @@ fun WorkspaceManager(
         }
     }
 
-    // 文件管理和标签状态 - 使用 rememberLocal 进行持久化
+    // 文件管理和标签状态 - 使用内存态，避免编辑大文件时频繁持久化整份内容
     var showFileManager by remember { mutableStateOf(false) }
-    val workspaceStateKey = remember(workspacePath, workspaceEnv) { "${workspacePath}__${workspaceEnv ?: ""}" }
-    var openFiles by rememberLocal<List<OpenFileInfo>>(key = "open_files_$workspaceStateKey", emptyList())
-    var currentFileIndex by rememberLocal(key = "current_file_index_$workspaceStateKey", -1)
+    var openFiles by remember(workspacePath, workspaceEnv) { mutableStateOf(emptyList<OpenFileInfo>()) }
+    var currentFileIndex by remember(workspacePath, workspaceEnv) { mutableStateOf(-1) }
     var filePreviewStates by remember { mutableStateOf(mapOf<String, Boolean>()) }
-    var unsavedFiles by rememberLocal<Set<String>>(key = "unsaved_files_$workspaceStateKey", emptySet())
+    var unsavedFiles by remember(workspacePath, workspaceEnv) { mutableStateOf(emptySet<String>()) }
     val isBrowserPreviewVisible =
         isVisible && currentFileIndex == -1 && workspaceConfig.preview.type == "browser"
     val isCommandPreviewVisible =
@@ -461,7 +460,6 @@ fun WorkspaceManager(
             currentFileIndex = existingIndex
         } else {
             // 否则添加到打开的文件列表
-            // 注意：直接追加到 rememberLocal 管理的状态上
             openFiles = openFiles + fileInfo
             currentFileIndex = openFiles.size - 1
 
