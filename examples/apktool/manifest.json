@@ -1,21 +1,21 @@
 {
   "schema_version": 1,
-  "toolpkg_id": "com.operit.apktool_bundle",
-  "version": "0.4.0",
+  "toolpkg_id": "com.operit.apk_reverse_toolkit",
+  "version": "1.0.1",
   "main": "dist/main.js",
   "display_name": {
-    "zh": "Apktool 工具包",
-    "en": "Apktool Bundle"
+    "zh": "APK 逆向工具包",
+    "en": "APK Reverse Toolkit"
   },
   "description": {
-    "zh": "通过 ToolPkg.readResource + Java.loadJar 载入内置 apktool runtime，并通过 child-first 包前缀隔离宿主依赖冲突后直接调用 brut.androlib.* 类。",
-    "en": "Load the bundled apktool runtime through ToolPkg.readResource + Java.loadJar, isolate host dependency conflicts with child-first package prefixes, then directly call brut.androlib.* classes."
+    "zh": "基于内置 dex-jar 运行时的 APK 逆向工具包，提供 inspect/decode/jadx/build/sign/search 等直调能力。",
+    "en": "APK reverse toolkit backed by bundled dex-jar runtimes, providing direct inspect/decode/jadx/build/sign/search capabilities."
   },
-  "enabled_by_default": false,
+  "enabled_by_default": true,
   "subpackages": [
     {
-      "id": "apktool",
-      "entry": "dist/packages/apktool.js"
+      "id": "apk_reverse",
+      "entry": "dist/packages/apk_reverse.js"
     }
   ],
   "resources": [
@@ -27,6 +27,16 @@
     {
       "key": "apktool_android_framework_jar",
       "path": "resources/apktool/android-framework.jar",
+      "mime": "application/java-archive"
+    },
+    {
+      "key": "jadx_runtime_android_jar",
+      "path": "resources/apktool/jadx-runtime-android.jar",
+      "mime": "application/java-archive"
+    },
+    {
+      "key": "apk_reverse_helper_runtime_android_jar",
+      "path": "resources/apktool/apk-reverse-helper-runtime-android.jar",
       "mime": "application/java-archive"
     }
   ]

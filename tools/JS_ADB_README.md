@@ -1,6 +1,7 @@
 # ADB JavaScript Executor
 
 This tool allows you to push JavaScript files to Android devices via ADB and remotely execute specific functions.
+For direct whole-script execution without specifying an exported function, use `run_sandbox_script.sh` / `run_sandbox_script.bat`.
 
 ## Features
 
@@ -32,12 +33,24 @@ chmod +x execute_js.sh
 ./execute_js.sh path/to/your/script.js functionName '{"param1":"value1"}'
 ```
 
+3. Execute a whole sandbox script directly:
+```bash
+./run_sandbox_script.sh path/to/your/script.js '{"param1":"value1"}'
+```
+
 ### Using Batch Script (Windows)
 
 1. Execute the batch file:
 ```cmd
-execute_js.bat path\to\your\script.js functionName "{\"param1\":\"value1\"}"
+execute_js.bat path\to\your\script.js functionName @params.json
 ```
+
+2. Execute a whole sandbox script directly:
+```cmd
+run_sandbox_script.bat path\to\your\script.js @params.json
+```
+
+You can still pass inline JSON directly. The scripts now write that JSON into a temporary file and push it to the device, which avoids the old `adb shell am broadcast --es params ...` quoting breakage. On PowerShell, prefer single-quoted JSON like `'{"param1":"value1"}'` or use `@params.json`.
 
 ### Using Python Script (Cross-platform)
 
@@ -82,7 +95,7 @@ Enter device number (1-2):
 ./execute_js.sh test_script.js sayHello '{"name":"John"}'
 
 # Windows
-execute_js.bat test_script.js sayHello "{\"name\":\"John\"}"
+execute_js.bat test_script.js sayHello @params.json
 
 # Python (any platform)
 python execute_js.py test_script.js sayHello --params '{"name":"John"}'
@@ -95,7 +108,7 @@ python execute_js.py test_script.js sayHello --params '{"name":"John"}'
 ./execute_js.sh test_script.js calculate '{"num1":10,"num2":5,"operation":"multiply"}'
 
 # Windows
-execute_js.bat test_script.js calculate "{\"num1\":10,\"num2\":5,\"operation\":\"multiply\"}"
+execute_js.bat test_script.js calculate @params.json
 
 # Python (any platform)
 python execute_js.py test_script.js calculate --params '{"num1":10,"num2":5,"operation":"multiply"}'
@@ -103,11 +116,49 @@ python execute_js.py test_script.js calculate --params '{"num1":10,"num2":5,"ope
 
 ## Viewing Execution Results
 
-You can view the execution logs using:
+The executor now waits for a dedicated structured result file instead of scraping `adb logcat`.
+After execution it prints a JSON payload containing:
+
+- `success`
+- `result`
+- `error`
+- `events` (including `console.log/info/warn/error` and intermediate updates)
+- `durationMs`
+
+You can adjust the wait timeout with:
 
 ```bash
-adb logcat -s ScriptExecutionReceiver JsEngine
+OPERIT_RESULT_WAIT_SECONDS=30 ./execute_js.sh path/to/your/script.js functionName '{"param1":"value1"}'
 ```
+
+## Sandbox Script Debug Notes
+
+When you use `run_sandbox_script.sh` / `run_sandbox_script.bat`, or call package tools such as `all_about_myself:debug_run_sandbox_script` with `source_code`, the code is executed as a **top-level script snippet**, not as `function(params) { ... }`.
+
+That means:
+
+- Use `console.log(...)`, `console.info(...)`, `console.warn(...)`, `console.error(...)` for logs
+- Use `emit(...)` to send intermediate events
+- Use `complete(...)` to finish with a structured result
+- Do **not** assume `params` is directly available inside `source_code`
+- Do **not** call `intermediate(...)`; the supported helper name is `emit(...)`
+
+Recommended inline snippet:
+
+```javascript
+console.log("inline debug start");
+emit({ stage: "inline", ok: true });
+complete({
+  success: true,
+  message: "inline debug finished"
+});
+```
+
+If you need parameter-driven logic, prefer one of these approaches:
+
+- Use `execute_js.*` and call an exported function like `function myFunc(params) { ... }`
+- Use `debug_run_sandbox_script` with `source_path` and put the logic in a real script file
+- Keep `source_code` for quick top-level smoke tests, logging, and minimal one-off checks
 
 ## JavaScript File Requirements
 
@@ -139,10 +190,12 @@ exports.myFunction = myFunction;
 
 ## Technical Details
 
-1. The Shell/Batch/Python script pushes the JavaScript file to a temporary directory on the device
-2. An ADB broadcast is sent to the application with the execution request
-3. The application's BroadcastReceiver receives the request and uses JsEngine to execute the function
-4. Execution results are written to the Android logs
+1. The Shell/Batch script pushes the JavaScript file to a temporary directory on the device
+2. Inline JSON parameters are first written to a temp JSON file, then pushed to the device as `params_file_path`
+3. An ADB broadcast is sent to the application with the execution request
+4. The application's BroadcastReceiver receives the request and uses JsEngine to execute the function or whole script
+5. Execution results are written to a dedicated JSON file on the device
+6. The executor waits for that file, prints it, and then cleans it up
 
 ## Troubleshooting
 

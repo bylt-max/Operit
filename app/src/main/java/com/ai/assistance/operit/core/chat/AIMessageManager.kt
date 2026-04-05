@@ -765,7 +765,9 @@ object AIMessageManager {
                 messagesToSummarize.forEach { message ->
                     // 清理消息内容：移除 memory 标签和 thinking 内容
                     val cleanedContent = if (message.sender == "user") {
-                        message.content.replace(memoryTagRegex, "").trim()
+                        stripMediaLinksForAssistant(
+                            message.content.replace(memoryTagRegex, "").trim()
+                        )
                     } else {
                         // AI 消息需要先移除 thinking 内容，再移除媒体链接
                         val withoutThinking = ChatUtils.removeThinkingContent(message.content)
@@ -798,7 +800,9 @@ object AIMessageManager {
             messagesToSummarize.mapIndexed { index, message ->
                 val role = if (message.sender == "user") "user" else "assistant"
                 val cleanedContent = if (role == "user") {
-                    message.content.replace(memoryTagRegex, "").trim()
+                    stripMediaLinksForAssistant(
+                        message.content.replace(memoryTagRegex, "").trim()
+                    )
                 } else {
                     stripMediaLinksForAssistant(message.content)
                 }

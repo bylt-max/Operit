@@ -1760,7 +1760,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
         )
     }
 
-    suspend fun rebuildVectorIndices(onProgress: (EmbeddingRebuildProgress) -> Unit) = withContext(Dispatchers.IO) {
+    suspend fun rebuildVectorIndices(onProgress: (EmbeddingRebuildProgress) -> Unit): EmbeddingRebuildProgress = withContext(Dispatchers.IO) {
         val memories = memoryBox.all
         val total =
             memories.count { createMemoryIndexItem(it) != null } +
@@ -1793,6 +1793,12 @@ class MemoryRepository(private val context: Context, profileId: String) {
         }
         processed = total
         report("done")
+        EmbeddingRebuildProgress(
+            total = total,
+            processed = processed,
+            failed = 0,
+            currentStage = "done"
+        )
     }
 
     /**

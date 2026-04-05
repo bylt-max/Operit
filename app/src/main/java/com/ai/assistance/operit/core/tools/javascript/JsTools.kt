@@ -650,6 +650,10 @@ fun getJsToolsDefinition(): String {
                     params.enabled = !!enabled;
                     return toolCall("set_sandbox_package_enabled", params);
                 },
+                executeSandboxScriptDirect: (options = {}) => {
+                    const params = { ...(options || {}) };
+                    return toolCall("execute_sandbox_script_direct", params);
+                },
                 restartMcpWithLogs: (timeoutMs) => {
                     const params = {};
                     if (timeoutMs !== undefined && timeoutMs !== null) params.timeout_ms = String(timeoutMs);

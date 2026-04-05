@@ -11,6 +11,10 @@ import com.ai.assistance.operit.core.tools.FunctionModelBindingResultData
 import com.ai.assistance.operit.core.tools.FunctionModelConfigResultData
 import com.ai.assistance.operit.core.tools.FunctionModelConfigsResultData
 import com.ai.assistance.operit.core.tools.FunctionModelMappingResultItem
+import com.ai.assistance.operit.core.tools.EnvironmentVariableReadResultData
+import com.ai.assistance.operit.core.tools.EnvironmentVariableWriteResultData
+import com.ai.assistance.operit.core.tools.McpRestartLogPluginResultItem
+import com.ai.assistance.operit.core.tools.McpRestartWithLogsResultData
 import com.ai.assistance.operit.core.tools.ModelConfigConnectionTestItemResultData
 import com.ai.assistance.operit.core.tools.ModelConfigConnectionTestResultData
 import com.ai.assistance.operit.core.tools.ModelConfigCreateResultData
@@ -18,12 +22,18 @@ import com.ai.assistance.operit.core.tools.ModelConfigDeleteResultData
 import com.ai.assistance.operit.core.tools.ModelConfigResultItem
 import com.ai.assistance.operit.core.tools.ModelConfigUpdateResultData
 import com.ai.assistance.operit.core.tools.ModelConfigsResultData
+import com.ai.assistance.operit.core.tools.SandboxPackageResultItem
+import com.ai.assistance.operit.core.tools.SandboxPackageUpdateResultData
+import com.ai.assistance.operit.core.tools.SandboxPackagesResultData
+import com.ai.assistance.operit.core.tools.SandboxScriptExecutionResultData
 import com.ai.assistance.operit.core.tools.SpeechServicesConfigResultData
 import com.ai.assistance.operit.core.tools.SpeechServicesTtsPlaybackTestResultData
 import com.ai.assistance.operit.core.tools.SpeechServicesUpdateResultData
 import com.ai.assistance.operit.core.tools.SpeechSttHttpConfigResultItem
 import com.ai.assistance.operit.core.tools.SpeechTtsHttpConfigResultItem
 import com.ai.assistance.operit.core.tools.StringResultData
+import com.ai.assistance.operit.core.tools.javascript.JsEngine
+import com.ai.assistance.operit.core.tools.javascript.JsExecutionTraceRecorder
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ApiProviderType
@@ -42,8 +52,18 @@ import com.ai.assistance.operit.ui.features.startup.screens.PluginLoadingStateRe
 import com.ai.assistance.operit.ui.features.startup.screens.PluginStatus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.longOrNull
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.net.ConnectException
 import java.net.ProtocolException
@@ -59,29 +79,23 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
             return ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result = EnvironmentVariableReadResultData(key = "", value = null, exists = false),
                 error = "Missing required parameter: key"
             )
         }
 
         return try {
             val value = EnvPreferences.getInstance(context).getEnv(key)
-            val resultJson =
-                JSONObject().apply {
-                    put("key", key)
-                    put("value", value ?: JSONObject.NULL)
-                    put("exists", value != null)
-                }
             ToolResult(
                 toolName = tool.name,
                 success = true,
-                result = StringResultData(resultJson.toString())
+                result = EnvironmentVariableReadResultData(key = key, value = value, exists = value != null)
             )
         } catch (e: Exception) {
             ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result = EnvironmentVariableReadResultData(key = key, value = null, exists = false),
                 error = e.message ?: "Failed to read environment variable: $key"
             )
         }
@@ -93,7 +107,14 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
             return ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result =
+                    EnvironmentVariableWriteResultData(
+                        key = "",
+                        requestedValue = "",
+                        value = null,
+                        exists = false,
+                        cleared = false
+                    ),
                 error = "Missing required parameter: key"
             )
         }
@@ -108,24 +129,30 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
             }
 
             val current = envPreferences.getEnv(key)
-            val resultJson =
-                JSONObject().apply {
-                    put("key", key)
-                    put("requestedValue", value)
-                    put("value", current ?: JSONObject.NULL)
-                    put("exists", current != null)
-                    put("cleared", value.trim().isEmpty())
-                }
             ToolResult(
                 toolName = tool.name,
                 success = true,
-                result = StringResultData(resultJson.toString())
+                result =
+                    EnvironmentVariableWriteResultData(
+                        key = key,
+                        requestedValue = value,
+                        value = current,
+                        exists = current != null,
+                        cleared = value.trim().isEmpty()
+                    )
             )
         } catch (e: Exception) {
             ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result =
+                    EnvironmentVariableWriteResultData(
+                        key = key,
+                        requestedValue = value,
+                        value = null,
+                        exists = false,
+                        cleared = value.trim().isEmpty()
+                    ),
                 error = e.message ?: "Failed to write environment variable: $key"
             )
         }
@@ -138,52 +165,55 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
             val disabledSet = packageManager.getDisabledPackages().toSet()
             val externalPackagesPath = packageManager.getExternalPackagesPath()
 
-            val packagesJson = JSONArray()
-            availablePackages.entries
+            val packages =
+                availablePackages.entries
                 .sortedBy { it.key.lowercase() }
-                .forEach { (packageName, pkg) ->
+                .map { (packageName, pkg) ->
                     val imported = importedSet.contains(packageName)
-                    packagesJson.put(
-                        JSONObject().apply {
-                            put("packageName", packageName)
-                            put("displayName", pkg.displayName.resolve(context))
-                            put("description", pkg.description.resolve(context))
-                            put("isBuiltIn", pkg.isBuiltIn)
-                            put("enabledByDefault", pkg.enabledByDefault)
-                            put("enabled", imported)
-                            put("imported", imported)
-                            put("isDisabledByUser", disabledSet.contains(packageName))
-                            put("toolCount", pkg.tools.size)
-                            put("manageMode", if (pkg.isBuiltIn) "toggle_only" else "file_and_toggle")
-                        }
+                    SandboxPackageResultItem(
+                        packageName = packageName,
+                        displayName = pkg.displayName.resolve(context),
+                        description = pkg.description.resolve(context),
+                        isBuiltIn = pkg.isBuiltIn,
+                        enabledByDefault = pkg.enabledByDefault,
+                        enabled = imported,
+                        imported = imported,
+                        isDisabledByUser = disabledSet.contains(packageName),
+                        toolCount = pkg.tools.size,
+                        manageMode = if (pkg.isBuiltIn) "toggle_only" else "file_and_toggle"
                     )
-                }
-
-            val resultJson =
-                JSONObject().apply {
-                    put("externalPackagesPath", externalPackagesPath)
-                    put(
-                        "scriptDevGuide",
-                        "https://github.com/AAswordman/Operit/blob/main/docs/SCRIPT_DEV_GUIDE.md"
-                    )
-                    put("totalCount", availablePackages.size)
-                    put("builtInCount", availablePackages.values.count { it.isBuiltIn })
-                    put("externalCount", availablePackages.values.count { !it.isBuiltIn })
-                    put("enabledCount", availablePackages.keys.count { importedSet.contains(it) })
-                    put("disabledCount", availablePackages.keys.count { !importedSet.contains(it) })
-                    put("packages", packagesJson)
                 }
 
             ToolResult(
                 toolName = tool.name,
                 success = true,
-                result = StringResultData(resultJson.toString())
+                result =
+                    SandboxPackagesResultData(
+                        externalPackagesPath = externalPackagesPath,
+                        scriptDevGuide = "https://github.com/AAswordman/Operit/blob/main/docs/SCRIPT_DEV_GUIDE.md",
+                        totalCount = availablePackages.size,
+                        builtInCount = availablePackages.values.count { it.isBuiltIn },
+                        externalCount = availablePackages.values.count { !it.isBuiltIn },
+                        enabledCount = availablePackages.keys.count { importedSet.contains(it) },
+                        disabledCount = availablePackages.keys.count { !importedSet.contains(it) },
+                        packages = packages
+                    )
             )
         } catch (e: Exception) {
             ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result =
+                    SandboxPackagesResultData(
+                        externalPackagesPath = "",
+                        scriptDevGuide = "https://github.com/AAswordman/Operit/blob/main/docs/SCRIPT_DEV_GUIDE.md",
+                        totalCount = 0,
+                        builtInCount = 0,
+                        externalCount = 0,
+                        enabledCount = 0,
+                        disabledCount = 0,
+                        packages = emptyList()
+                    ),
                 error = e.message ?: "Failed to list sandbox packages"
             )
         }
@@ -195,7 +225,14 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
             return ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result =
+                    SandboxPackageUpdateResultData(
+                        packageName = "",
+                        requestedEnabled = false,
+                        previousEnabled = false,
+                        currentEnabled = false,
+                        message = ""
+                    ),
                 error = "Missing required parameter: package_name"
             )
         }
@@ -206,7 +243,14 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
             return ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result =
+                    SandboxPackageUpdateResultData(
+                        packageName = packageName,
+                        requestedEnabled = false,
+                        previousEnabled = false,
+                        currentEnabled = false,
+                        message = ""
+                    ),
                 error = "Invalid required parameter: enabled (expected true/false)"
             )
         }
@@ -216,7 +260,14 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
             return ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result =
+                    SandboxPackageUpdateResultData(
+                        packageName = packageName,
+                        requestedEnabled = enabled,
+                        previousEnabled = false,
+                        currentEnabled = false,
+                        message = ""
+                    ),
                 error = "Sandbox package not found: $packageName"
             )
         }
@@ -231,19 +282,17 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
         val currentEnabled = packageManager.isPackageImported(packageName)
         val success = currentEnabled == enabled
 
-        val resultJson =
-            JSONObject().apply {
-                put("packageName", packageName)
-                put("requestedEnabled", enabled)
-                put("previousEnabled", previousEnabled)
-                put("currentEnabled", currentEnabled)
-                put("message", operationMessage)
-            }
-
         return ToolResult(
             toolName = tool.name,
             success = success,
-            result = StringResultData(resultJson.toString()),
+            result =
+                SandboxPackageUpdateResultData(
+                    packageName = packageName,
+                    requestedEnabled = enabled,
+                    previousEnabled = previousEnabled,
+                    currentEnabled = currentEnabled,
+                    message = operationMessage
+                ),
             error =
                 if (success) {
                     null
@@ -251,6 +300,120 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
                     "Failed to update sandbox package switch: $packageName"
                 }
         )
+    }
+
+    fun executeSandboxScriptDirect(tool: AITool): ToolResult {
+        val payload = executeSandboxScriptDirectResult(tool)
+        return ToolResult(
+            toolName = tool.name,
+            success = payload.success,
+            result = payload,
+            error = payload.error
+        )
+    }
+
+    private fun executeSandboxScriptDirectResult(tool: AITool): SandboxScriptExecutionResultData {
+        val sourcePath =
+            tool.parameters.find { it.name == "source_path" }?.value?.trim().orEmpty().ifBlank { "" }
+        val sourceCode = tool.parameters.find { it.name == "source_code" }?.value.orEmpty()
+        val paramsJson =
+            tool.parameters.find { it.name == "params_json" }?.value?.takeIf { it.isNotBlank() }
+                ?: "{}"
+        val envFilePath =
+            tool.parameters.find { it.name == "env_file_path" }?.value?.trim().orEmpty().ifBlank {
+                ""
+            }
+        val scriptLabel =
+            tool.parameters.find { it.name == "script_label" }?.value?.trim().orEmpty().ifBlank {
+                "sandbox_script"
+            }
+        val waitMs =
+            tool.parameters.find { it.name == "wait_ms" }?.value?.toLongOrNull()?.coerceAtLeast(1000L)
+                ?: 15000L
+
+        val hasSourcePath = sourcePath.isNotBlank()
+        val hasSourceCode = sourceCode.isNotBlank()
+        val executionMode = if (hasSourceCode) "code" else "script"
+        val traceRecorder =
+            JsExecutionTraceRecorder(
+                scriptPath = if (hasSourcePath) sourcePath else "<inline:$scriptLabel>",
+                functionName = executionMode,
+                paramsJson = paramsJson,
+                envFilePath = envFilePath.ifBlank { null }
+            )
+
+        fun buildFailure(message: String, result: Any? = null): SandboxScriptExecutionResultData {
+            return traceRecorder.buildResultData(
+                success = false,
+                result = result,
+                error = message,
+                executionMode = executionMode,
+                scriptLabel = scriptLabel,
+                requestedWaitMs = waitMs
+            )
+        }
+
+        if (hasSourcePath == hasSourceCode) {
+            return buildFailure("Exactly one of source_path or source_code is required")
+        }
+
+        val parsedParams =
+            try {
+                parseJsonObjectToMap(paramsJson)
+            } catch (e: Exception) {
+                return buildFailure(e.message ?: "Invalid params_json")
+            }
+
+        val envOverrides =
+            try {
+                parseEnvFile(envFilePath.ifBlank { null })
+            } catch (e: Exception) {
+                return buildFailure(e.message ?: "Invalid env_file_path")
+            }
+
+        val scriptText =
+            try {
+                if (hasSourceCode) {
+                    sourceCode
+                } else {
+                    val file = File(sourcePath)
+                    if (!file.exists() || !file.isFile) {
+                        return buildFailure("source_path must point to an existing file: $sourcePath")
+                    }
+                    file.readText()
+                }
+            } catch (e: Exception) {
+                return buildFailure(e.message ?: "Failed to read script input")
+            }
+
+        val timeoutSec = ((waitMs + 999L) / 1000L).coerceAtLeast(1L)
+        return try {
+            val result =
+                JsEngine(context).executeScriptCode(
+                    script = scriptText,
+                    params = parsedParams,
+                    envOverrides = envOverrides,
+                    timeoutSec = timeoutSec,
+                    executionListener = traceRecorder
+                )
+            val success = !result.toString().startsWith("Error:", ignoreCase = true)
+            val error =
+                if (success) {
+                    null
+                } else {
+                    result?.toString()?.removePrefix("Error:")?.trim().orEmpty()
+                }
+            traceRecorder.buildResultData(
+                success = success,
+                result = result,
+                error = error,
+                executionMode = executionMode,
+                scriptLabel = scriptLabel,
+                requestedWaitMs = waitMs
+            )
+        } catch (e: Exception) {
+            buildFailure(e.message ?: "Sandbox script execution failed")
+        }
     }
 
     suspend fun getSpeechServicesConfig(tool: AITool): ToolResult {
@@ -1242,7 +1405,20 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
             return ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result =
+                    McpRestartWithLogsResultData(
+                        timeoutMs = timeoutMs,
+                        elapsedMs = 0L,
+                        timedOut = false,
+                        progress = 0.0,
+                        message = "",
+                        pluginsTotal = 0,
+                        pluginsStarted = 0,
+                        successCount = 0,
+                        failedCount = 0,
+                        plugins = emptyList(),
+                        extraLogs = emptyMap()
+                    ),
                 error = "Plugin loading state is unavailable. Open the main screen and retry."
             )
         }
@@ -1270,48 +1446,41 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
         val failedCount = plugins.count { it.status == PluginStatus.FAILED }
         val successCount = plugins.count { it.status == PluginStatus.SUCCESS }
 
-        val pluginsJson = JSONArray()
-        plugins.forEach { plugin ->
-            pluginsJson.put(
-                JSONObject().apply {
-                    put("id", plugin.id)
-                    put("displayName", plugin.displayName)
-                    put("shortName", plugin.shortName)
-                    put("status", plugin.status.name.lowercase())
-                    put("message", plugin.message)
-                    put("serviceName", plugin.serviceName)
-                    put("log", pluginLogs[plugin.id].orEmpty())
-                }
-            )
-        }
-
-        val extraLogsJson = JSONObject()
-        pluginLogs.forEach { (pluginId, logText) ->
-            if (plugins.none { it.id == pluginId }) {
-                extraLogsJson.put(pluginId, logText)
+        val pluginItems =
+            plugins.map { plugin ->
+                McpRestartLogPluginResultItem(
+                    id = plugin.id,
+                    displayName = plugin.displayName,
+                    shortName = plugin.shortName,
+                    status = plugin.status.name.lowercase(),
+                    message = plugin.message,
+                    serviceName = plugin.serviceName,
+                    log = pluginLogs[plugin.id].orEmpty()
+                )
             }
-        }
-
-        val resultJson =
-            JSONObject().apply {
-                put("timeoutMs", timeoutMs)
-                put("elapsedMs", elapsedMs)
-                put("timedOut", timedOut)
-                put("progress", pluginLoadingState.progress.value.toDouble())
-                put("message", pluginLoadingState.message.value)
-                put("pluginsTotal", pluginLoadingState.pluginsTotal.value)
-                put("pluginsStarted", pluginLoadingState.pluginsStarted.value)
-                put("successCount", successCount)
-                put("failedCount", failedCount)
-                put("plugins", pluginsJson)
-                put("extraLogs", extraLogsJson)
+        val extraLogs =
+            pluginLogs.filterKeys { pluginId ->
+                plugins.none { plugin -> plugin.id == pluginId }
             }
 
         val hasFailures = failedCount > 0
         return ToolResult(
             toolName = tool.name,
             success = !timedOut && !hasFailures,
-            result = StringResultData(resultJson.toString()),
+            result =
+                McpRestartWithLogsResultData(
+                    timeoutMs = timeoutMs,
+                    elapsedMs = elapsedMs,
+                    timedOut = timedOut,
+                    progress = pluginLoadingState.progress.value.toDouble(),
+                    message = pluginLoadingState.message.value,
+                    pluginsTotal = pluginLoadingState.pluginsTotal.value,
+                    pluginsStarted = pluginLoadingState.pluginsStarted.value,
+                    successCount = successCount,
+                    failedCount = failedCount,
+                    plugins = pluginItems,
+                    extraLogs = extraLogs
+                ),
             error =
                 when {
                     timedOut -> "MCP restart timed out after ${elapsedMs}ms"
@@ -1626,6 +1795,78 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
             "1", "true", "yes", "y", "on" -> true
             "0", "false", "no", "n", "off" -> false
             else -> null
+        }
+    }
+
+    private fun parseJsonObjectToMap(raw: String): Map<String, Any?> {
+        val payload = Json.parseToJsonElement(raw)
+        require(payload is JsonObject) { "params_json must be a JSON object" }
+        return payload.entries.associate { (key, value) ->
+            key to jsonElementToValue(value)
+        }
+    }
+
+    private fun parseEnvFile(envFilePath: String?): Map<String, String> {
+        if (envFilePath.isNullOrBlank()) {
+            return emptyMap()
+        }
+
+        val envFile = File(envFilePath)
+        if (!envFile.exists() || !envFile.isFile) {
+            throw IllegalArgumentException("env_file_path must point to an existing file: $envFilePath")
+        }
+
+        return buildMap {
+            envFile.readLines().forEach { rawLine ->
+                val line = rawLine.trim()
+                if (line.isEmpty() || line.startsWith("#")) {
+                    return@forEach
+                }
+                val separatorIndex = line.indexOf('=')
+                if (separatorIndex <= 0) {
+                    return@forEach
+                }
+                val key = line.substring(0, separatorIndex).trim()
+                if (key.isEmpty()) {
+                    return@forEach
+                }
+                val value = line.substring(separatorIndex + 1).trim().removeWrappingQuotes()
+                put(key, value)
+            }
+        }
+    }
+
+    private fun String.removeWrappingQuotes(): String {
+        if (length < 2) {
+            return this
+        }
+        val first = first()
+        val last = last()
+        return if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+            substring(1, length - 1)
+        } else {
+            this
+        }
+    }
+
+    private fun jsonElementToValue(element: JsonElement): Any? {
+        return when (element) {
+            is JsonObject ->
+                element.entries.associate { (key, value) ->
+                    key to jsonElementToValue(value)
+                }
+            is JsonArray -> element.map(::jsonElementToValue)
+            is JsonNull -> null
+            is JsonPrimitive -> {
+                if (element.isString) {
+                    element.content
+                } else {
+                    element.booleanOrNull
+                        ?: element.longOrNull
+                        ?: element.doubleOrNull
+                        ?: element.content
+                }
+            }
         }
     }
 }

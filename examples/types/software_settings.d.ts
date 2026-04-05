@@ -3,7 +3,12 @@
  */
 
 import {
-    StringResultData,
+    EnvironmentVariableReadResultData,
+    EnvironmentVariableWriteResultData,
+    SandboxPackageUpdateResultData,
+    SandboxPackagesResultData,
+    SandboxScriptExecutionResultData,
+    McpRestartWithLogsResultData,
     SpeechServicesConfigResultData,
     SpeechServicesTtsPlaybackTestResultData,
     SpeechServicesUpdateResultData,
@@ -49,6 +54,15 @@ export namespace SoftwareSettings {
         interrupt?: boolean;
         speech_rate?: number;
         pitch?: number;
+    }
+
+    interface SandboxScriptDirectOptions {
+        source_path?: string;
+        source_code?: string;
+        params_json?: string;
+        env_file_path?: string;
+        script_label?: string;
+        wait_ms?: number | string;
     }
 
     interface ModelConfigUpdateOptions {
@@ -98,19 +112,19 @@ export namespace SoftwareSettings {
      * Read current value of an environment variable.
      * @param key - Environment variable key
      */
-    function readEnvironmentVariable(key: string): Promise<StringResultData>;
+    function readEnvironmentVariable(key: string): Promise<EnvironmentVariableReadResultData>;
 
     /**
      * Write an environment variable; empty value clears the variable.
      * @param key - Environment variable key
      * @param value - Variable value (empty string clears)
      */
-    function writeEnvironmentVariable(key: string, value?: string): Promise<StringResultData>;
+    function writeEnvironmentVariable(key: string, value?: string): Promise<EnvironmentVariableWriteResultData>;
 
     /**
      * List sandbox packages (built-in and external) with enabled states and management paths.
      */
-    function listSandboxPackages(): Promise<StringResultData>;
+    function listSandboxPackages(): Promise<SandboxPackagesResultData>;
 
     /**
      * Enable or disable a sandbox package.
@@ -120,13 +134,21 @@ export namespace SoftwareSettings {
     function setSandboxPackageEnabled(
         packageName: string,
         enabled: boolean | string | number
-    ): Promise<StringResultData>;
+    ): Promise<SandboxPackageUpdateResultData>;
+
+    /**
+     * Execute a sandbox script directly and return the structured raw execution result.
+     * @param options - Script source, params, optional env file, and wait timeout
+     */
+    function executeSandboxScriptDirect(
+        options?: Partial<SandboxScriptDirectOptions>
+    ): Promise<SandboxScriptExecutionResultData>;
 
     /**
      * Restart MCP startup flow and collect per-plugin startup logs.
      * @param timeoutMs - Optional max wait time in milliseconds
      */
-    function restartMcpWithLogs(timeoutMs?: number | string): Promise<StringResultData>;
+    function restartMcpWithLogs(timeoutMs?: number | string): Promise<McpRestartWithLogsResultData>;
 
     /**
      * Get current TTS/STT speech services configuration.

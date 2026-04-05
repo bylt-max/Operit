@@ -248,6 +248,30 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     )
 
     handler.registerTool(
+            name = "execute_sandbox_script_direct",
+            dangerCheck = { false },
+            descriptionGenerator = { tool ->
+                val sourcePath = tool.parameters.find { it.name == "source_path" }?.value?.trim().orEmpty()
+                val hasInlineCode =
+                        tool.parameters.find { it.name == "source_code" }?.value?.isNotBlank() == true
+                val label =
+                        tool.parameters.find { it.name == "script_label" }?.value?.trim().orEmpty()
+                val target =
+                        when {
+                            sourcePath.isNotBlank() -> sourcePath
+                            label.isNotBlank() -> label
+                            hasInlineCode -> "inline code"
+                            else -> "sandbox script"
+                        }
+                "Execute sandbox script directly: $target"
+            },
+            executor = { tool ->
+                val softwareSettingsTools = ToolGetter.getSoftwareSettingsModifyTools(context)
+                softwareSettingsTools.executeSandboxScriptDirect(tool)
+            }
+    )
+
+    handler.registerTool(
             name = "restart_mcp_with_logs",
             dangerCheck = { false },
             descriptionGenerator = { tool ->

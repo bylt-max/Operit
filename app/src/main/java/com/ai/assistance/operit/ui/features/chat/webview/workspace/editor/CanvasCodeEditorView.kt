@@ -59,7 +59,7 @@ class CanvasCodeEditorView @JvmOverloads constructor(
 ) : SurfaceView(context, attrs, defStyleAttr), SurfaceHolder.Callback {
 
     companion object {
-        private const val MIN_SCALE = 0.75f
+        private const val MIN_SCALE = 0.5f
         private const val MAX_SCALE = 3.0f
         private const val DEFAULT_TEXT_SIZE_SP = 14f
         private const val TAB_SPACES = 4

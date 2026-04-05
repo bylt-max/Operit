@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.core.tools.javascript
 
 import android.content.Context
+import com.ai.assistance.operit.core.tools.ScriptExecutionTraceData
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.data.model.AITool
@@ -170,6 +171,25 @@ class JsToolManager private constructor(
         )
     }
 
+    private fun trace(
+        toolName: String,
+        kind: String,
+        message: String,
+        level: String? = null,
+        callId: String? = null
+    ): ToolResult {
+        return ToolResult(
+            toolName = toolName,
+            success = true,
+            result = ScriptExecutionTraceData(
+                kind = kind,
+                level = level,
+                message = message,
+                callId = callId
+            )
+        )
+    }
+
     fun executeScript(toolName: String, params: Map<String, String>): String {
         val parsed = parseDotCall(toolName)
             ?: return "Invalid tool name format: $toolName. Expected format: packageName.functionName"
@@ -209,15 +229,38 @@ class JsToolManager private constructor(
         val (packageName, functionName) = parsed
         withEngine { engine ->
             val runtimeParams = convertToolParameters(tool, packageName, functionName)
+            val traceListener =
+                object : JsExecutionListener {
+                    override fun onCallLog(callId: String, level: String, message: String) {
+                        trySend(
+                            trace(
+                                toolName = tool.name,
+                                kind = "log",
+                                message = message,
+                                level = level,
+                                callId = callId
+                            )
+                        )
+                    }
+
+                    override fun onIntermediateResult(callId: String, value: Any?) {
+                        trySend(
+                            trace(
+                                toolName = tool.name,
+                                kind = "intermediate",
+                                message = value?.toString() ?: "null",
+                                callId = callId
+                            )
+                        )
+                    }
+                }
             try {
                 withTimeout(JsTimeoutConfig.SCRIPT_TIMEOUT_MS) {
                     val result = engine.executeScriptFunction(
                         script = script,
                         functionName = functionName,
                         params = runtimeParams,
-                        onIntermediateResult = { value ->
-                            trySend(success(tool.name, value))
-                        }
+                        executionListener = traceListener
                     )
 
                     val normalizedError = result?.toString()

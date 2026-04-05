@@ -39,6 +39,8 @@ class JsEngine(private val context: Context) {
         private const val TOOLPKG_TAG = "ToolPkg"
         private const val BINARY_DATA_THRESHOLD = 32 * 1024
         private const val BINARY_HANDLE_PREFIX = "@binary_handle:"
+        private const val DIRECT_SCRIPT_EXECUTION_FUNCTION = "__operit_run_inline_code__"
+        private const val DIRECT_SCRIPT_EXECUTION_SOURCE = "function(params){ return undefined; }"
     }
 
     private val bitmapRegistry = ConcurrentHashMap<String, Bitmap>()
@@ -71,7 +73,8 @@ class JsEngine(private val context: Context) {
         val future: CompletableFuture<Any?>,
         val intermediateResultCallback: ((Any?) -> Unit)?,
         val envOverrides: Map<String, String>,
-        val toolPkgLogSnapshot: JsToolPkgExecutionContext.LogSnapshot
+        val toolPkgLogSnapshot: JsToolPkgExecutionContext.LogSnapshot,
+        val executionListener: JsExecutionListener?
     )
 
     private val activeExecutionSessions = ConcurrentHashMap<String, ExecutionSession>()
@@ -234,14 +237,16 @@ class JsEngine(private val context: Context) {
         functionName: String,
         params: Map<String, Any?>,
         envOverrides: Map<String, String>,
-        onIntermediateResult: ((Any?) -> Unit)?
+        onIntermediateResult: ((Any?) -> Unit)?,
+        executionListener: JsExecutionListener?
     ): ExecutionSession {
         return ExecutionSession(
             callId = callId,
             future = CompletableFuture(),
             intermediateResultCallback = onIntermediateResult,
             envOverrides = envOverrides,
-            toolPkgLogSnapshot = toolPkgExecutionContext.capture(script, functionName, params)
+            toolPkgLogSnapshot = toolPkgExecutionContext.capture(script, functionName, params),
+            executionListener = executionListener
         )
     }
 
@@ -557,13 +562,14 @@ class JsEngine(private val context: Context) {
      * @param params 要传递给函数的参数
      * @return 函数执行结果
      */
-    fun executeScriptFunction(
+    internal fun executeScriptFunction(
             script: String,
             functionName: String,
             params: Map<String, Any?>,
             envOverrides: Map<String, String> = emptyMap(),
             onIntermediateResult: ((Any?) -> Unit)? = null,
-            timeoutSec: Long = JsTimeoutConfig.MAIN_TIMEOUT_SECONDS.toLong()
+            timeoutSec: Long = JsTimeoutConfig.MAIN_TIMEOUT_SECONDS.toLong(),
+            executionListener: JsExecutionListener? = null
     ): Any? {
         val effectiveParams = params.toMutableMap()
         val explicitLanguage = effectiveParams["__operit_package_lang"]?.toString()?.trim().orEmpty()
@@ -623,7 +629,8 @@ class JsEngine(private val context: Context) {
                 functionName = functionName,
                 params = effectiveParams,
                 envOverrides = envOverrides,
-                onIntermediateResult = onIntermediateResult
+                onIntermediateResult = onIntermediateResult,
+                executionListener = executionListener
             )
         activeExecutionSessions[callId] = session
 
@@ -660,6 +667,7 @@ class JsEngine(private val context: Context) {
                     e
                 )
                 removeExecutionSession(callId)
+                session.executionListener?.onFailed(callId, "Error: ${e.message ?: "dispatch failed"}")
                 if (!session.future.isDone) {
                     session.future.complete("Error: ${e.message ?: "dispatch failed"}")
                 }
@@ -715,6 +723,7 @@ class JsEngine(private val context: Context) {
             )
             removeExecutionSession(callId)
             cancelExecutionSessionInJs(callId, failureReason)
+            session.executionListener?.onFailed(callId, "Error: $failureReason")
             if (shouldLogTiming) {
                 logMessageTiming(
                     stage = "toolpkg.jsEngine.waitResult",
@@ -731,6 +740,28 @@ class JsEngine(private val context: Context) {
         } finally {
             preTimeoutTimer.cancel()
         }
+    }
+
+    internal fun executeScriptCode(
+            script: String,
+            params: Map<String, Any?> = emptyMap(),
+            envOverrides: Map<String, String> = emptyMap(),
+            onIntermediateResult: ((Any?) -> Unit)? = null,
+            timeoutSec: Long = JsTimeoutConfig.MAIN_TIMEOUT_SECONDS.toLong(),
+            executionListener: JsExecutionListener? = null
+    ): Any? {
+        val directParams = params.toMutableMap()
+        directParams["__operit_inline_function_name"] = DIRECT_SCRIPT_EXECUTION_FUNCTION
+        directParams["__operit_inline_function_source"] = DIRECT_SCRIPT_EXECUTION_SOURCE
+        return executeScriptFunction(
+            script = script,
+            functionName = DIRECT_SCRIPT_EXECUTION_FUNCTION,
+            params = directParams,
+            envOverrides = envOverrides,
+            onIntermediateResult = onIntermediateResult,
+            timeoutSec = timeoutSec,
+            executionListener = executionListener
+        )
     }
 
     fun executeToolPkgMainRegistrationFunction(
@@ -1385,6 +1416,7 @@ class JsEngine(private val context: Context) {
         fun sendCallIntermediateResult(callId: String, result: String) {
             try {
                 val session = resolveExecutionSession(callId) ?: return
+                session.executionListener?.onIntermediateResult(callId, result)
                 ContextCompat.getMainExecutor(context).execute {
                     session.intermediateResultCallback?.invoke(result)
                 }
@@ -1467,6 +1499,7 @@ class JsEngine(private val context: Context) {
                     AppLogger.w(TAG, "Result callback is already completed when trying to set result: callId=$callId")
                     return
                 }
+                session.executionListener?.onCompleted(callId, result)
                 completeCallFuture(
                     session = session,
                     value = result,
@@ -1498,6 +1531,7 @@ class JsEngine(private val context: Context) {
                 val logMessage = extractErrorLogMessage(error)
                 val enrichedLogMessage = withToolPkgCodeContext(session, logMessage)
                 AppLogger.e(TOOLPKG_TAG, withToolPkgPluginTag(session, "JS ERROR: $enrichedLogMessage"))
+                session.executionListener?.onFailed(callId, error)
 
                 completeCallFuture(
                     session = session,
@@ -1569,6 +1603,7 @@ class JsEngine(private val context: Context) {
         @JavascriptInterface
         fun logInfoForCall(callId: String, message: String) {
             val session = resolveExecutionSession(callId)
+            session?.executionListener?.onCallLog(callId, "info", message)
             AppLogger.i(TOOLPKG_TAG, withToolPkgPluginTag(session, message))
         }
 
@@ -1580,6 +1615,7 @@ class JsEngine(private val context: Context) {
         @JavascriptInterface
         fun logErrorForCall(callId: String, message: String) {
             val session = resolveExecutionSession(callId)
+            session?.executionListener?.onCallLog(callId, "error", message)
             AppLogger.e(TOOLPKG_TAG, withToolPkgPluginTag(session, message))
         }
 

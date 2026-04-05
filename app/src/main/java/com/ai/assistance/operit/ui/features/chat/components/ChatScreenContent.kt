@@ -78,6 +78,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.ui.res.stringResource
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.features.chat.components.MessageEditor
+import com.ai.assistance.operit.ui.main.screens.GestureStateHolder
 import kotlin.math.roundToInt
 
 @SuppressLint("UnusedBoxWithConstraintsScope")
@@ -733,6 +734,7 @@ fun ChatScreenContent(
                     currentChatId = currentChatId,
                     showChatHistorySelector = showChatHistorySelector,
                     historyListState = historyListState,
+                    onChatScreenGestureConsumed = onChatScreenGestureConsumed,
                     searchQuery = chatHistorySearchQuery,
                     onSearchQueryChange = actualViewModel::onChatHistorySearchQueryChange,
                     activePrompt = activePrompt,
@@ -968,6 +970,7 @@ fun ChatHistorySelectorPanel(
         currentChatId: String,
         showChatHistorySelector: Boolean,
         historyListState: LazyListState,
+        onChatScreenGestureConsumed: (Boolean) -> Unit,
         searchQuery: String,
         onSearchQueryChange: (String) -> Unit,
         activePrompt: ActivePrompt,
@@ -1037,6 +1040,10 @@ fun ChatHistorySelectorPanel(
                 onDisplayModeChange = onDisplayModeChange,
                 autoSwitchCharacterCard = autoSwitchCharacterCard,
                 onAutoSwitchCharacterCardChange = onAutoSwitchCharacterCardChange,
+                onQuickScrollInteractionChange = { consumed ->
+                    GestureStateHolder.isChatScreenGestureConsumed = consumed
+                    onChatScreenGestureConsumed(consumed)
+                },
                 activePrompt = activePrompt
         )
     }

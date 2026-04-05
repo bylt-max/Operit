@@ -76,7 +76,8 @@ data class MemoryUiState(
         val searchSimulationQuery: String = "",
         val isSearchSimulationRunning: Boolean = false,
         val searchSimulationResult: MemorySearchDebugInfo? = null,
-        val searchSimulationError: String? = null
+        val searchSimulationError: String? = null,
+        val message: String? = null
 )
 
 /**
@@ -301,6 +302,8 @@ class MemoryViewModel(
             _uiState.update {
                 it.copy(
                     isEmbeddingRebuildRunning = true,
+                    error = null,
+                    message = null,
                     embeddingRebuildProgress = EmbeddingRebuildProgress(
                         total = 0,
                         processed = 0,
@@ -311,7 +314,7 @@ class MemoryViewModel(
             }
 
             try {
-                repository.rebuildVectorIndices { progress ->
+                val finalProgress = repository.rebuildVectorIndices { progress ->
                     _uiState.update { state ->
                         state.copy(embeddingRebuildProgress = progress)
                     }
@@ -320,7 +323,16 @@ class MemoryViewModel(
                 _uiState.update {
                     it.copy(
                         isEmbeddingRebuildRunning = false,
-                        embeddingDimensionUsage = usage
+                        embeddingDimensionUsage = usage,
+                        embeddingRebuildProgress = finalProgress,
+                        message = if (finalProgress.total > 0) {
+                            context.getString(
+                                R.string.memory_embedding_rebuild_completed,
+                                finalProgress.processed
+                            )
+                        } else {
+                            context.getString(R.string.memory_embedding_rebuild_empty)
+                        }
                     )
                 }
             } catch (e: Exception) {
@@ -335,6 +347,14 @@ class MemoryViewModel(
                 }
             }
         }
+    }
+
+    fun clearError() {
+        _uiState.update { it.copy(error = null) }
+    }
+
+    fun clearMessage() {
+        _uiState.update { it.copy(message = null) }
     }
 
     // --- 文件夹相关方法 ---

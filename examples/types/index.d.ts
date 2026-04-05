@@ -47,6 +47,19 @@ import {
     GrepResultData as _GrepResultData,
     GrepFileMatch as _GrepFileMatch,
     GrepLineMatch as _GrepLineMatch,
+    EnvironmentVariableReadResultData as _EnvironmentVariableReadResultData,
+    EnvironmentVariableWriteResultData as _EnvironmentVariableWriteResultData,
+    SandboxPackageResultItem as _SandboxPackageResultItem,
+    SandboxPackagesResultData as _SandboxPackagesResultData,
+    SandboxPackageUpdateResultData as _SandboxPackageUpdateResultData,
+    SandboxScriptExecutionResultData as _SandboxScriptExecutionResultData,
+    McpRestartLogPluginResultItem as _McpRestartLogPluginResultItem,
+    McpRestartWithLogsResultData as _McpRestartWithLogsResultData,
+    SpeechTtsHttpConfigResultItem as _SpeechTtsHttpConfigResultItem,
+    SpeechSttHttpConfigResultItem as _SpeechSttHttpConfigResultItem,
+    SpeechServicesConfigResultData as _SpeechServicesConfigResultData,
+    SpeechServicesUpdateResultData as _SpeechServicesUpdateResultData,
+    SpeechServicesTtsPlaybackTestResultData as _SpeechServicesTtsPlaybackTestResultData,
     ModelConfigResultItem as _ModelConfigResultItem,
     FunctionModelMappingResultItem as _FunctionModelMappingResultItem,
     ModelConfigsResultData as _ModelConfigsResultData,
@@ -178,6 +191,19 @@ declare global {
     type GrepResultData = _GrepResultData;
     type GrepFileMatch = _GrepFileMatch;
     type GrepLineMatch = _GrepLineMatch;
+    type EnvironmentVariableReadResultData = _EnvironmentVariableReadResultData;
+    type EnvironmentVariableWriteResultData = _EnvironmentVariableWriteResultData;
+    type SandboxPackageResultItem = _SandboxPackageResultItem;
+    type SandboxPackagesResultData = _SandboxPackagesResultData;
+    type SandboxPackageUpdateResultData = _SandboxPackageUpdateResultData;
+    type SandboxScriptExecutionResultData = _SandboxScriptExecutionResultData;
+    type McpRestartLogPluginResultItem = _McpRestartLogPluginResultItem;
+    type McpRestartWithLogsResultData = _McpRestartWithLogsResultData;
+    type SpeechTtsHttpConfigResultItem = _SpeechTtsHttpConfigResultItem;
+    type SpeechSttHttpConfigResultItem = _SpeechSttHttpConfigResultItem;
+    type SpeechServicesConfigResultData = _SpeechServicesConfigResultData;
+    type SpeechServicesUpdateResultData = _SpeechServicesUpdateResultData;
+    type SpeechServicesTtsPlaybackTestResultData = _SpeechServicesTtsPlaybackTestResultData;
     type ModelConfigResultItem = _ModelConfigResultItem;
     type FunctionModelMappingResultItem = _FunctionModelMappingResultItem;
     type ModelConfigsResultData = _ModelConfigsResultData;

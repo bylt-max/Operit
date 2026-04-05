@@ -67,18 +67,24 @@
 
 Windows:
 ```
-.\tools\execute_js.bat <JS文件路径> <函数名> <JSON参数>
+.\tools\execute_js.bat <JS文件路径> <函数名> <JSON参数或@参数文件>
 ```
 
 Linux/macOS:
 ```
-./tools/execute_js.sh <JS文件路径> <函数名> <JSON参数>
+./tools/execute_js.sh <JS文件路径> <函数名> <JSON参数或@参数文件>
 ```
 
 例如：
 ```
-.\tools\execute_js.bat examples\demo_script.js calculate '{"a":5,"b":3,"operation":"multiply"}'
-``` 
+.\tools\execute_js.bat examples\demo_script.js calculate @params.json
+```
+
+补充说明：
+- `@params.json` 是当前最稳的传参方式，尤其适合 Windows / PowerShell
+- 如果使用 `run_sandbox_script.*` 或包内的 `debug_run_sandbox_script` 并传 `source_code`，代码会按“顶层脚本”执行
+- 这类内联脚本里应使用 `console.log(...)`、`emit(...)`、`complete(...)`
+- 不要直接写 `params.xxx` 或 `intermediate(...)`
 
 
 # Assistance Tool Packages

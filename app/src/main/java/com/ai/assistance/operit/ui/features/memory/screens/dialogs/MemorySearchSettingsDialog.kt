@@ -78,7 +78,7 @@ fun MemorySearchSettingsDialog(
         model = model
     ).normalized()
 
-    val rebuildEnabled = editedCloudConfig.isReady() && !isRebuilding
+    val rebuildEnabled = !isRebuilding
 
     AlertDialog(
         modifier = Modifier.fillMaxHeight(0.86f),

@@ -14,6 +14,7 @@ import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.BinaryResultData
 import com.ai.assistance.operit.core.tools.BooleanResultData
 import com.ai.assistance.operit.core.tools.IntResultData
+import com.ai.assistance.operit.core.tools.SandboxScriptExecutionResultData
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.ToolResultData
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
@@ -32,6 +33,7 @@ import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -149,6 +151,13 @@ internal object JsNativeInterfaceDelegates {
             is StringResultData -> SerializedToolResultData(data = JsonPrimitive(resultData.value))
             is BooleanResultData -> SerializedToolResultData(data = JsonPrimitive(resultData.value))
             is IntResultData -> SerializedToolResultData(data = JsonPrimitive(resultData.value))
+            is SandboxScriptExecutionResultData -> {
+                val jsonData =
+                    Json.parseToJsonElement(
+                        Json.encodeToString(SandboxScriptExecutionResultData.serializer(), resultData)
+                    )
+                SerializedToolResultData(data = jsonData)
+            }
             else -> {
                 val jsonString = resultData.toJson()
                 val jsonData =

@@ -16,7 +16,11 @@ import {
     StringResultData, ChatServiceStartResultData, ChatCreationResultData, ChatListResultData, ChatFindResultData, AgentStatusResultData,
     ChatSwitchResultData, ChatTitleUpdateResultData, ChatDeleteResultData, MessageSendResultData, MemoryQueryResultData, MemoryLinkResultData, MemoryLinkQueryResultData, GrepResultData,
     ChatMessagesResultData, CharacterCardListResultData,
+    EnvironmentVariableReadResultData, EnvironmentVariableWriteResultData,
+    SandboxPackageResultItem, SandboxPackagesResultData, SandboxPackageUpdateResultData,
+    McpRestartLogPluginResultItem, McpRestartWithLogsResultData,
     SpeechServicesConfigResultData, SpeechServicesUpdateResultData,
+    SandboxScriptExecutionResultData,
     ModelConfigsResultData, ModelConfigCreateResultData, ModelConfigUpdateResultData, ModelConfigDeleteResultData,
     FunctionModelConfigsResultData, FunctionModelConfigResultData, FunctionModelBindingResultData, ModelConfigConnectionTestResultData
 } from './results';
@@ -90,11 +94,12 @@ export interface ToolResultMap {
     'device_info': DeviceInfoResultData;
     'get_notifications': NotificationData;
     'get_device_location': LocationData;
-    'read_environment_variable': StringResultData;
-    'write_environment_variable': StringResultData;
-    'list_sandbox_packages': StringResultData;
-    'set_sandbox_package_enabled': StringResultData;
-    'restart_mcp_with_logs': StringResultData;
+    'read_environment_variable': EnvironmentVariableReadResultData;
+    'write_environment_variable': EnvironmentVariableWriteResultData;
+    'list_sandbox_packages': SandboxPackagesResultData;
+    'set_sandbox_package_enabled': SandboxPackageUpdateResultData;
+    'execute_sandbox_script_direct': SandboxScriptExecutionResultData;
+    'restart_mcp_with_logs': McpRestartWithLogsResultData;
     'get_speech_services_config': SpeechServicesConfigResultData;
     'set_speech_services_config': SpeechServicesUpdateResultData;
     'list_model_configs': ModelConfigsResultData;

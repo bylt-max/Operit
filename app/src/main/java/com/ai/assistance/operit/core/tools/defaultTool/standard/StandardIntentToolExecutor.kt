@@ -30,6 +30,25 @@ class StandardIntentToolExecutor(private val context: Context) {
         const val TYPE_SERVICE = "service"
     }
 
+    private fun applyComponentName(intent: Intent, rawComponentName: String) {
+        val parts = rawComponentName.split("/", limit = 2)
+        if (parts.size != 2) {
+            return
+        }
+        val packageName = parts[0].trim()
+        val className = parts[1].trim()
+        if (packageName.isEmpty() || className.isEmpty()) {
+            return
+        }
+        val normalizedClassName =
+            if (className.startsWith(".")) {
+                packageName + className
+            } else {
+                className
+            }
+        intent.setClassName(packageName, normalizedClassName)
+    }
+
     suspend fun invoke(tool: AITool): ToolResult {
         // Validate parameters
         val validationResult = validateParameters(tool)
@@ -71,10 +90,7 @@ class StandardIntentToolExecutor(private val context: Context) {
 
             // Set component if provided
             if (!componentName.isNullOrBlank()) {
-                val parts = componentName.split("/")
-                if (parts.size == 2) {
-                    intent.setClassName(parts[0], parts[1])
-                }
+                applyComponentName(intent, componentName)
             }
 
             // Set flags if provided

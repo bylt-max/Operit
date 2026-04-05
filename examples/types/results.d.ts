@@ -998,9 +998,102 @@ export interface StringResultData {
     toString(): string;
 }
 
+export interface SandboxScriptExecutionResultData {
+    success: boolean;
+    scriptPath: string;
+    functionName: string;
+    params?: unknown;
+    envFilePath?: string | null;
+    startedAtMs: number;
+    finishedAtMs: number;
+    durationMs: number;
+    result?: unknown;
+    error?: string | null;
+    events: string[];
+    executionMode?: string | null;
+    scriptLabel?: string | null;
+    requestedWaitMs?: number | null;
+    toString(): string;
+}
+
 // ============================================================================
 // Software Settings Types
 // ============================================================================
+
+export interface EnvironmentVariableReadResultData {
+    key: string;
+    value?: string | null;
+    exists: boolean;
+    toString(): string;
+}
+
+export interface EnvironmentVariableWriteResultData {
+    key: string;
+    requestedValue: string;
+    value?: string | null;
+    exists: boolean;
+    cleared: boolean;
+    toString(): string;
+}
+
+export interface SandboxPackageResultItem {
+    packageName: string;
+    displayName: string;
+    description: string;
+    isBuiltIn: boolean;
+    enabledByDefault: boolean;
+    enabled: boolean;
+    imported: boolean;
+    isDisabledByUser: boolean;
+    toolCount: number;
+    manageMode: string;
+}
+
+export interface SandboxPackagesResultData {
+    externalPackagesPath: string;
+    scriptDevGuide: string;
+    totalCount: number;
+    builtInCount: number;
+    externalCount: number;
+    enabledCount: number;
+    disabledCount: number;
+    packages: SandboxPackageResultItem[];
+    toString(): string;
+}
+
+export interface SandboxPackageUpdateResultData {
+    packageName: string;
+    requestedEnabled: boolean;
+    previousEnabled: boolean;
+    currentEnabled: boolean;
+    message: string;
+    toString(): string;
+}
+
+export interface McpRestartLogPluginResultItem {
+    id: string;
+    displayName: string;
+    shortName: string;
+    status: string;
+    message: string;
+    serviceName: string;
+    log: string;
+}
+
+export interface McpRestartWithLogsResultData {
+    timeoutMs: number;
+    elapsedMs: number;
+    timedOut: boolean;
+    progress: number;
+    message: string;
+    pluginsTotal: number;
+    pluginsStarted: number;
+    successCount: number;
+    failedCount: number;
+    plugins: McpRestartLogPluginResultItem[];
+    extraLogs: Record<string, string>;
+    toString(): string;
+}
 
 export interface SpeechTtsHttpConfigResultItem {
     urlTemplate: string;

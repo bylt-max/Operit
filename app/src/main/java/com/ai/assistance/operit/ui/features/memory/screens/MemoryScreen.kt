@@ -73,6 +73,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStreamReader
 import android.provider.OpenableColumns
+import android.widget.Toast
 import com.ai.assistance.operit.util.AppLogger
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.text.KeyboardActions
@@ -163,6 +164,18 @@ fun MemoryScreen() {
     val uiState by viewModel.uiState.collectAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(uiState.error) {
+        val error = uiState.error ?: return@LaunchedEffect
+        Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+        viewModel.clearError()
+    }
+
+    LaunchedEffect(uiState.message) {
+        val message = uiState.message ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        viewModel.clearMessage()
+    }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),

@@ -1,6 +1,5 @@
 package com.ai.assistance.operit.ui.features.chat.components
 
-import android.annotation.SuppressLint
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -54,7 +53,6 @@ fun useFloatingWindowLauncher(
     }
 }
 
-@SuppressLint("StateFlowValueCalledInComposition")
 @Composable
 fun ChatScreenHeader(
         modifier: Modifier = Modifier,
@@ -117,6 +115,11 @@ fun ChatScreenHeader(
         }
 
     val activeStreamingChatIds by actualViewModel.activeStreamingChatIds.collectAsState()
+    val isFloatingMode by actualViewModel.isFloatingMode.collectAsState()
+    val currentWindowSize by actualViewModel.currentWindowSize.collectAsState()
+    val maxWindowSizeInK by actualViewModel.maxWindowSizeInK.collectAsState()
+    val inputTokenCount by actualViewModel.inputTokenCount.collectAsState()
+    val outputTokenCount by actualViewModel.outputTokenCount.collectAsState()
 
     val permissionLauncher =
         rememberLauncherForActivityResult(
@@ -152,7 +155,7 @@ fun ChatScreenHeader(
                 showChatHistorySelector = showChatHistorySelector,
                 onToggleChatHistorySelector = { actualViewModel.toggleChatHistorySelector() },
                 modifier = Modifier.weight(1f),
-                isFloatingMode = actualViewModel.isFloatingMode.value,
+                isFloatingMode = isFloatingMode,
                 onLaunchFloatingWindow = launchFloatingWindow,
                 historyIconColor = chatHeaderHistoryIconColor,
                 pipIconColor = chatHeaderPipIconColor,
@@ -167,12 +170,7 @@ fun ChatScreenHeader(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 统计信息
-            val currentWindowSize = actualViewModel.currentWindowSize.value
-            val maxWindowSizeInK = actualViewModel.maxWindowSizeInK.value
             val maxWindowSize = (maxWindowSizeInK * 1024).toInt()
-
-            val inputTokenCount = actualViewModel.inputTokenCount.value
-            val outputTokenCount = actualViewModel.outputTokenCount.value
             val totalTokenCount = inputTokenCount + outputTokenCount
             val contextUsagePercentage =
                     if (maxWindowSize > 0) {

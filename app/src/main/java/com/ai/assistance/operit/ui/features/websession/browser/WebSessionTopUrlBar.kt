@@ -34,10 +34,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ai.assistance.operit.R
 
 @Composable
 internal fun WebSessionTopUrlBar(
@@ -56,6 +62,9 @@ internal fun WebSessionTopUrlBar(
     onMinimize: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val addressBarLabel = stringResource(R.string.web_session_address_bar)
+    val addressInputLabel = stringResource(R.string.web_session_address_input)
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
@@ -129,7 +138,12 @@ internal fun WebSessionTopUrlBar(
                                 BasicTextField(
                                     value = urlDraft,
                                     onValueChange = onUrlDraftChange,
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .semantics {
+                                                contentDescription = addressInputLabel
+                                            },
                                     singleLine = true,
                                     textStyle =
                                         MaterialTheme.typography.bodyMedium.copy(
@@ -151,7 +165,7 @@ internal fun WebSessionTopUrlBar(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.ArrowForward,
-                                    contentDescription = null
+                                    contentDescription = stringResource(R.string.web_session_open_address)
                                 )
                             }
                         }
@@ -160,6 +174,10 @@ internal fun WebSessionTopUrlBar(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
+                                    .semantics {
+                                        contentDescription = addressBarLabel
+                                        role = Role.Button
+                                    }
                                     .clickable(onClick = onStartEditing)
                                     .padding(horizontal = 12.dp, vertical = 9.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -199,7 +217,14 @@ internal fun WebSessionTopUrlBar(
                                         } else {
                                             Icons.Outlined.StarOutline
                                         },
-                                    contentDescription = null,
+                                    contentDescription =
+                                        stringResource(
+                                            if (isBookmarked) {
+                                                R.string.web_session_remove_bookmark
+                                            } else {
+                                                R.string.web_session_add_bookmark
+                                            }
+                                        ),
                                     tint =
                                         if (isBookmarked) {
                                             MaterialTheme.colorScheme.primary
@@ -232,7 +257,14 @@ internal fun WebSessionTopUrlBar(
                                         } else {
                                             Icons.Filled.Refresh
                                         },
-                                    contentDescription = null
+                                    contentDescription =
+                                        stringResource(
+                                            if (isLoading) {
+                                                R.string.web_session_stop
+                                            } else {
+                                                R.string.web_session_refresh
+                                            }
+                                        )
                                 )
                             }
                         }
@@ -249,7 +281,7 @@ internal fun WebSessionTopUrlBar(
                             IconButton(onClick = onMinimize) {
                                 Icon(
                                     imageVector = Icons.Filled.Remove,
-                                    contentDescription = null
+                                    contentDescription = stringResource(R.string.web_session_minimize)
                                 )
                             }
                         }

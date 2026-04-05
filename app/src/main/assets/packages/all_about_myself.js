@@ -616,6 +616,69 @@
       ]
     },
     {
+      name: "debug_run_sandbox_script"
+      description: {
+        zh: '''直接运行一段 sandbox script。可传 Android 侧 `source_path`，也可直接传 `source_code` 内联代码；会返回结构化执行结果与日志事件。'''
+        en: '''Run a sandbox script directly. Accepts either an Android-side `source_path` or inline `source_code`, and returns structured execution results with log events.'''
+      }
+      parameters: [
+        {
+          name: "source_path"
+          description: {
+            zh: "Android 侧脚本文件路径；与 source_code 二选一"
+            en: "Android-side script file path; use either this or source_code"
+          }
+          type: string
+          required: false
+        },
+        {
+          name: "source_code"
+          description: {
+            zh: "直接执行的内联 JavaScript 代码；与 source_path 二选一"
+            en: "Inline JavaScript code to execute directly; use either this or source_path"
+          }
+          type: string
+          required: false
+        },
+        {
+          name: "params_json"
+          description: {
+            zh: "传给脚本运行时的 JSON 参数字符串，默认 {}"
+            en: "JSON parameter string passed to the script runtime, default {}"
+          }
+          type: string
+          required: false
+        },
+        {
+          name: "env_file_path"
+          description: {
+            zh: "可选，Android 侧 env 文件路径"
+            en: "Optional Android-side env file path"
+          }
+          type: string
+          required: false
+        },
+        {
+          name: "script_label"
+          description: {
+            zh: "可选，仅用于内联代码模式下生成结果文件名和显示标识"
+            en: "Optional label used only for inline-code mode to name the result file and display path"
+          }
+          type: string
+          required: false
+        },
+        {
+          name: "wait_ms"
+          description: {
+            zh: "等待结构化结果文件的毫秒数，默认 15000"
+            en: "Milliseconds to wait for the structured result file, default 15000"
+          }
+          type: integer
+          required: false
+        }
+      ]
+    },
+    {
       name: "read_environment_variable"
       description: {
         zh: '''读取指定环境变量当前值（仅用于沙盒包脚本环境变量排查，不用于 MCP 配置）。'''
@@ -1615,13 +1678,10 @@ description: one-line summary of what this skill does
 async function list_sandbox_packages() {
     try {
         const result = await Tools.SoftwareSettings.listSandboxPackages();
-        const payload = extract_string_result(result);
         complete({
             success: true,
-            message: payload || "Sandbox package list fetched.",
-            data: {
-                raw: payload
-            }
+            message: `Sandbox package list fetched: ${String(result.totalCount)} package(s).`,
+            data: result
         });
     }
     catch (error) {
@@ -1636,13 +1696,10 @@ async function set_sandbox_package_enabled(params) {
         const packageName = params?.package_name ?? "";
         const enabled = params?.enabled ?? false;
         const result = await Tools.SoftwareSettings.setSandboxPackageEnabled(packageName, enabled);
-        const payload = extract_string_result(result);
         complete({
             success: true,
-            message: payload || "Sandbox package switch updated.",
-            data: {
-                raw: payload
-            }
+            message: result.message || "Sandbox package switch updated.",
+            data: result
         });
     }
     catch (error) {
@@ -1655,8 +1712,14 @@ async function set_sandbox_package_enabled(params) {
 const SANDBOX_EXTERNAL_PACKAGES_DIR = "/sdcard/Android/data/com.ai.assistance.operit/files/packages";
 const TOOLPKG_DEBUG_INSTALL_ACTION = "com.ai.assistance.operit.DEBUG_INSTALL_TOOLPKG";
 const TOOLPKG_DEBUG_INSTALL_COMPONENT = "com.ai.assistance.operit/.core.tools.packTool.ToolPkgDebugInstallReceiver";
+const SANDBOX_SCRIPT_EXECUTION_ACTION = "com.ai.assistance.operit.EXECUTE_JS";
+const SANDBOX_SCRIPT_EXECUTION_COMPONENT = "com.ai.assistance.operit/com.ai.assistance.operit.core.tools.javascript.ScriptExecutionReceiver";
+const SANDBOX_SCRIPT_EXECUTION_MODE_SCRIPT = "script";
+const SANDBOX_SCRIPT_EXECUTION_MODE_CODE = "code";
+const SANDBOX_JS_TEMP_DIR = "/sdcard/Android/data/com.ai.assistance.operit/js_temp";
 const DEFAULT_SANDBOX_REFRESH_TIMEOUT_MS = 1500;
 const DEFAULT_TOOLPKG_INSTALL_WAIT_MS = 1500;
+const DEFAULT_SANDBOX_SCRIPT_WAIT_MS = 15000;
 const JS_METADATA_BLOCK_PATTERN = /\/\*\s*METADATA([\s\S]*?)\*\//m;
 const JS_PACKAGE_NAME_PATTERN = /^\s*["']?name["']?\s*:\s*["']([^"']+)["']/m;
 const TOOLPKG_ID_PATTERN = /^\s*["']?toolpkg_id["']?\s*:\s*["']([^"']+)["']/m;
@@ -1792,21 +1855,6 @@ function parse_json_record(raw) {
         return null;
     }
 }
-function parse_sandbox_packages_payload(raw) {
-    const parsed = parse_json_record(raw);
-    if (!parsed)
-        return null;
-    const packages = Array.isArray(parsed.packages) ? parsed.packages : [];
-    return {
-        externalPackagesPath: typeof parsed.externalPackagesPath === "string" ? parsed.externalPackagesPath : undefined,
-        totalCount: typeof parsed.totalCount === "number" ? parsed.totalCount : undefined,
-        builtInCount: typeof parsed.builtInCount === "number" ? parsed.builtInCount : undefined,
-        externalCount: typeof parsed.externalCount === "number" ? parsed.externalCount : undefined,
-        enabledCount: typeof parsed.enabledCount === "number" ? parsed.enabledCount : undefined,
-        disabledCount: typeof parsed.disabledCount === "number" ? parsed.disabledCount : undefined,
-        packages
-    };
-}
 function find_sandbox_package_entry(payload, packageName) {
     const targetKey = normalize_package_key(packageName);
     const packages = payload?.packages ?? [];
@@ -1814,29 +1862,47 @@ function find_sandbox_package_entry(payload, packageName) {
 }
 async function refresh_sandbox_packages_until(packageName, timeoutMs) {
     const deadline = Date.now() + Math.max(0, timeoutMs);
-    let lastRaw = "";
     let lastPayload = null;
     let lastEntry = null;
     while (true) {
-        const result = await Tools.SoftwareSettings.listSandboxPackages();
-        lastRaw = extract_string_result(result);
-        lastPayload = parse_sandbox_packages_payload(lastRaw);
+        lastPayload = await Tools.SoftwareSettings.listSandboxPackages();
         lastEntry = find_sandbox_package_entry(lastPayload, packageName);
         if (lastEntry) {
             return {
                 payload: lastPayload,
-                packageEntry: lastEntry,
-                raw: lastRaw
+                packageEntry: lastEntry
             };
         }
         if (Date.now() >= deadline) {
             return {
                 payload: lastPayload,
-                packageEntry: lastEntry,
-                raw: lastRaw
+                packageEntry: lastEntry
             };
         }
         await Tools.System.sleep(Math.min(300, Math.max(50, deadline - Date.now())));
+    }
+}
+async function wait_for_android_file(path, timeoutMs) {
+    const deadline = Date.now() + Math.max(0, timeoutMs);
+    while (true) {
+        if (await android_path_exists(path)) {
+            return true;
+        }
+        if (Date.now() >= deadline) {
+            return false;
+        }
+        await Tools.System.sleep(Math.min(300, Math.max(50, deadline - Date.now())));
+    }
+}
+function parse_json_text(raw) {
+    const text = String(raw ?? "").trim();
+    if (!text)
+        return null;
+    try {
+        return JSON.parse(text);
+    }
+    catch {
+        return null;
     }
 }
 function extract_js_metadata_block(sourceText, sourcePath) {
@@ -2085,25 +2151,38 @@ function parse_requested_package_ids(raw) {
     return Array.from(new Set(input.split(/[\r\n,]+/).map((item) => item.trim()).filter(Boolean)));
 }
 async function debug_install_js_package(params) {
+    const logs = [];
+    const logStep = (message) => {
+        logs.push(message);
+    };
+    const finish = (payload) => complete({
+        ...payload,
+        data: {
+            ...(payload.data ?? {}),
+            logs
+        }
+    });
     try {
         const sourcePath = normalize_android_path(params?.source_path);
+        logStep(`Resolved source_path -> ${sourcePath || "<empty>"}`);
         if (!sourcePath) {
-            complete({
+            finish({
                 success: false,
                 message: "Missing required parameter: source_path"
             });
             return;
         }
         const sourceType = await get_android_file_type(sourcePath);
+        logStep(`Source type detected -> ${sourceType}`);
         if (sourceType !== "file") {
-            complete({
+            finish({
                 success: false,
                 message: `JS source must be a file: ${sourcePath}`
             });
             return;
         }
         if (!sourcePath.toLowerCase().endsWith(".js")) {
-            complete({
+            finish({
                 success: false,
                 message: `JS debug install only supports .js files: ${sourcePath}`
             });
@@ -2111,40 +2190,51 @@ async function debug_install_js_package(params) {
         }
         const sourceText = await read_android_text_file(sourcePath);
         const packageInfo = parse_js_package_source(sourceText, sourcePath);
+        logStep(`Parsed package info -> packageName=${packageInfo.packageName}`);
         const enableAfterInstall = parse_boolean_like(params?.enable_after_install, true);
         const activateAfterInstall = parse_boolean_like(params?.activate_after_install, true);
         const shouldEnable = enableAfterInstall || activateAfterInstall;
+        logStep(`Install options -> enableAfterInstall=${String(enableAfterInstall)}, activateAfterInstall=${String(activateAfterInstall)}, shouldEnable=${String(shouldEnable)}`);
         await ensure_android_directory(SANDBOX_EXTERNAL_PACKAGES_DIR);
         const targetPath = path_join(SANDBOX_EXTERNAL_PACKAGES_DIR, `${safe_debug_file_stem(packageInfo.packageName, "debug_js_package")}.js`);
+        logStep(`Target install path -> ${targetPath}`);
         const copied = !same_android_path(sourcePath, targetPath);
         if (copied) {
+            logStep("Source and target differ; replacing target file before copy.");
             await delete_android_path_if_exists(targetPath);
             await Tools.Files.copy(sourcePath, targetPath, false, "android", "android");
+            logStep("Package file copied to external sandbox directory.");
+        }
+        else {
+            logStep("Source path already matches target path; skipping file copy.");
         }
         if (!(await android_path_exists(targetPath))) {
-            complete({
+            finish({
                 success: false,
                 message: `Installed JS package file is missing after copy: ${targetPath}`
             });
             return;
         }
+        logStep("Verified installed JS package file exists.");
         const removedDuplicateFiles = await delete_duplicate_external_js_package_files(packageInfo.packageName, targetPath);
+        logStep(`Duplicate cleanup completed -> removed ${removedDuplicateFiles.length} file(s).`);
         const refresh = await refresh_sandbox_packages_until(packageInfo.packageName, DEFAULT_SANDBOX_REFRESH_TIMEOUT_MS);
+        logStep(`Sandbox refresh completed -> found=${String(Boolean(refresh.packageEntry))}, builtIn=${String(refresh.packageEntry?.isBuiltIn ?? false)}`);
         if (!refresh.packageEntry) {
-            complete({
+            finish({
                 success: false,
                 message: `Sandbox package did not appear after refresh: ${packageInfo.packageName}`,
                 data: {
                     package_name: packageInfo.packageName,
                     source_path: sourcePath,
                     target_path: targetPath,
-                    refresh_raw: refresh.raw
+                    refresh_result: refresh.payload
                 }
             });
             return;
         }
         if (refresh.packageEntry.isBuiltIn) {
-            complete({
+            finish({
                 success: false,
                 message: `External JS package '${packageInfo.packageName}' did not take precedence over a built-in package with the same name.`,
                 data: {
@@ -2157,13 +2247,23 @@ async function debug_install_js_package(params) {
         }
         let enableResult = null;
         if (shouldEnable) {
-            enableResult = extract_string_result(await Tools.SoftwareSettings.setSandboxPackageEnabled(packageInfo.packageName, true));
+            logStep(`Enabling sandbox package -> ${packageInfo.packageName}`);
+            enableResult = await Tools.SoftwareSettings.setSandboxPackageEnabled(packageInfo.packageName, true);
+            logStep(`Enable result -> ${enableResult.message || "<empty>"}`);
+        }
+        else {
+            logStep("Enable step skipped by configuration.");
         }
         let activateResult = null;
         if (activateAfterInstall) {
+            logStep(`Activating package via use_package -> ${packageInfo.packageName}`);
             activateResult = extract_string_result(await toolCall("use_package", { package_name: packageInfo.packageName }));
+            logStep(`Activation result -> ${activateResult || "<empty>"}`);
         }
-        complete({
+        else {
+            logStep("Activation step skipped by configuration.");
+        }
+        finish({
             success: true,
             message: `Debug JS package installed: ${packageInfo.packageName}`,
             data: {
@@ -2177,12 +2277,13 @@ async function debug_install_js_package(params) {
                 activate_after_install: activateAfterInstall,
                 enable_result: enableResult,
                 activate_result: activateResult,
-                refresh_raw: refresh.raw
+                refresh_result: refresh.payload
             }
         });
     }
     catch (error) {
-        complete({
+        logStep(`Execution failed -> ${get_error_message(error)}`);
+        finish({
             success: false,
             message: get_error_message(error)
         });
@@ -2190,30 +2291,56 @@ async function debug_install_js_package(params) {
 }
 async function debug_install_toolpkg(params) {
     const cleanupPaths = [];
+    const logs = [];
+    const logStep = (message) => {
+        logs.push(message);
+    };
+    const finish = (payload) => complete({
+        ...payload,
+        data: {
+            ...(payload.data ?? {}),
+            logs
+        }
+    });
+    let finalPayload = null;
     try {
         const resolvedSource = await resolve_toolpkg_source(params?.source_path ?? "");
+        logStep(`Resolved ToolPkg source -> kind=${resolvedSource.sourceKind}, packageId=${resolvedSource.packageId}, sourcePath=${resolvedSource.sourcePath}`);
         cleanupPaths.push(...resolvedSource.temporaryPaths);
+        if (resolvedSource.temporaryPaths.length > 0) {
+            logStep(`Registered temporary paths -> ${resolvedSource.temporaryPaths.join(", ")}`);
+        }
         let archivePath = resolvedSource.archivePath ?? "";
         if (resolvedSource.sourceKind === "folder") {
+            logStep("Source is a folder; building temporary .toolpkg archive.");
             const builtArchive = await build_toolpkg_archive_from_folder(resolvedSource);
             archivePath = builtArchive.archivePath;
             cleanupPaths.push(...builtArchive.temporaryPaths);
+            logStep(`Built archive -> ${archivePath}`);
         }
         await ensure_android_directory(SANDBOX_EXTERNAL_PACKAGES_DIR);
         const targetPath = path_join(SANDBOX_EXTERNAL_PACKAGES_DIR, `${safe_debug_file_stem(resolvedSource.packageId, "toolpkg")}.toolpkg`);
+        logStep(`Target install path -> ${targetPath}`);
         if (!same_android_path(archivePath, targetPath)) {
+            logStep("Archive path differs from target; replacing target archive before copy.");
             await delete_android_path_if_exists(targetPath);
             await Tools.Files.copy(archivePath, targetPath, false, "android", "android");
+            logStep("ToolPkg archive copied to external sandbox directory.");
+        }
+        else {
+            logStep("Archive path already matches target path; skipping archive copy.");
         }
         if (!(await android_path_exists(targetPath))) {
-            complete({
+            finalPayload = {
                 success: false,
                 message: `Installed ToolPkg archive is missing after copy: ${targetPath}`
-            });
+            };
             return;
         }
+        logStep("Verified installed ToolPkg archive exists.");
         const resetSubpackageStates = parse_boolean_like(params?.reset_subpackage_states, true);
         const waitMs = parse_integer_like(params?.wait_ms, DEFAULT_TOOLPKG_INSTALL_WAIT_MS);
+        logStep(`Install options -> resetSubpackageStates=${String(resetSubpackageStates)}, waitMs=${String(waitMs)}`);
         const broadcastResult = await Tools.System.sendBroadcast({
             action: TOOLPKG_DEBUG_INSTALL_ACTION,
             component: TOOLPKG_DEBUG_INSTALL_COMPONENT,
@@ -2223,9 +2350,11 @@ async function debug_install_toolpkg(params) {
                 reset_subpackage_states: resetSubpackageStates
             }
         });
+        logStep(`Debug install broadcast dispatched -> ${extract_string_result(broadcastResult) || "<empty>"}`);
         const refresh = await refresh_sandbox_packages_until(resolvedSource.packageId, waitMs);
+        logStep(`Sandbox refresh completed -> found=${String(Boolean(refresh.packageEntry))}, builtIn=${String(refresh.packageEntry?.isBuiltIn ?? false)}`);
         if (!refresh.packageEntry) {
-            complete({
+            finalPayload = {
                 success: false,
                 message: `ToolPkg container did not appear after debug install: ${resolvedSource.packageId}`,
                 data: {
@@ -2233,21 +2362,21 @@ async function debug_install_toolpkg(params) {
                     source_path: resolvedSource.sourcePath,
                     archive_path: targetPath,
                     broadcast_result: broadcastResult,
-                    refresh_raw: refresh.raw
+                    refresh_result: refresh.payload
                 }
-            });
+            };
             return;
         }
         if (refresh.packageEntry.isBuiltIn) {
-            complete({
+            finalPayload = {
                 success: false,
                 message: `Debug ToolPkg '${resolvedSource.packageId}' is shadowed by a built-in package with the same name.`,
                 data: {
                     package: refresh.packageEntry,
                     broadcast_result: broadcastResult,
-                    refresh_raw: refresh.raw
+                    refresh_result: refresh.payload
                 }
-            });
+            };
             return;
         }
         const requestedSubpackages = parse_requested_package_ids(params?.activate_subpackages);
@@ -2256,17 +2385,21 @@ async function debug_install_toolpkg(params) {
             ? []
             : requestedSubpackages.filter((subpackageId) => !knownSubpackageKeys.has(normalize_package_key(subpackageId)));
         const activationTargets = requestedSubpackages.filter((subpackageId) => !unknownRequestedSubpackages.includes(subpackageId));
+        logStep(`Subpackage activation plan -> requested=${requestedSubpackages.join(", ") || "<none>"}, targets=${activationTargets.join(", ") || "<none>"}, unknown=${unknownRequestedSubpackages.join(", ") || "<none>"}`);
         const subpackageResults = [];
         for (const subpackageId of activationTargets) {
-            const enableResult = extract_string_result(await Tools.SoftwareSettings.setSandboxPackageEnabled(subpackageId, true));
+            logStep(`Enabling subpackage -> ${subpackageId}`);
+            const enableResult = await Tools.SoftwareSettings.setSandboxPackageEnabled(subpackageId, true);
+            logStep(`Subpackage enable result [${subpackageId}] -> ${enableResult.message || "<empty>"}`);
             const activateResult = extract_string_result(await toolCall("use_package", { package_name: subpackageId }));
+            logStep(`Subpackage activate result [${subpackageId}] -> ${activateResult || "<empty>"}`);
             subpackageResults.push({
                 subpackage_id: subpackageId,
                 enable_result: enableResult,
                 activate_result: activateResult
             });
         }
-        complete({
+        finalPayload = {
             success: true,
             message: `Debug ToolPkg installed: ${resolvedSource.packageId}`,
             data: {
@@ -2283,18 +2416,130 @@ async function debug_install_toolpkg(params) {
                 subpackage_results: subpackageResults,
                 package: refresh.packageEntry,
                 broadcast_result: broadcastResult,
-                refresh_raw: refresh.raw
+                refresh_result: refresh.payload
             }
-        });
+        };
     }
     catch (error) {
-        complete({
+        logStep(`Execution failed -> ${get_error_message(error)}`);
+        finalPayload = {
             success: false,
             message: get_error_message(error)
-        });
+        };
     }
     finally {
+        if (cleanupPaths.length > 0) {
+            logStep(`Cleaning temporary paths -> ${cleanupPaths.join(", ")}`);
+        }
         await cleanup_android_paths(cleanupPaths);
+        if (cleanupPaths.length > 0) {
+            logStep("Temporary path cleanup completed.");
+        }
+        if (finalPayload) {
+            finish(finalPayload);
+        }
+    }
+}
+async function debug_run_sandbox_script(params) {
+    const logs = [];
+    const logStep = (message) => {
+        logs.push(message);
+    };
+    const finish = (payload) => complete({
+        ...payload,
+        data: {
+            ...(payload.data ?? {}),
+            logs
+        }
+    });
+    let finalPayload = null;
+    try {
+        const sourcePath = normalize_android_path(params?.source_path);
+        const sourceCode = typeof params?.source_code === "string" ? params.source_code : "";
+        const hasInlineCode = sourceCode.trim().length > 0;
+        const waitMs = parse_integer_like(params?.wait_ms, DEFAULT_SANDBOX_SCRIPT_WAIT_MS);
+        const paramsJson = String(params?.params_json ?? "{}").trim() || "{}";
+        const parsedParams = parse_json_text(paramsJson);
+        const envFilePath = normalize_android_path(params?.env_file_path);
+        const scriptLabel = safe_debug_file_stem(String(params?.script_label ?? "").trim(), "sandbox_script");
+        logStep(`Resolved input -> sourcePath=${sourcePath || "<empty>"}, hasInlineCode=${String(hasInlineCode)}, waitMs=${String(waitMs)}`);
+        if (!sourcePath && !hasInlineCode) {
+            finalPayload = {
+                success: false,
+                message: "Either source_path or source_code is required."
+            };
+            return;
+        }
+        if (sourcePath) {
+            const sourceType = await get_android_file_type(sourcePath);
+            logStep(`Source type detected -> ${sourceType}`);
+            if (sourceType !== "file") {
+                finalPayload = {
+                    success: false,
+                    message: `Sandbox script source must be a file: ${sourcePath}`
+                };
+                return;
+            }
+        }
+        if (!parsedParams || typeof parsedParams !== "object" || Array.isArray(parsedParams)) {
+            finalPayload = {
+                success: false,
+                message: `params_json must be a JSON object: ${paramsJson}`
+            };
+            return;
+        }
+        logStep("params_json parsed successfully.");
+        if (envFilePath) {
+            const envType = await get_android_file_type(envFilePath);
+            logStep(`Env file type detected -> ${envType}`);
+            if (envType !== "file") {
+                finalPayload = {
+                    success: false,
+                    message: `env_file_path must be a file: ${envFilePath}`
+                };
+                return;
+            }
+        }
+        const executionMode = hasInlineCode ? SANDBOX_SCRIPT_EXECUTION_MODE_CODE : SANDBOX_SCRIPT_EXECUTION_MODE_SCRIPT;
+        const scriptIdentityPath = sourcePath || path_join(SANDBOX_JS_TEMP_DIR, `${scriptLabel}_${Date.now()}.inline.js`);
+        logStep(`Execution mode -> ${executionMode}`);
+        logStep(`Execution target -> ${scriptIdentityPath}`);
+        const executionResult = await Tools.SoftwareSettings.executeSandboxScriptDirect({
+            source_path: sourcePath || undefined,
+            source_code: hasInlineCode ? sourceCode : undefined,
+            params_json: paramsJson,
+            env_file_path: envFilePath || undefined,
+            script_label: scriptLabel,
+            wait_ms: waitMs
+        });
+        logStep(`Direct execution tool completed -> success=${String(Boolean(executionResult.success))}, durationMs=${String(executionResult.durationMs ?? "")}`);
+        finalPayload = {
+            success: executionResult.success,
+            message: executionResult.success
+                ? "Sandbox script executed successfully."
+                : String(executionResult.error ?? "Sandbox script execution failed."),
+            data: {
+                execution_mode: executionMode,
+                source_path: sourcePath,
+                has_inline_code: hasInlineCode,
+                env_file_path: envFilePath || null,
+                params_json: paramsJson,
+                execution_result: executionResult
+            }
+        };
+    }
+    catch (error) {
+        logStep(`Execution failed -> ${get_error_message(error)}`);
+        finalPayload = {
+            success: false,
+            message: get_error_message(error)
+        };
+    }
+    finally {
+        finish(finalPayload ?? {
+            success: false,
+            message: "Sandbox script execution did not produce a final result."
+        });
     }
 }
 function extract_string_result(result) {
@@ -2313,24 +2558,6 @@ function extract_string_result(result) {
         return String(record.data);
     return "";
 }
-function parse_environment_variable_payload(raw) {
-    if (!raw)
-        return null;
-    try {
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-            return null;
-        }
-        const record = parsed;
-        return {
-            exists: typeof record.exists === "boolean" ? record.exists : undefined,
-            value: typeof record.value === "string" || record.value === null ? record.value : undefined
-        };
-    }
-    catch {
-        return null;
-    }
-}
 async function read_environment_variable(params) {
     try {
         const key = (params?.key ?? "").trim();
@@ -2342,17 +2569,10 @@ async function read_environment_variable(params) {
             return;
         }
         const result = await Tools.SoftwareSettings.readEnvironmentVariable(key);
-        const raw = extract_string_result(result);
-        const parsed = parse_environment_variable_payload(raw);
         complete({
             success: true,
-            message: parsed?.exists ? `Environment variable read: ${key}` : `Environment variable not set: ${key}`,
-            data: {
-                key,
-                value: parsed?.value ?? null,
-                exists: !!parsed?.exists,
-                raw
-            }
+            message: result.exists ? `Environment variable read: ${key}` : `Environment variable not set: ${key}`,
+            data: result
         });
     }
     catch (error) {
@@ -2374,19 +2594,10 @@ async function write_environment_variable(params) {
         }
         const value = params?.value ?? "";
         const result = await Tools.SoftwareSettings.writeEnvironmentVariable(key, String(value));
-        const raw = extract_string_result(result);
-        const parsed = parse_environment_variable_payload(raw);
-        const cleared = String(value).trim() === "";
         complete({
             success: true,
-            message: cleared ? `Environment variable cleared: ${key}` : `Environment variable written: ${key}`,
-            data: {
-                key,
-                requestedValue: String(value),
-                value: parsed?.value ?? null,
-                exists: !!parsed?.exists,
-                raw
-            }
+            message: result.cleared ? `Environment variable cleared: ${key}` : `Environment variable written: ${key}`,
+            data: result
         });
     }
     catch (error) {
@@ -2400,13 +2611,12 @@ async function restart_mcp_with_logs(params) {
     try {
         const timeoutMs = params?.timeout_ms;
         const result = await Tools.SoftwareSettings.restartMcpWithLogs(timeoutMs);
-        const logs = extract_string_result(result);
         complete({
             success: true,
-            message: logs || "MCP restart completed.",
-            data: {
-                logs
-            }
+            message: result.timedOut
+                ? `MCP restart timed out after ${String(result.elapsedMs)}ms.`
+                : `MCP restart completed: ${String(result.successCount)} success, ${String(result.failedCount)} failed.`,
+            data: result
         });
     }
     catch (error) {
@@ -2831,6 +3041,7 @@ exports.list_sandbox_packages = list_sandbox_packages;
 exports.set_sandbox_package_enabled = set_sandbox_package_enabled;
 exports.debug_install_js_package = debug_install_js_package;
 exports.debug_install_toolpkg = debug_install_toolpkg;
+exports.debug_run_sandbox_script = debug_run_sandbox_script;
 exports.read_environment_variable = read_environment_variable;
 exports.write_environment_variable = write_environment_variable;
 exports.restart_mcp_with_logs = restart_mcp_with_logs;

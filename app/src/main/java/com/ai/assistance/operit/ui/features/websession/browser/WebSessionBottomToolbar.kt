@@ -22,8 +22,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ai.assistance.operit.R
 
 @Composable
 internal fun WebSessionBottomToolbar(
@@ -61,6 +67,7 @@ internal fun WebSessionBottomToolbar(
             BrowserToolbarAction(
                 enabled = canGoBack,
                 onClick = onBack,
+                contentDescription = stringResource(R.string.web_session_back),
                 icon = {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -71,6 +78,7 @@ internal fun WebSessionBottomToolbar(
             BrowserToolbarAction(
                 enabled = canGoForward,
                 onClick = onForward,
+                contentDescription = stringResource(R.string.web_session_forward),
                 icon = {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
@@ -80,6 +88,7 @@ internal fun WebSessionBottomToolbar(
             )
             BrowserToolbarPrimaryAction(
                 onClick = onNewTab,
+                contentDescription = stringResource(R.string.web_session_new_tab),
                 icon = {
                     Icon(
                         imageVector = Icons.Filled.Add,
@@ -87,9 +96,19 @@ internal fun WebSessionBottomToolbar(
                     )
                 }
             )
-            BrowserToolbarTabAction(currentTabNumber = currentTabNumber, onClick = onTabs)
+            BrowserToolbarTabAction(
+                currentTabNumber = currentTabNumber,
+                onClick = onTabs,
+                contentDescription =
+                    if (currentTabNumber > 0) {
+                        stringResource(R.string.web_session_tabs_with_index, currentTabNumber)
+                    } else {
+                        stringResource(R.string.web_session_tabs)
+                    }
+            )
             BrowserToolbarAction(
                 onClick = onMenu,
+                contentDescription = stringResource(R.string.web_session_menu),
                 icon = {
                     Icon(
                         imageVector = Icons.Filled.MoreHoriz,
@@ -105,6 +124,7 @@ internal fun WebSessionBottomToolbar(
 private fun RowScope.BrowserToolbarAction(
     icon: @Composable () -> Unit,
     onClick: () -> Unit,
+    contentDescription: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
@@ -119,7 +139,13 @@ private fun RowScope.BrowserToolbarAction(
         contentAlignment = Alignment.Center
     ) {
         Surface(
-            modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
+            modifier =
+                Modifier
+                    .clickable(enabled = enabled, onClick = onClick)
+                    .semantics(mergeDescendants = true) {
+                        this.contentDescription = contentDescription
+                        role = Role.Button
+                    },
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface
         ) {
@@ -137,6 +163,7 @@ private fun RowScope.BrowserToolbarAction(
 private fun RowScope.BrowserToolbarPrimaryAction(
     icon: @Composable () -> Unit,
     onClick: () -> Unit,
+    contentDescription: String,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -147,7 +174,13 @@ private fun RowScope.BrowserToolbarPrimaryAction(
         contentAlignment = Alignment.Center
     ) {
         Surface(
-            modifier = Modifier.clickable(onClick = onClick),
+            modifier =
+                Modifier
+                    .clickable(onClick = onClick)
+                    .semantics(mergeDescendants = true) {
+                        this.contentDescription = contentDescription
+                        role = Role.Button
+                    },
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.primaryContainer,
             tonalElevation = 1.dp,
@@ -167,6 +200,7 @@ private fun RowScope.BrowserToolbarPrimaryAction(
 private fun RowScope.BrowserToolbarTabAction(
     currentTabNumber: Int,
     onClick: () -> Unit,
+    contentDescription: String,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -177,7 +211,13 @@ private fun RowScope.BrowserToolbarTabAction(
         contentAlignment = Alignment.Center
     ) {
         Surface(
-            modifier = Modifier.clickable(onClick = onClick),
+            modifier =
+                Modifier
+                    .clickable(onClick = onClick)
+                    .semantics(mergeDescendants = true) {
+                        this.contentDescription = contentDescription
+                        role = Role.Button
+                    },
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
             border =
