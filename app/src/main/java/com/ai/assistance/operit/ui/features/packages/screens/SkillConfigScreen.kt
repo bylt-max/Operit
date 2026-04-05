@@ -804,19 +804,6 @@ private fun SkillDetailDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
-                ) {
-                    Text(
-                        text = stringResource(R.string.skillmgr_detail_intro),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.padding(12.dp)
-                    )
-                }
-
                 if (isLoading || detail == null) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),

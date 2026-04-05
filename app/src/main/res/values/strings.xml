@@ -5748,7 +5748,6 @@
     <string name="skillmgr_direct_skill_id_required">请输入 Skill ID</string>
     <string name="skillmgr_direct_skill_id_invalid">Skill ID 只能包含字母、数字、点、下划线和短横线，且不能是 . 或 ..</string>
     <string name="skillmgr_direct_content_required">请输入 Skill 内容</string>
-    <string name="skillmgr_detail_intro">这里展示的是已导入 Skill 的目录概览和入口说明。SKILL.md 只是 Skill 的入口文件，不代表只导入了这一个文件。</string>
     <string name="skillmgr_detail_loading">正在读取 Skill 详情...</string>
     <string name="skillmgr_detail_directory">Skill 目录</string>
     <string name="skillmgr_detail_entry_file">入口文件</string>

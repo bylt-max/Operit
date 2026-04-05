@@ -2916,7 +2916,6 @@
     <string name="skillmgr_direct_skill_id_required">Please enter Skill ID</string>
     <string name="skillmgr_direct_skill_id_invalid">Skill ID can only contain letters, numbers, dots, underscores, and hyphens, and cannot be . or ..</string>
     <string name="skillmgr_direct_content_required">Please enter skill content</string>
-    <string name="skillmgr_detail_intro">This view shows the imported Skill folder overview and its entry instructions. SKILL.md is only the entry file, not the only imported file.</string>
     <string name="skillmgr_detail_loading">Loading Skill details...</string>
     <string name="skillmgr_detail_directory">Skill Directory</string>
     <string name="skillmgr_detail_entry_file">Entry File</string>
