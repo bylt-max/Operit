@@ -64,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,6 +73,7 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.skill.SkillPackage
 import com.ai.assistance.operit.data.preferences.SkillVisibilityPreferences
 import com.ai.assistance.operit.data.skill.SkillRepository
+import com.ai.assistance.operit.ui.common.displays.MarkdownTextComposable
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -92,8 +94,9 @@ fun SkillConfigScreen(
     var skills by remember { mutableStateOf<Map<String, SkillPackage>>(emptyMap()) }
     var isLoading by remember { mutableStateOf(true) }
 
-    var selectedSkillName by remember { mutableStateOf<String?>(null) }
-    var selectedSkillContent by remember { mutableStateOf<String?>(null) }
+    var selectedSkill by remember { mutableStateOf<SkillPackage?>(null) }
+    var selectedSkillDetail by remember { mutableStateOf<SkillDetailDialogData?>(null) }
+    var isSkillDetailLoading by remember { mutableStateOf(false) }
     var skillLoadErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var showSkillLoadErrorsDialog by remember { mutableStateOf(false) }
 
@@ -229,15 +232,22 @@ fun SkillConfigScreen(
                             skill = skill,
                             skillVisibilityPreferences = skillVisibilityPreferences,
                             onClick = {
-                                val name = skill.name
-                                selectedSkillName = name
-                                selectedSkillContent = null
+                                val targetPath = skill.directory.absolutePath
+                                selectedSkill = skill
+                                selectedSkillDetail = null
+                                isSkillDetailLoading = true
                                 scope.launch {
-                                    val content =
+                                    val detail =
                                         withContext(Dispatchers.IO) {
-                                            skillRepository.readSkillContent(name)
+                                            buildSkillDetailDialogData(
+                                                skill = skill,
+                                                skillContent = skillRepository.readSkillContent(skill.name).orEmpty()
+                                            )
                                         }
-                                    selectedSkillContent = content ?: ""
+                                    if (selectedSkill?.directory?.absolutePath == targetPath) {
+                                        selectedSkillDetail = detail
+                                        isSkillDetailLoading = false
+                                    }
                                 }
                             }
                         )
@@ -646,55 +656,30 @@ fun SkillConfigScreen(
         )
     }
 
-    if (selectedSkillName != null && selectedSkillContent != null) {
-        val skillName = selectedSkillName!!
-        AlertDialog(
-            onDismissRequest = {
-                selectedSkillName = null
-                selectedSkillContent = null
+    selectedSkill?.let { skill ->
+        SkillDetailDialog(
+            skill = skill,
+            detail = selectedSkillDetail,
+            isLoading = isSkillDetailLoading,
+            onDismiss = {
+                selectedSkill = null
+                selectedSkillDetail = null
+                isSkillDetailLoading = false
             },
-            title = { Text(text = skillName) },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 420.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    Text(
-                        text = selectedSkillContent ?: "",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            val ok = skillRepository.deleteSkill(skillName)
-                            if (ok) {
-                                refreshSkills()
-                                snackbarHostState.showSnackbar(context.getString(R.string.skillmgr_deleted, skillName))
-                            } else {
-                                snackbarHostState.showSnackbar(context.getString(R.string.skillmgr_delete_failed, skillName))
-                            }
-                        }
-                        selectedSkillName = null
-                        selectedSkillContent = null
+            onDelete = {
+                val skillName = skill.name
+                scope.launch {
+                    val ok = skillRepository.deleteSkill(skillName)
+                    if (ok) {
+                        refreshSkills()
+                        snackbarHostState.showSnackbar(context.getString(R.string.skillmgr_deleted, skillName))
+                    } else {
+                        snackbarHostState.showSnackbar(context.getString(R.string.skillmgr_delete_failed, skillName))
                     }
-                ) {
-                    Text(text = stringResource(R.string.skillmgr_delete))
                 }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        selectedSkillName = null
-                        selectedSkillContent = null
-                    }
-                ) {
-                    Text(text = stringResource(R.string.skillmgr_close))
-                }
+                selectedSkill = null
+                selectedSkillDetail = null
+                isSkillDetailLoading = false
             }
         )
     }
@@ -703,6 +688,16 @@ fun SkillConfigScreen(
 private data class ManualImportAttachment(
     val uri: Uri,
     val displayName: String
+)
+
+private data class SkillDetailDialogData(
+    val skillContent: String,
+    val directoryPath: String,
+    val skillFilePath: String,
+    val fileCount: Int,
+    val folderCount: Int,
+    val directoryPreview: String,
+    val hiddenEntryCount: Int
 )
 
 private val SKILL_ID_PATTERN = Regex("^[A-Za-z0-9._-]+$")
@@ -736,6 +731,223 @@ private fun resolveUriDisplayName(context: Context, uri: Uri, fallback: String =
 
     val uriFallback = uri.lastPathSegment?.substringAfterLast('/').orEmpty()
     return uriFallback.ifBlank { fallback }
+}
+
+private fun buildSkillDetailDialogData(
+    skill: SkillPackage,
+    skillContent: String
+): SkillDetailDialogData {
+    val previewLines = mutableListOf<String>()
+    var fileCount = 0
+    var folderCount = 0
+    val previewLimit = 18
+
+    fun sortedChildren(parent: File): List<File> {
+        return parent.listFiles()
+            ?.sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase() }))
+            ?: emptyList()
+    }
+
+    fun addPreviewLine(depth: Int, label: String) {
+        if (previewLines.size < previewLimit) {
+            previewLines += "${"  ".repeat(depth)}$label"
+        }
+    }
+
+    fun walk(node: File, depth: Int) {
+        if (node.isDirectory) {
+            folderCount += 1
+            addPreviewLine(depth, "${node.name}/")
+            sortedChildren(node).forEach { child ->
+                walk(child, depth + 1)
+            }
+        } else {
+            fileCount += 1
+            addPreviewLine(depth, node.name)
+        }
+    }
+
+    sortedChildren(skill.directory).forEach { child ->
+        walk(child, depth = 0)
+    }
+
+    val totalEntries = fileCount + folderCount
+    return SkillDetailDialogData(
+        skillContent = skillContent,
+        directoryPath = skill.directory.absolutePath,
+        skillFilePath = skill.skillFile.absolutePath,
+        fileCount = fileCount,
+        folderCount = folderCount,
+        directoryPreview = previewLines.joinToString("\n"),
+        hiddenEntryCount = (totalEntries - previewLines.size).coerceAtLeast(0)
+    )
+}
+
+@Composable
+private fun SkillDetailDialog(
+    skill: SkillPackage,
+    detail: SkillDetailDialogData?,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var showSkillMarkdown by remember(skill.directory.absolutePath) { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = skill.name) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
+                ) {
+                    Text(
+                        text = stringResource(R.string.skillmgr_detail_intro),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+
+                if (isLoading || detail == null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.skillmgr_detail_loading),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                } else {
+                    if (skill.description.isNotBlank()) {
+                        SkillDetailSection(title = stringResource(R.string.skillmgr_direct_description)) {
+                            Text(
+                                text = skill.description,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+
+                    SkillDetailSection(title = stringResource(R.string.skillmgr_detail_directory)) {
+                        Text(
+                            text = detail.directoryPath,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    SkillDetailSection(title = stringResource(R.string.skillmgr_detail_entry_file)) {
+                        Text(
+                            text = detail.skillFilePath,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    SkillDetailSection(title = stringResource(R.string.skillmgr_detail_imported_contents)) {
+                        Text(
+                            text = stringResource(
+                                R.string.skillmgr_detail_counts,
+                                detail.fileCount,
+                                detail.folderCount
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        ) {
+                            Text(
+                                text = detail.directoryPreview,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
+                        if (detail.hiddenEntryCount > 0) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(
+                                    R.string.skillmgr_detail_more_items,
+                                    detail.hiddenEntryCount
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    TextButton(
+                        onClick = { showSkillMarkdown = !showSkillMarkdown }
+                    ) {
+                        Text(
+                            text = if (showSkillMarkdown) {
+                                stringResource(R.string.skillmgr_detail_hide_skill_md)
+                            } else {
+                                stringResource(R.string.skillmgr_detail_show_skill_md)
+                            }
+                        )
+                    }
+
+                    if (showSkillMarkdown) {
+                        SkillDetailSection(title = stringResource(R.string.skillmgr_detail_skill_md)) {
+                            MarkdownTextComposable(
+                                text = detail.skillContent,
+                                textColor = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDelete) {
+                Text(text = stringResource(R.string.skillmgr_delete))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.skillmgr_close))
+            }
+        }
+    )
+}
+
+@Composable
+private fun SkillDetailSection(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium
+        )
+        content()
+    }
 }
 
 @Composable
