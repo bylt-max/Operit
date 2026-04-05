@@ -7,6 +7,7 @@ $tempRoot = Join-Path $repoRoot "temp\apk-reverse-runtime"
 $resourceDir = Join-Path $exampleRoot "resources\apktool"
 $apktoolPatchSourceRoot = Join-Path $exampleRoot "runtime_patch_src"
 $helperProjectDir = Join-Path $exampleRoot "runtime_helper"
+$androidAapt2SourcePath = Join-Path $repoRoot "app\src\main\assets\templates\android\tools\aapt2\aapt2-arm64-v8a"
 $localPropertiesPath = Join-Path $repoRoot "local.properties"
 $javaBinDir = "D:\Program Files\Zulu\zulu-21\bin"
 $gradleWrapperPath = Join-Path $repoRoot "gradlew.bat"
@@ -82,7 +83,75 @@ function Ensure-LocalArtifact([string[]] $candidatePaths, [string] $targetPath, 
     Ensure-Download $downloadUrl $targetPath
 }
 
-function New-ClassOnlyJarFromJar([string] $inputJarPath, [string] $outputJarPath) {
+function Test-JarEntryExcluded([string] $entryName, [string[]] $excludePatterns) {
+    foreach ($pattern in $excludePatterns) {
+        if ($entryName -like $pattern) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Remove-JarEntries([string] $jarPath, [string[]] $entryNames) {
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    if (-not $entryNames -or $entryNames.Count -eq 0) {
+        return
+    }
+    $tempJarPath = "$jarPath.tmp"
+    if (Test-Path $tempJarPath -PathType Leaf) {
+        Remove-Item $tempJarPath -Force
+    }
+    $inputStream = [System.IO.File]::OpenRead($jarPath)
+    $outputStream = [System.IO.File]::Create($tempJarPath)
+    $inputZip = New-Object System.IO.Compression.ZipArchive($inputStream, [System.IO.Compression.ZipArchiveMode]::Read, $false)
+    $outputZip = New-Object System.IO.Compression.ZipArchive($outputStream, [System.IO.Compression.ZipArchiveMode]::Create, $false)
+    try {
+        foreach ($entry in $inputZip.Entries) {
+            $name = $entry.FullName
+            if ($entryNames -contains $name) {
+                continue
+            }
+            $newEntry = $outputZip.CreateEntry($name, [System.IO.Compression.CompressionLevel]::Optimal)
+            if ($name.EndsWith('/')) {
+                continue
+            }
+            $source = $entry.Open()
+            $target = $newEntry.Open()
+            try {
+                $source.CopyTo($target)
+            } finally {
+                $target.Dispose()
+                $source.Dispose()
+            }
+        }
+    } finally {
+        $outputZip.Dispose()
+        $inputZip.Dispose()
+        $outputStream.Dispose()
+        $inputStream.Dispose()
+    }
+    Remove-Item $jarPath -Force
+    Move-Item $tempJarPath $jarPath
+}
+
+function Update-JarFromDirectory([string] $jarPath, [string] $baseDir, [string[]] $entries) {
+    if (-not $entries -or $entries.Count -eq 0) {
+        return
+    }
+    Push-Location $baseDir
+    try {
+        & $jarToolPath uf $jarPath @entries
+    } finally {
+        Pop-Location
+    }
+}
+
+function New-ClassOnlyJarFromJar(
+    [string] $inputJarPath,
+    [string] $outputJarPath,
+    [string[]] $excludePatterns = @()
+) {
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     if (Test-Path $outputJarPath -PathType Leaf) {
@@ -99,6 +168,9 @@ function New-ClassOnlyJarFromJar([string] $inputJarPath, [string] $outputJarPath
                 continue
             }
             if ($name -like 'META-INF/*') {
+                continue
+            }
+            if (Test-JarEntryExcluded $name $excludePatterns) {
                 continue
             }
             $newEntry = $outputZip.CreateEntry($name, [System.IO.Compression.CompressionLevel]::Optimal)
@@ -122,7 +194,11 @@ function New-ClassOnlyJarFromJar([string] $inputJarPath, [string] $outputJarPath
     }
 }
 
-function Copy-NonClassResourcesFromJar([string] $inputJarPath, [string] $outputDir) {
+function Copy-NonClassResourcesFromJar(
+    [string] $inputJarPath,
+    [string] $outputDir,
+    [string[]] $excludePatterns = @()
+) {
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $inputStream = [System.IO.File]::OpenRead($inputJarPath)
@@ -140,6 +216,9 @@ function Copy-NonClassResourcesFromJar([string] $inputJarPath, [string] $outputD
                 continue
             }
             if ($name -match '^META-INF/[^/]+\.(SF|DSA|RSA|EC)$') {
+                continue
+            }
+            if (Test-JarEntryExcluded $name $excludePatterns) {
                 continue
             }
             $targetPath = Join-Path $outputDir ($name -replace '/', '\')
@@ -166,7 +245,8 @@ function New-DexJarFromInputJar(
     [string] $inputJarPath,
     [string] $outputJarPath,
     [string] $androidJarPath,
-    [string[]] $classpathJars = @()
+    [string[]] $classpathJars = @(),
+    [string[]] $excludeResourcePatterns = @()
 ) {
     $workRoot = Join-Path $tempRoot ([IO.Path]::GetFileNameWithoutExtension($outputJarPath))
     $d8OutputDir = Join-Path $workRoot "d8-output"
@@ -197,7 +277,10 @@ function New-DexJarFromInputJar(
     foreach ($dexFile in $dexFiles) {
         Copy-Item $dexFile.FullName (Join-Path $runtimeWorkDir $dexFile.Name)
     }
-    Copy-NonClassResourcesFromJar -inputJarPath $inputJarPath -outputDir $runtimeWorkDir
+    Copy-NonClassResourcesFromJar `
+        -inputJarPath $inputJarPath `
+        -outputDir $runtimeWorkDir `
+        -excludePatterns $excludeResourcePatterns
     if (Test-Path $outputJarPath -PathType Leaf) {
         Remove-Item $outputJarPath -Force
     }
@@ -211,7 +294,25 @@ function New-DexJarFromInputJar(
 
 function Build-ApktoolRuntime([string] $androidJarPath) {
     $compileDir = Join-Path $tempRoot "apktool-compiled"
+    $patchedAaptManagerSourcePath = Join-Path $apktoolPatchSourceRoot "brut\androlib\res\AaptManager.java"
+    $patchedNinePatchSourcePath = Join-Path $apktoolPatchSourceRoot "brut\androlib\res\decoder\ResNinePatchStreamDecoder.java"
+    $androidAapt2TargetPath = Join-Path $compileDir "prebuilt\android\aapt2"
+    # Drop the old desktop prebuilts and the duplicated embedded framework copy.
+    $jarDeleteEntries = @(
+        "prebuilt/linux/aapt2",
+        "prebuilt/windows/aapt2.exe",
+        "prebuilt/macosx/aapt2",
+        "prebuilt/android-framework.jar"
+    )
+    $jarUpdateEntries = @(
+        "brut/androlib/res/AaptManager.class",
+        "brut/androlib/res/decoder/ResNinePatchStreamDecoder.class",
+        "prebuilt/android/aapt2"
+    )
     Ensure-CleanDirectory $compileDir
+    Require-File $patchedAaptManagerSourcePath
+    Require-File $patchedNinePatchSourcePath
+    Require-File $androidAapt2SourcePath
     Copy-Item $apktoolCliJarPath $patchedApktoolCliJarPath -Force
 
     & $javacPath `
@@ -220,14 +321,13 @@ function Build-ApktoolRuntime([string] $androidJarPath) {
         -target 8 `
         -cp "$apktoolCliJarPath;$androidJarPath" `
         -d $compileDir `
-        (Join-Path $apktoolPatchSourceRoot "brut\androlib\res\decoder\ResNinePatchStreamDecoder.java")
+        $patchedAaptManagerSourcePath `
+        $patchedNinePatchSourcePath
 
-    Push-Location $compileDir
-    try {
-        & $jarToolPath uf $patchedApktoolCliJarPath "brut/androlib/res/decoder/ResNinePatchStreamDecoder.class"
-    } finally {
-        Pop-Location
-    }
+    New-Item -ItemType Directory -Path (Split-Path -Parent $androidAapt2TargetPath) -Force | Out-Null
+    Copy-Item $androidAapt2SourcePath $androidAapt2TargetPath -Force
+    Remove-JarEntries -jarPath $patchedApktoolCliJarPath -entryNames $jarDeleteEntries
+    Update-JarFromDirectory -jarPath $patchedApktoolCliJarPath -baseDir $compileDir -entries $jarUpdateEntries
 
     New-DexJarFromInputJar `
         -inputJarPath $patchedApktoolCliJarPath `
@@ -237,12 +337,72 @@ function Build-ApktoolRuntime([string] $androidJarPath) {
 }
 
 function Build-JadxRuntime([string] $androidJarPath) {
-    New-ClassOnlyJarFromJar $jadxCoreJarPath $jadxCoreJvmJarPath
+    $jadxPatchDir = Join-Path $tempRoot "jadx-patched"
+    $jadxPluginServicePath = Join-Path $jadxPatchDir "META-INF\services\jadx.api.plugins.JadxPlugin"
+    $jadxPluginServiceContent = @(
+        "jadx.plugins.kotlin.metadata.KotlinMetadataPlugin",
+        "jadx.plugins.kotlin.smap.KotlinSmapPlugin",
+        "jadx.plugins.input.apkm.ApkmInputPlugin",
+        "jadx.plugins.mappings.RenameMappingsPlugin",
+        "jadx.plugins.input.smali.SmaliInputPlugin",
+        "jadx.plugins.input.xapk.XApkInputPlugin",
+        "jadx.plugins.input.dex.DexInputPlugin",
+        "jadx.plugins.input.java.JavaInputPlugin",
+        "jadx.plugins.input.raung.RaungInputPlugin"
+    )
+    # Keep the headless APK decompiler surface and strip desktop, scripting, AAB, and Java-convert payload.
+    $jadxClassExcludePatterns = @(
+        "jadx/gui/*",
+        "jadx/plugins/script/*",
+        "jadx/plugins/input/javaconvert/*",
+        "jadx/plugins/input/aab/*",
+        "org/fife/*",
+        "com/formdev/*",
+        "fonts/*",
+        "kotlin/script/*",
+        "kotlin/reflect/*",
+        "kotlinx/coroutines/*",
+        "org/jetbrains/kotlin/*",
+        "com/android/tools/r8/*",
+        "com/android/dx/*",
+        "com/android/tools/build/*",
+        "com/android/aapt/*",
+        "com/android/bundle/*",
+        "com/android/apksig/*",
+        "shadow/bundletool/*"
+    )
+    $jadxResourceExcludePatterns = @(
+        "org/jetbrains/kotlin/net/jpountz/util/*",
+        "org/jetbrains/kotlin/org/fusesource/jansi/internal/native/*",
+        "META-INF/services/com.android.tools.r8.internal.*",
+        "Resources.proto",
+        "config.proto"
+    )
+    $jadxJarDeleteEntries = @(
+        "META-INF/services/jadx.api.plugins.JadxPlugin"
+    )
+    Ensure-CleanDirectory $jadxPatchDir
+    New-Item -ItemType Directory -Path (Split-Path -Parent $jadxPluginServicePath) -Force | Out-Null
+    [System.IO.File]::WriteAllLines(
+        $jadxPluginServicePath,
+        $jadxPluginServiceContent,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    New-ClassOnlyJarFromJar `
+        -inputJarPath $jadxCoreJarPath `
+        -outputJarPath $jadxCoreJvmJarPath `
+        -excludePatterns $jadxClassExcludePatterns
+    Remove-JarEntries -jarPath $jadxCoreJvmJarPath -entryNames $jadxJarDeleteEntries
+    Update-JarFromDirectory `
+        -jarPath $jadxCoreJvmJarPath `
+        -baseDir $jadxPatchDir `
+        -entries @("META-INF/services/jadx.api.plugins.JadxPlugin")
     New-DexJarFromInputJar `
         -inputJarPath $jadxCoreJvmJarPath `
         -outputJarPath $jadxRuntimeJarPath `
         -androidJarPath $androidJarPath `
-        -classpathJars @($jadxCoreJvmJarPath)
+        -classpathJars @($jadxCoreJvmJarPath) `
+        -excludeResourcePatterns $jadxResourceExcludePatterns
 }
 
 function Build-HelperRuntime([string] $androidJarPath) {
@@ -270,6 +430,7 @@ Require-File $gradleWrapperPath
 Require-File $javacPath
 Require-File $jarToolPath
 Require-File $javaPath
+Require-File $androidAapt2SourcePath
 
 New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $resourceDir -Force | Out-Null

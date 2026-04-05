@@ -822,6 +822,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 paddingValues =
                                         PaddingValues(), // Padding is already handled by the parent Box
                                 actualViewModel = actualViewModel,
+                                enableMessageDialogs = !isFloatingMode,
                                 showChatHistorySelector = showChatHistorySelector,
                                 chatHistory = chatHistory,
                                 isLoading = isLoading,

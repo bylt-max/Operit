@@ -125,6 +125,24 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         val moduleSpec: Map<String, Any?>
     )
 
+    private data class PackageScanSnapshot(
+        val packageLoadErrors: Map<String, String>,
+        val availablePackages: Map<String, ToolPackage>,
+        val toolPkgContainers: Map<String, ToolPkgContainerRuntime>,
+        val toolPkgSubpackages: Map<String, ToolPkgSubpackageRuntime>
+    )
+
+    private data class PackageScanCandidateResult(
+        val packageLoadErrors: Map<String, String> = emptyMap(),
+        val toolPackage: ToolPackage? = null,
+        val toolPkgLoadResult: ToolPkgLoadResult? = null
+    )
+
+    private data class ExternalPackageScanCacheEntry(
+        val signature: String,
+        val result: PackageScanCandidateResult
+    )
+
     internal fun interface ToolPkgRuntimeChangeListener {
         fun onToolPkgRuntimeChanged()
     }
@@ -145,6 +163,10 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
     private var importedPackageSetCache: Set<String> = emptySet()
     @Volatile
     private var toolPkgSubpackageStatesCache: Map<String, Boolean> = emptyMap()
+    @Volatile
+    private var assetPackageScanSnapshot: PackageScanSnapshot? = null
+    @Volatile
+    private var externalPackageScanCache: Map<String, ExternalPackageScanCacheEntry> = emptyMap()
     private val toolPkgRuntimeChangeListeners = CopyOnWriteArrayList<ToolPkgRuntimeChangeListener>()
 
     private val skillManager by lazy { SkillManager.getInstance(context) }
@@ -561,11 +583,20 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
             val cacheDir = toolPkgCacheDir(runtime.packageName)
             val signatureFile = File(cacheDir, TOOLPKG_CACHE_SIGNATURE_FILE)
             val mainScriptFile = File(cacheDir, runtime.mainEntry)
+            val cacheDirExists = cacheDir.exists()
+            val signatureFileExists = signatureFile.exists()
+            val signatureMatches =
+                if (signatureFileExists) {
+                    runCatching { signatureFile.readText() == signature }.getOrDefault(false)
+                } else {
+                    false
+                }
+            val mainScriptExists = mainScriptFile.exists()
 
-            if (cacheDir.exists() &&
-                signatureFile.exists() &&
-                signatureFile.readText() == signature &&
-                mainScriptFile.exists()
+            if (cacheDirExists &&
+                signatureFileExists &&
+                signatureMatches &&
+                mainScriptExists
             ) {
                 return cacheDir
             }
@@ -610,8 +641,10 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
 
             val expectedCacheDirNames = importedContainerNames.map(::toolPkgCacheDirName).toSet()
             toolPkgCacheRootDir.listFiles()?.forEach { child ->
-                if (!expectedCacheDirNames.contains(child.name) && !child.deleteRecursively()) {
-                    AppLogger.w(TAG, "Failed to remove stale toolpkg cache: ${child.absolutePath}")
+                if (!expectedCacheDirNames.contains(child.name)) {
+                    if (!child.deleteRecursively()) {
+                        AppLogger.w(TAG, "Failed to remove stale toolpkg cache: ${child.absolutePath}")
+                    }
                 }
             }
 
@@ -624,6 +657,194 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                 .filterNot { importedContainerNames.contains(it) }
                 .forEach(::deleteToolPkgCacheDir)
         }
+    }
+
+    private fun buildPackageScanSnapshot(
+        packageLoadErrors: Map<String, String>,
+        availablePackages: Map<String, ToolPackage>,
+        toolPkgContainers: Map<String, ToolPkgContainerRuntime>,
+        toolPkgSubpackages: Map<String, ToolPkgSubpackageRuntime>
+    ): PackageScanSnapshot {
+        return PackageScanSnapshot(
+            packageLoadErrors = LinkedHashMap(packageLoadErrors),
+            availablePackages = LinkedHashMap(availablePackages),
+            toolPkgContainers = LinkedHashMap(toolPkgContainers),
+            toolPkgSubpackages = LinkedHashMap(toolPkgSubpackages)
+        )
+    }
+
+    private fun applyPackageScanSnapshot(snapshot: PackageScanSnapshot) {
+        synchronized(initLock) {
+            packageLoadErrors.clear()
+            packageLoadErrors.putAll(snapshot.packageLoadErrors)
+
+            availablePackages.clear()
+            availablePackages.putAll(snapshot.availablePackages)
+
+            toolPkgContainers.clear()
+            toolPkgContainers.putAll(snapshot.toolPkgContainers)
+
+            toolPkgSubpackageByPackageName.clear()
+            toolPkgSubpackageByPackageName.putAll(snapshot.toolPkgSubpackages)
+        }
+    }
+
+    private data class PackageScanCandidate(
+        val fileName: String,
+        val sourcePath: String,
+        val loadJs: (((String, String) -> Unit) -> ToolPackage?)? = null,
+        val loadToolPkg: (((String, String) -> Unit) -> ToolPkgLoadResult?)? = null
+    )
+
+    private fun parsePackageCandidate(
+        phase: String,
+        candidate: PackageScanCandidate
+    ): PackageScanCandidateResult {
+        val stagedPackageLoadErrors = LinkedHashMap<String, String>()
+        return try {
+            when {
+                candidate.fileName.endsWith(".js", ignoreCase = true) && candidate.loadJs != null -> {
+                    val packageMetadata =
+                        candidate.loadJs.invoke { key, error ->
+                            stagedPackageLoadErrors[key] = error
+                        }
+                    PackageScanCandidateResult(
+                        packageLoadErrors = stagedPackageLoadErrors,
+                        toolPackage = packageMetadata
+                    )
+                }
+                candidate.fileName.endsWith(TOOLPKG_EXTENSION, ignoreCase = true) &&
+                    candidate.loadToolPkg != null -> {
+                    val loadResult =
+                        candidate.loadToolPkg.invoke { key, error ->
+                            stagedPackageLoadErrors[key] = error
+                        }
+                    PackageScanCandidateResult(
+                        packageLoadErrors = stagedPackageLoadErrors,
+                        toolPkgLoadResult = loadResult
+                    )
+                }
+                else ->
+                    PackageScanCandidateResult(
+                        packageLoadErrors = stagedPackageLoadErrors
+                    )
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Unexpected error while loading $phase package: ${candidate.sourcePath}", e)
+            logToolPkgError("loadAvailablePackages $phase parse failed, source=${candidate.sourcePath}", e)
+            stagedPackageLoadErrors[candidate.fileName.substringBeforeLast('.')] =
+                "${candidate.sourcePath}: ${e.stackTraceToString()}"
+            PackageScanCandidateResult(
+                packageLoadErrors = stagedPackageLoadErrors
+            )
+        }
+    }
+
+    private fun mergePackageScanCandidateResults(
+        candidateResults: Iterable<PackageScanCandidateResult>,
+        baseSnapshot: PackageScanSnapshot? = null
+    ): PackageScanSnapshot {
+        val stagedPackageLoadErrors = LinkedHashMap(baseSnapshot?.packageLoadErrors.orEmpty())
+        val stagedAvailablePackages = LinkedHashMap(baseSnapshot?.availablePackages.orEmpty())
+        val stagedToolPkgContainers = LinkedHashMap(baseSnapshot?.toolPkgContainers.orEmpty())
+        val stagedToolPkgSubpackages = LinkedHashMap(baseSnapshot?.toolPkgSubpackages.orEmpty())
+
+        candidateResults.forEach { result ->
+            stagedPackageLoadErrors.putAll(result.packageLoadErrors)
+            result.toolPackage?.let { packageMetadata ->
+                stagedAvailablePackages[packageMetadata.name] = packageMetadata
+            }
+            result.toolPkgLoadResult?.let { loadResult ->
+                registerToolPkgInto(
+                    loadResult = loadResult,
+                    availablePackagesTarget = stagedAvailablePackages,
+                    toolPkgContainersTarget = stagedToolPkgContainers,
+                    toolPkgSubpackageByPackageNameTarget = stagedToolPkgSubpackages,
+                    packageLoadErrorsTarget = stagedPackageLoadErrors
+                )
+            }
+        }
+
+        return buildPackageScanSnapshot(
+            packageLoadErrors = stagedPackageLoadErrors,
+            availablePackages = stagedAvailablePackages,
+            toolPkgContainers = stagedToolPkgContainers,
+            toolPkgSubpackages = stagedToolPkgSubpackages
+        )
+    }
+
+    private fun buildExternalPackageScanSignature(file: File): String {
+        return buildString {
+            append(file.absolutePath)
+            append('|')
+            append(file.length())
+            append('|')
+            append(file.lastModified())
+        }
+    }
+
+    private fun scanPackageCandidates(
+        phase: String,
+        candidates: List<PackageScanCandidate>,
+        baseSnapshot: PackageScanSnapshot? = null
+    ): PackageScanSnapshot {
+        return mergePackageScanCandidateResults(
+            candidateResults = candidates.map { candidate -> parsePackageCandidate(phase, candidate) },
+            baseSnapshot = baseSnapshot
+        )
+    }
+
+    private fun scanAssetPackages(): PackageScanSnapshot {
+        val packageFiles = context.assets.list(ASSETS_PACKAGES_DIR) ?: emptyArray()
+        val candidates =
+            packageFiles.map { fileName ->
+                val assetPath = "$ASSETS_PACKAGES_DIR/$fileName"
+                PackageScanCandidate(
+                    fileName = fileName,
+                    sourcePath = assetPath,
+                    loadJs = { onError -> loadPackageFromJsAsset(assetPath, onError)?.copy(isBuiltIn = true) },
+                    loadToolPkg = { onError -> loadToolPkgFromAsset(assetPath, onError) }
+                )
+            }
+        return scanPackageCandidates(phase = "asset", candidates = candidates)
+    }
+
+    private fun scanExternalPackages(baseSnapshot: PackageScanSnapshot): PackageScanSnapshot {
+        val externalFiles =
+            if (externalPackagesDir.exists()) {
+                (externalPackagesDir.listFiles() ?: emptyArray()).filter(File::isFile)
+            } else {
+                emptyList()
+            }
+        val previousCache = externalPackageScanCache
+        val nextCache = LinkedHashMap<String, ExternalPackageScanCacheEntry>()
+        val candidateResults =
+            externalFiles.map { file ->
+                val candidate =
+                    PackageScanCandidate(
+                        fileName = file.name,
+                        sourcePath = file.absolutePath,
+                        loadJs = { onError -> loadPackageFromJsFile(file, onError) },
+                        loadToolPkg = { onError -> loadToolPkgFromExternalFile(file, onError) }
+                    )
+                val signature = buildExternalPackageScanSignature(file)
+                val cachedResult =
+                    previousCache[file.absolutePath]
+                        ?.takeIf { entry -> entry.signature == signature }
+                        ?.result
+                val result = cachedResult ?: parsePackageCandidate("external", candidate)
+                nextCache[file.absolutePath] =
+                    ExternalPackageScanCacheEntry(
+                        signature = signature,
+                        result = result
+                    )
+                result
+            }
+        externalPackageScanCache = nextCache
+        return mergePackageScanCandidateResults(
+            candidateResults = candidateResults,
+            baseSnapshot = baseSnapshot
+        )
     }
 
     fun resolvePackageForDisplay(packageName: String): ToolPackage? {
@@ -857,113 +1078,30 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
      * Loads all available packages metadata (from assets and external storage).
      * Includes legacy JS packages and new .toolpkg containers/subpackages.
      */
-    private fun loadAvailablePackages() {
+    private fun loadAvailablePackages(refreshExternalOnly: Boolean = false) {
         val loadStart = System.currentTimeMillis()
-        val stagedPackageLoadErrors = mutableMapOf<String, String>()
-        val stagedAvailablePackages = mutableMapOf<String, ToolPackage>()
-        val stagedToolPkgContainers = mutableMapOf<String, ToolPkgContainerRuntime>()
-        val stagedToolPkgSubpackages = mutableMapOf<String, ToolPkgSubpackageRuntime>()
+        logToolPkgInfo("loadAvailablePackages start")
 
-        val assetManager = context.assets
-        val packageFiles = assetManager.list(ASSETS_PACKAGES_DIR) ?: emptyArray()
-        logToolPkgInfo("loadAvailablePackages start, assetPackageCount=${packageFiles.size}")
-
-        for (fileName in packageFiles) {
-            val assetPath = "$ASSETS_PACKAGES_DIR/$fileName"
-            try {
-                when {
-                    fileName.endsWith(".js", ignoreCase = true) -> {
-                        val packageMetadata =
-                            loadPackageFromJsAsset(assetPath) { key, error ->
-                                stagedPackageLoadErrors[key] = error
-                            }
-                        if (packageMetadata != null) {
-                            stagedAvailablePackages[packageMetadata.name] = packageMetadata.copy(isBuiltIn = true)
-                        }
-                    }
-                    fileName.endsWith(TOOLPKG_EXTENSION, ignoreCase = true) -> {
-                        val loadResult =
-                            loadToolPkgFromAsset(assetPath) { key, error ->
-                                stagedPackageLoadErrors[key] = error
-                            }
-                        if (loadResult != null) {
-                            registerToolPkgInto(
-                                loadResult = loadResult,
-                                availablePackagesTarget = stagedAvailablePackages,
-                                toolPkgContainersTarget = stagedToolPkgContainers,
-                                toolPkgSubpackageByPackageNameTarget = stagedToolPkgSubpackages,
-                                packageLoadErrorsTarget = stagedPackageLoadErrors
-                            )
-                        }
-                    }
+        val assetSnapshot =
+            if (refreshExternalOnly) {
+                val cachedSnapshot = assetPackageScanSnapshot
+                if (cachedSnapshot != null) {
+                    cachedSnapshot
+                } else {
+                    scanAssetPackages().also { assetPackageScanSnapshot = it }
                 }
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Unexpected error while loading asset package: $assetPath", e)
-                logToolPkgError("loadAvailablePackages asset parse failed, source=$assetPath", e)
-                stagedPackageLoadErrors[fileName.substringBeforeLast('.')] =
-                    "$assetPath: ${e.stackTraceToString()}"
+            } else {
+                scanAssetPackages().also { assetPackageScanSnapshot = it }
             }
-        }
 
-        if (externalPackagesDir.exists()) {
-            val externalFiles = externalPackagesDir.listFiles() ?: emptyArray()
-            for (file in externalFiles) {
-                if (!file.isFile) continue
-                try {
-                    when {
-                        file.name.endsWith(".js", ignoreCase = true) -> {
-                            val packageMetadata =
-                                loadPackageFromJsFile(file) { key, error ->
-                                    stagedPackageLoadErrors[key] = error
-                                }
-                            if (packageMetadata != null) {
-                                stagedAvailablePackages[packageMetadata.name] = packageMetadata.copy(isBuiltIn = false)
-                            }
-                        }
-                        file.name.endsWith(TOOLPKG_EXTENSION, ignoreCase = true) -> {
-                            val loadResult =
-                                loadToolPkgFromExternalFile(file) { key, error ->
-                                    stagedPackageLoadErrors[key] = error
-                                }
-                            if (loadResult != null) {
-                                registerToolPkgInto(
-                                    loadResult = loadResult,
-                                    availablePackagesTarget = stagedAvailablePackages,
-                                    toolPkgContainersTarget = stagedToolPkgContainers,
-                                    toolPkgSubpackageByPackageNameTarget = stagedToolPkgSubpackages,
-                                    packageLoadErrorsTarget = stagedPackageLoadErrors
-                                )
-                            }
-                        }
-                }
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Unexpected error while loading external package: ${file.absolutePath}", e)
-                    logToolPkgError("loadAvailablePackages external parse failed, source=${file.absolutePath}", e)
-                    stagedPackageLoadErrors[file.nameWithoutExtension] =
-                        "${file.absolutePath}: ${e.stackTraceToString()}"
-                }
-            }
-        }
-
-        synchronized(initLock) {
-            packageLoadErrors.clear()
-            packageLoadErrors.putAll(stagedPackageLoadErrors)
-
-            availablePackages.clear()
-            availablePackages.putAll(stagedAvailablePackages)
-
-            toolPkgContainers.clear()
-            toolPkgContainers.putAll(stagedToolPkgContainers)
-
-            toolPkgSubpackageByPackageName.clear()
-            toolPkgSubpackageByPackageName.putAll(stagedToolPkgSubpackages)
-        }
+        val mergedSnapshot = scanExternalPackages(assetSnapshot)
+        applyPackageScanSnapshot(mergedSnapshot)
         reconcileToolPkgCaches()
         if (isInitialized) {
             refreshToolPkgRuntimeState(persistIfChanged = true)
         }
         logToolPkgInfo(
-            "loadAvailablePackages finish, elapsedMs=${System.currentTimeMillis() - loadStart}, available=${stagedAvailablePackages.size}, containers=${stagedToolPkgContainers.size}, subpackages=${stagedToolPkgSubpackages.size}, errors=${stagedPackageLoadErrors.size}"
+            "loadAvailablePackages finish, elapsedMs=${System.currentTimeMillis() - loadStart}, available=${mergedSnapshot.availablePackages.size}, containers=${mergedSnapshot.toolPkgContainers.size}, subpackages=${mergedSnapshot.toolPkgSubpackages.size}, errors=${mergedSnapshot.packageLoadErrors.size}"
         )
     }
 
@@ -2191,18 +2329,22 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
      * @return A map of package name to description
      */
     fun getAvailablePackages(forceRefresh: Boolean = false): Map<String, ToolPackage> {
+        val wasInitializedBeforeCall = isInitialized
         ensureInitialized()
+        if (forceRefresh && !wasInitializedBeforeCall) {
+            return availablePackages
+        }
         if (forceRefresh) {
             if (Looper.myLooper() == Looper.getMainLooper()) {
                 initializationScope.launch {
-                    runCatching { loadAvailablePackages() }
+                    runCatching { loadAvailablePackages(refreshExternalOnly = true) }
                         .onFailure { error ->
                             AppLogger.e(TAG, "Failed to refresh packages on background", error)
                             logToolPkgError("forceRefresh background reload failed", error)
                         }
                 }
             } else {
-                loadAvailablePackages()
+                loadAvailablePackages(refreshExternalOnly = true)
             }
         }
         return availablePackages

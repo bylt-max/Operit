@@ -190,6 +190,7 @@ fun ChatArea(
     scrollState: ScrollState,
     aiReferences: List<AiReference> = emptyList(),
     isLoading: Boolean,
+    enableDialogs: Boolean = true,
     userMessageColor: Color,
     aiMessageColor: Color,
     userTextColor: Color,
@@ -325,6 +326,7 @@ fun ChatArea(
                     MessageItem(
                         index = actualIndex,
                         message = message,
+                        enableDialogs = enableDialogs,
                         userMessageColor = userMessageColor,
                         aiMessageColor = aiMessageColor,
                         userTextColor = userTextColor,
@@ -409,6 +411,7 @@ fun ChatArea(
 private fun MessageItem(
     index: Int,
     message: ChatMessage,
+    enableDialogs: Boolean,
     userMessageColor: Color,
     aiMessageColor: Color,
     userTextColor: Color,
@@ -493,6 +496,7 @@ private fun MessageItem(
                     initialThinkingExpanded = true,
                     onDeleteMessage = onDeleteMessage,
                     index = index,
+                    enableDialogs = enableDialogs,
                     onEditSummary = { summaryMessage ->
                         onSelectMessageToEdit?.invoke(index, summaryMessage, "summary")
                     }
@@ -519,6 +523,7 @@ private fun MessageItem(
                     isHidden = isHidden,
                     onDeleteMessage = onDeleteMessage,
                     index = index,
+                    enableDialogs = enableDialogs,
                     onRoleAvatarLongPress = onMentionRoleFromAvatar,
                     onEditSummary = { summaryMessage ->
                         onSelectMessageToEdit?.invoke(index, summaryMessage, "summary")

@@ -87,6 +87,7 @@ fun UserMessageComposable(
     backgroundColor: Color,
     textColor: Color,
     enableLiquidGlass: Boolean = false,
+    enableDialogs: Boolean = true,
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -180,6 +181,7 @@ fun UserMessageComposable(
                         ),
                         textColor = effectiveTextColor,
                         backgroundColor = effectiveBackgroundColor,
+                        enabled = enableDialogs,
                         onClick = { _ ->
                             // 当点击图片链接时，如果图片未过期则显示预览
                             if (imageLink.bitmap != null) {
@@ -197,6 +199,7 @@ fun UserMessageComposable(
                         attachment = attachment,
                         textColor = effectiveTextColor,
                         backgroundColor = effectiveBackgroundColor,
+                        enabled = enableDialogs,
                         onClick = { attachmentData ->
                             selectedChatAttachment.value =
                                 ChatAttachment(
@@ -262,7 +265,7 @@ fun UserMessageComposable(
     }
 
     // 内容预览对话框
-    if (showContentPreview.value) {
+    if (enableDialogs && showContentPreview.value) {
         AttachmentViewerDialog(
             visible = true,
             attachment = selectedChatAttachment.value,
@@ -271,7 +274,7 @@ fun UserMessageComposable(
     }
 
     // 图片预览对话框
-    if (showImagePreview.value && selectedImageBitmap.value != null) {
+    if (enableDialogs && showImagePreview.value && selectedImageBitmap.value != null) {
         Dialog(onDismissRequest = { showImagePreview.value = false }) {
             Surface(
                 modifier = Modifier
@@ -614,6 +617,7 @@ private fun AttachmentTag(
     attachment: AttachmentData,
     textColor: Color,
     backgroundColor: Color,
+    enabled: Boolean = true,
     onClick: (AttachmentData) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -645,12 +649,15 @@ private fun AttachmentTag(
             .padding(vertical = 2.dp)
             .clickable(
                 enabled =
-                attachment.content.isNotEmpty() ||
-                        attachment.id.startsWith("/") ||
-                        attachment.id.startsWith("content://") ||
-                        attachment.id.startsWith("file://") ||
-                        attachment.id.startsWith("media_pool:") ||
-                        attachment.type.startsWith("image/"),
+                enabled &&
+                        (
+                            attachment.content.isNotEmpty() ||
+                                attachment.id.startsWith("/") ||
+                                attachment.id.startsWith("content://") ||
+                                attachment.id.startsWith("file://") ||
+                                attachment.id.startsWith("media_pool:") ||
+                                attachment.type.startsWith("image/")
+                        ),
                 onClick = { onClick(attachment) }
             ),
         shape = RoundedCornerShape(12.dp),
