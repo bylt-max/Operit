@@ -480,7 +480,7 @@ class MNNProvider(
         val systemPrefixCount = if (history.first().first == "system") 1 else 0
 
         fun countCandidate(candidate: List<Pair<String, String>>): Int {
-            val messagesJson = MNNStructuredToolCallBridge.buildMessagesJson(candidate, preserveThinkInHistory)
+            val messagesJson = StructuredToolCallBridge.buildMessagesJson(candidate, preserveThinkInHistory)
             return session.countTokensStructured(messagesJson, toolsJson)
         }
 
@@ -647,7 +647,7 @@ class MNNProvider(
             val maxPromptTokens = (maxAllTokens - effectiveMaxNewTokens).coerceAtLeast(128)
 
             val toolsJson = if (useInternalToolCall) {
-                MNNStructuredToolCallBridge.buildToolsJson(availableTools)
+                StructuredToolCallBridge.buildToolsJson(availableTools)
             } else {
                 null
             }
@@ -665,7 +665,7 @@ class MNNProvider(
             }
 
             val messagesJson = if (useInternalToolCall) {
-                MNNStructuredToolCallBridge.buildMessagesJson(safeHistory, preserveThinkInHistory)
+                StructuredToolCallBridge.buildMessagesJson(safeHistory, preserveThinkInHistory)
             } else {
                 null
             }
@@ -728,7 +728,7 @@ class MNNProvider(
             }
 
             if (useInternalToolCall && toolCallOutputBuffer.isNotEmpty()) {
-                val converted = MNNStructuredToolCallBridge.convertToolCallPayloadToXml(toolCallOutputBuffer.toString())
+                val converted = StructuredToolCallBridge.convertToolCallPayloadToXml(toolCallOutputBuffer.toString())
                 if (converted.isNotBlank()) {
                     emit(converted)
                 }

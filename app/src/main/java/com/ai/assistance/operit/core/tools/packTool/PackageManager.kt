@@ -363,6 +363,32 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         return buildImportedToolPkgContainerRuntimes(getImportedPackagesInternal())
     }
 
+    fun cancelToolPkgExecutionsForChat(
+        chatId: String,
+        reason: String = "Execution canceled: requested by caller"
+    ): Boolean {
+        val normalizedChatId = chatId.trim()
+        if (normalizedChatId.isEmpty()) {
+            return false
+        }
+
+        var cancelledAny = false
+        toolPkgExecutionEngines.values.forEach { engine ->
+            runCatching {
+                if (engine.cancelExecutionsForChat(normalizedChatId, reason)) {
+                    cancelledAny = true
+                }
+            }.onFailure { error ->
+                AppLogger.e(
+                    TAG,
+                    "Failed to cancel toolpkg execution for chatId=$normalizedChatId: ${error.message ?: error.javaClass.simpleName}",
+                    error
+                )
+            }
+        }
+        return cancelledAny
+    }
+
     // Get the external packages directory
     private val externalPackagesDir: File
         get() {

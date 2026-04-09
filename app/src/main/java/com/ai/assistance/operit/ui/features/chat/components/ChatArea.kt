@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -50,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ai.assistance.operit.R
@@ -67,7 +69,6 @@ import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Summarize
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.draw.alpha
 import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkParser
 import com.ai.assistance.operit.ui.features.chat.components.style.cursor.CursorStyleChatMessage
@@ -214,8 +215,10 @@ fun ChatArea(
     onMentionRoleFromAvatar: ((String) -> Unit)? = null, // 长按角色头像提及
     messagesPerPage: Int = 10, // 每页显示的消息数量
     topPadding: Dp = 0.dp,
+    bottomPadding: Dp = 0.dp,
     chatStyle: ChatStyle = ChatStyle.CURSOR, // 新增参数，默认为CURSOR风格
     cursorUserBubbleLiquidGlass: Boolean = false,
+    cursorUserBubbleWaterGlass: Boolean = false,
     isMultiSelectMode: Boolean = false, // 是否处于多选模式
     selectedMessageIndices: Set<Int> = emptySet(), // 已选中的消息索引集合
     onToggleMultiSelectMode: ((Int?) -> Unit)? = null, // 切换多选模式的回调，可传入要初始选中的消息索引
@@ -247,7 +250,7 @@ fun ChatArea(
                 .padding(horizontal = horizontalPadding)
                 .verticalScroll(scrollState) // 使用从外部传入的scrollState
                 .background(Color.Transparent)
-                .padding(top = topPadding),
+                .padding(top = topPadding, bottom = bottomPadding),
         ) {
             val lastMessage = chatHistory.lastOrNull()
             // 仅在首个chunk到达前显示加载点，避免父层跟随每个chunk重组。
@@ -347,6 +350,7 @@ fun ChatArea(
                         onMentionRoleFromAvatar = onMentionRoleFromAvatar, // 传递角色头像长按提及回调
                         chatStyle = chatStyle, // 传递风格
                         cursorUserBubbleLiquidGlass = cursorUserBubbleLiquidGlass,
+                        cursorUserBubbleWaterGlass = cursorUserBubbleWaterGlass,
                         isHidden = shouldHide, // 新增参数控制隐藏
                         isMultiSelectMode = isMultiSelectMode, // 传递多选模式状态
                         isSelected = selectedMessageIndices.contains(actualIndex), // 传递选中状态
@@ -432,6 +436,7 @@ private fun MessageItem(
     onMentionRoleFromAvatar: ((String) -> Unit)? = null, // 长按角色头像提及
     chatStyle: ChatStyle, // 新增参数
     cursorUserBubbleLiquidGlass: Boolean = false,
+    cursorUserBubbleWaterGlass: Boolean = false,
     isHidden: Boolean = false, // 新增参数控制隐藏
     isMultiSelectMode: Boolean = false, // 是否处于多选模式
     isSelected: Boolean = false, // 是否被选中
@@ -449,6 +454,7 @@ private fun MessageItem(
 ) {
     val context = LocalContext.current
     var showContextMenu by remember { mutableStateOf(false) }
+    var showMessageInfoDialog by remember { mutableStateOf(false) }
 
 
     // 只有用户和AI的消息才能被操作
@@ -485,6 +491,7 @@ private fun MessageItem(
                     message = message,
                     userMessageColor = userMessageColor,
                     userMessageLiquidGlassEnabled = cursorUserBubbleLiquidGlass,
+                    userMessageWaterGlassEnabled = cursorUserBubbleWaterGlass,
                     aiMessageColor = aiMessageColor,
                     userTextColor = userTextColor,
                     aiTextColor = aiTextColor,
@@ -577,8 +584,6 @@ private fun MessageItem(
                 },
                 modifier = Modifier.height(36.dp)
             )
-
-
 
             // 朗读消息选项
             DropdownMenuItem(
@@ -776,7 +781,30 @@ private fun MessageItem(
                 modifier = Modifier.height(36.dp)
             )
 
-            // 多选
+            // 信息
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        stringResource(id = R.string.info),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontSize = 13.sp
+                    )
+                },
+                onClick = {
+                    showContextMenu = false
+                    showMessageInfoDialog = true
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = stringResource(id = R.string.info),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                },
+                modifier = Modifier.height(36.dp)
+            )
+
             DropdownMenuItem(
                 text = {
                     Text(
@@ -800,11 +828,15 @@ private fun MessageItem(
                 modifier = Modifier.height(36.dp)
             )
         }
+
+        if (showMessageInfoDialog) {
+            MessageInfoDialog(
+                message = message,
+                onDismiss = { showMessageInfoDialog = false }
+            )
+        }
     }
 }
-
-
-
 
 @Composable
 private fun LoadingDotsIndicator(textColor: Color) {

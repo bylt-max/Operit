@@ -83,6 +83,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.flowOf
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
+import com.ai.assistance.operit.data.preferences.CharacterGroupCardManager
+import com.ai.assistance.operit.ui.common.rememberLocal
 import com.ai.assistance.operit.ui.main.components.LocalIsCurrentScreen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -94,6 +96,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.data.preferences.ActivePromptManager
 import com.ai.assistance.operit.data.model.ActivePrompt
+import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatHistoryDisplayMode
 import com.ai.assistance.operit.ui.theme.getTextColorForBackground
 
 
@@ -156,8 +159,12 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val backgroundImageUri by preferencesManager.backgroundImageUri.collectAsState(initial = null)
     val chatHeaderTransparent by preferencesManager.chatHeaderTransparent.collectAsState(initial = false)
     val chatInputTransparent by preferencesManager.chatInputTransparent.collectAsState(initial = false)
-    val chatInputLiquidGlass by
+    val chatInputFloating by preferencesManager.chatInputFloating.collectAsState(initial = false)
+    val chatInputLiquidGlassRaw by
         preferencesManager.chatInputLiquidGlass.collectAsState(initial = false)
+    val chatInputWaterGlass by
+        preferencesManager.chatInputWaterGlass.collectAsState(initial = false)
+    val chatInputLiquidGlass = chatInputLiquidGlassRaw && !chatInputWaterGlass
     val chatHeaderHistoryIconColor by preferencesManager.chatHeaderHistoryIconColor.collectAsState(
             initial = null
     )
@@ -184,8 +191,11 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         )
     val cursorUserBubbleFollowTheme by
         preferencesManager.cursorUserBubbleFollowTheme.collectAsState(initial = true)
-    val cursorUserBubbleLiquidGlass by
+    val cursorUserBubbleLiquidGlassRaw by
         preferencesManager.cursorUserBubbleLiquidGlass.collectAsState(initial = false)
+    val cursorUserBubbleWaterGlass by
+        preferencesManager.cursorUserBubbleWaterGlass.collectAsState(initial = false)
+    val cursorUserBubbleLiquidGlass = cursorUserBubbleLiquidGlassRaw && !cursorUserBubbleWaterGlass
     val cursorUserBubbleColorValue by
         preferencesManager.cursorUserBubbleColor.collectAsState(initial = null)
     val bubbleUserBubbleColorValue by
@@ -374,6 +384,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val historyListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
+    val characterGroupCardManager = remember { CharacterGroupCardManager.getInstance(context) }
     val activePromptManager = remember { ActivePromptManager.getInstance(context) }
     val activePrompt by activePromptManager.activePromptFlow.collectAsState(
         initial = ActivePrompt.CharacterCard(CharacterCardManager.DEFAULT_CHARACTER_CARD_ID)
@@ -384,6 +395,85 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
             is ActivePrompt.CharacterGroup -> flowOf(null)
         }
     }.collectAsState(initial = null)
+    val activeCharacterGroup by remember(activePrompt) {
+        when (val prompt = activePrompt) {
+            is ActivePrompt.CharacterGroup -> characterGroupCardManager.getCharacterGroupCardFlow(prompt.id)
+            is ActivePrompt.CharacterCard -> flowOf(null)
+        }
+    }.collectAsState(initial = null)
+    var historyDisplayMode by rememberLocal(
+        "chat_history_display_mode",
+        ChatHistoryDisplayMode.BY_FOLDER
+    )
+    var autoSwitchCharacterCard by rememberLocal(
+        "chat_history_auto_switch_character_card",
+        false
+    )
+    val displayedChatHistories = remember(
+        chatHistories,
+        activePrompt,
+        activeCharacterCard,
+        activeCharacterGroup,
+        historyDisplayMode
+    ) {
+        when (historyDisplayMode) {
+            ChatHistoryDisplayMode.CURRENT_CHARACTER_ONLY -> {
+                when (activePrompt) {
+                    is ActivePrompt.CharacterGroup -> {
+                        val group = activeCharacterGroup ?: return@remember emptyList()
+                        chatHistories.filter { history ->
+                            history.characterGroupId == group.id
+                        }
+                    }
+                    is ActivePrompt.CharacterCard -> {
+                        val activeCard = activeCharacterCard ?: return@remember emptyList()
+                        chatHistories.filter { history ->
+                            val historyCard = history.characterCardName
+                            if (activeCard.isDefault) {
+                                historyCard == null || historyCard == activeCard.name
+                            } else {
+                                historyCard == activeCard.name
+                            }
+                        }
+                    }
+                }
+            }
+            else -> chatHistories
+        }
+    }
+    LaunchedEffect(autoSwitchCharacterCard) {
+        actualViewModel.setAutoSwitchCharacterCard(autoSwitchCharacterCard)
+    }
+    LaunchedEffect(
+        activePrompt,
+        activeCharacterCard,
+        activeCharacterGroup,
+        displayedChatHistories,
+        currentChatId,
+        chatHistories,
+        historyDisplayMode
+    ) {
+        if (historyDisplayMode != ChatHistoryDisplayMode.CURRENT_CHARACTER_ONLY) {
+            return@LaunchedEffect
+        }
+        val hasActiveTarget = when (activePrompt) {
+            is ActivePrompt.CharacterGroup -> activeCharacterGroup != null
+            is ActivePrompt.CharacterCard -> activeCharacterCard != null
+        }
+        if (!hasActiveTarget || displayedChatHistories.isEmpty()) {
+            return@LaunchedEffect
+        }
+        val currentId = currentChatId ?: ""
+        val hasCurrentChatInFilter = displayedChatHistories.any { it.id == currentId }
+        val hasCurrentChatInAll = currentId.isNotBlank() && chatHistories.any { it.id == currentId }
+        if (currentId.isBlank()) {
+            actualViewModel.switchChat(displayedChatHistories.first().id)
+            return@LaunchedEffect
+        }
+        if (!hasCurrentChatInFilter && hasCurrentChatInAll) {
+            actualViewModel.switchChat(displayedChatHistories.first().id)
+        }
+    }
     val characterCardBoundChatModelConfigId =
         activeCharacterCard
             ?.takeIf {
@@ -741,9 +831,16 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     var exportFilePath by remember { mutableStateOf<String?>(null) }
     var exportErrorMessage by remember { mutableStateOf<String?>(null) }
     var webContentDir by remember { mutableStateOf<File?>(null) }
+    var showCharacterSelector by remember { mutableStateOf(false) }
 
     var bottomBarHeightPx by remember { mutableStateOf(0) }
     val bottomBarHeightDp = with(density) { bottomBarHeightPx.toDp() }
+    val classicSettingsBarBottomPadding =
+        if (bottomBarHeightDp > 36.dp) {
+            bottomBarHeightDp - 6.dp
+        } else {
+            18.dp
+        }
     val inputBarTranslationYPx =
         if (shouldUseChatLocalImeHandling && imeBottomPx > 0) {
             imeBottomPx.toFloat()
@@ -814,13 +911,13 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                         modifier =
                             Modifier
                                 .matchParentSize()
-                                .padding(bottom = bottomBarHeightDp)
                                 .graphicsLayer { translationY = -chatViewportTranslationYPx }
                     ) {
                         ChatScreenContent(
                                 modifier = Modifier.fillMaxSize(),
                                 paddingValues =
                                         PaddingValues(), // Padding is already handled by the parent Box
+                                bottomInset = bottomBarHeightDp,
                                 actualViewModel = actualViewModel,
                                 enableMessageDialogs = !isFloatingMode,
                                 showChatHistorySelector = showChatHistorySelector,
@@ -856,7 +953,10 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 chatHeaderOverlayMode = chatHeaderOverlayMode,
                                 chatStyle = chatStyle, // Pass chat style
                                 cursorUserBubbleLiquidGlass = cursorUserBubbleLiquidGlass,
+                                cursorUserBubbleWaterGlass = cursorUserBubbleWaterGlass,
                                 historyListState = historyListState,
+                                showCharacterSelector = showCharacterSelector,
+                                onShowCharacterSelectorChange = { showCharacterSelector = it },
                                 onSwitchCharacter = onSwitchCharacter,
                                 onOpenCharacterSettings = onNavigateToModelPrompts,
                                 chatAreaHorizontalPadding = chatAreaHorizontalPadding,
@@ -873,7 +973,16 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
 
                         if (inputStyle == UserPreferencesManager.INPUT_STYLE_CLASSIC) {
                             ClassicChatSettingsBar(
-                                    modifier = Modifier.align(Alignment.BottomEnd),
+                                    modifier =
+                                            Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .padding(
+                                                            end = 4.dp,
+                                                            bottom = classicSettingsBarBottomPadding,
+                                                    )
+                                                    .graphicsLayer {
+                                                        translationY = -inputBarTranslationYPx
+                                                    },
                                     featureStates = featureStates,
                                     onToggleFeature = { featureKey ->
                                         actualViewModel.toggleFeature(featureKey)
@@ -973,7 +1082,9 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 inputState = inputProcessingState,
                                 hasBackgroundImage = effectiveHasBackgroundImage,
                                 chatInputTransparent = chatInputTransparent,
+                                chatInputFloating = chatInputFloating,
                                 chatInputLiquidGlass = chatInputLiquidGlass,
+                                chatInputWaterGlass = chatInputWaterGlass,
                                 showInputProcessingStatus = showInputProcessingStatus,
                                 enableTools = enableTools,
                                 isWorkspaceOpen = isWorkspaceOpen,
@@ -1002,6 +1113,66 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 },
                                 onRequestAutoScrollToBottom = requestAutoScrollToBottom,
                         )
+                    }
+
+                    CharacterSelectorPanel(
+                        isVisible = showCharacterSelector,
+                        onDismiss = { showCharacterSelector = false },
+                        onSelectCharacter = onSwitchCharacter,
+                        onOpenCharacterSettings = onNavigateToModelPrompts
+                    )
+
+                    AnimatedVisibility(
+                        visible = showChatHistorySelector,
+                        enter = fadeIn(animationSpec = tween(300)),
+                        exit = fadeOut(animationSpec = tween(300)),
+                        modifier = Modifier.matchParentSize()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.3f))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    actualViewModel.toggleChatHistorySelector()
+                                }
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = showChatHistorySelector,
+                        enter = androidx.compose.animation.slideInHorizontally(
+                            initialOffsetX = { -it },
+                            animationSpec = tween(300)
+                        ),
+                        exit = androidx.compose.animation.slideOutHorizontally(
+                            targetOffsetX = { -it },
+                            animationSpec = tween(300)
+                        ),
+                        modifier = Modifier.matchParentSize()
+                    ) {
+                        val chatHistorySearchQuery by actualViewModel.chatHistorySearchQuery.collectAsState()
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            Box(modifier = Modifier.align(Alignment.TopStart)) {
+                                ChatHistorySelectorPanel(
+                                    actualViewModel = actualViewModel,
+                                    chatHistories = displayedChatHistories,
+                                    currentChatId = currentChatId ?: "",
+                                    showChatHistorySelector = showChatHistorySelector,
+                                    historyListState = historyListState,
+                                    onChatScreenGestureConsumed = onChatScreenGestureConsumedChange,
+                                    searchQuery = chatHistorySearchQuery,
+                                    onSearchQueryChange = actualViewModel::onChatHistorySearchQueryChange,
+                                    activePrompt = activePrompt,
+                                    historyDisplayMode = historyDisplayMode,
+                                    onDisplayModeChange = { historyDisplayMode = it },
+                                    autoSwitchCharacterCard = autoSwitchCharacterCard,
+                                    onAutoSwitchCharacterCardChange = { autoSwitchCharacterCard = it }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1290,7 +1461,9 @@ private fun ChatInputBottomBar(
     inputState: InputProcessingState,
     hasBackgroundImage: Boolean,
     chatInputTransparent: Boolean,
+    chatInputFloating: Boolean,
     chatInputLiquidGlass: Boolean,
+    chatInputWaterGlass: Boolean,
     showInputProcessingStatus: Boolean,
     enableTools: Boolean,
     isWorkspaceOpen: Boolean,
@@ -1458,7 +1631,9 @@ private fun ChatInputBottomBar(
                 onTakePhoto = actualViewModel::handleTakenPhoto,
                 hasBackgroundImage = hasBackgroundImage,
                 chatInputTransparent = chatInputTransparent,
+                chatInputFloating = chatInputFloating,
                 chatInputLiquidGlass = chatInputLiquidGlass,
+                chatInputWaterGlass = chatInputWaterGlass,
                 externalAttachmentPanelState = attachmentPanelState,
                 onAttachmentPanelStateChange = actualViewModel::updateAttachmentPanelState,
                 showInputProcessingStatus = showInputProcessingStatus,
@@ -1546,7 +1721,9 @@ private fun ChatInputBottomBar(
                 onTakePhoto = actualViewModel::handleTakenPhoto,
                 hasBackgroundImage = hasBackgroundImage,
                 chatInputTransparent = chatInputTransparent,
+                chatInputFloating = chatInputFloating,
                 chatInputLiquidGlass = chatInputLiquidGlass,
+                chatInputWaterGlass = chatInputWaterGlass,
                 externalAttachmentPanelState = attachmentPanelState,
                 onAttachmentPanelStateChange = actualViewModel::updateAttachmentPanelState,
                 showInputProcessingStatus = showInputProcessingStatus,

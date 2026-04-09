@@ -103,7 +103,9 @@ class UserPreferencesManager private constructor(private val context: Context) {
         private val STATUS_BAR_HIDDEN = booleanPreferencesKey("status_bar_hidden")
         private val CHAT_HEADER_TRANSPARENT = booleanPreferencesKey("chat_header_transparent")
         private val CHAT_INPUT_TRANSPARENT = booleanPreferencesKey("chat_input_transparent")
+        private val CHAT_INPUT_FLOATING = booleanPreferencesKey("chat_input_floating")
         private val CHAT_INPUT_LIQUID_GLASS = booleanPreferencesKey("chat_input_liquid_glass")
+        private val CHAT_INPUT_WATER_GLASS = booleanPreferencesKey("chat_input_water_glass")
 
         // AppBar 内容颜色设置
         private val FORCE_APP_BAR_CONTENT_COLOR_ENABLED = booleanPreferencesKey("force_app_bar_content_color_enabled")
@@ -136,6 +138,8 @@ class UserPreferencesManager private constructor(private val context: Context) {
             booleanPreferencesKey("cursor_user_bubble_follow_theme")
         private val CURSOR_USER_BUBBLE_LIQUID_GLASS =
             booleanPreferencesKey("cursor_user_bubble_liquid_glass")
+        private val CURSOR_USER_BUBBLE_WATER_GLASS =
+            booleanPreferencesKey("cursor_user_bubble_water_glass")
         private val CURSOR_USER_BUBBLE_COLOR = intPreferencesKey("cursor_user_bubble_color")
         private val BUBBLE_USER_BUBBLE_COLOR = intPreferencesKey("bubble_user_bubble_color")
         private val BUBBLE_AI_BUBBLE_COLOR = intPreferencesKey("bubble_ai_bubble_color")
@@ -447,9 +451,19 @@ class UserPreferencesManager private constructor(private val context: Context) {
                 preferences[CHAT_INPUT_TRANSPARENT] ?: false
             }
 
+    val chatInputFloating: Flow<Boolean> =
+            context.userPreferencesDataStore.data.map { preferences ->
+                preferences[CHAT_INPUT_FLOATING] ?: false
+            }
+
     val chatInputLiquidGlass: Flow<Boolean> =
             context.userPreferencesDataStore.data.map { preferences ->
                 preferences[CHAT_INPUT_LIQUID_GLASS] ?: false
+            }
+
+    val chatInputWaterGlass: Flow<Boolean> =
+            context.userPreferencesDataStore.data.map { preferences ->
+                preferences[CHAT_INPUT_WATER_GLASS] ?: false
             }
 
     val forceAppBarContentColor: Flow<Boolean> =
@@ -516,6 +530,11 @@ class UserPreferencesManager private constructor(private val context: Context) {
     val cursorUserBubbleLiquidGlass: Flow<Boolean> =
         context.userPreferencesDataStore.data.map { preferences ->
             preferences[CURSOR_USER_BUBBLE_LIQUID_GLASS] ?: false
+        }
+
+    val cursorUserBubbleWaterGlass: Flow<Boolean> =
+        context.userPreferencesDataStore.data.map { preferences ->
+            preferences[CURSOR_USER_BUBBLE_WATER_GLASS] ?: false
         }
 
     val cursorUserBubbleColor: Flow<Int?> =
@@ -994,7 +1013,9 @@ class UserPreferencesManager private constructor(private val context: Context) {
             statusBarHidden: Boolean? = null,
             chatHeaderTransparent: Boolean? = null,
             chatInputTransparent: Boolean? = null,
+            chatInputFloating: Boolean? = null,
             chatInputLiquidGlass: Boolean? = null,
+            chatInputWaterGlass: Boolean? = null,
             forceAppBarContentColor: Boolean? = null,
             appBarContentColorMode: String? = null,
             chatHeaderHistoryIconColor: Int? = null,
@@ -1007,6 +1028,7 @@ class UserPreferencesManager private constructor(private val context: Context) {
             bubbleWideLayoutEnabled: Boolean? = null,
             cursorUserBubbleFollowTheme: Boolean? = null,
             cursorUserBubbleLiquidGlass: Boolean? = null,
+            cursorUserBubbleWaterGlass: Boolean? = null,
             cursorUserBubbleColor: Int? = null,
             bubbleUserBubbleColor: Int? = null,
             bubbleAiBubbleColor: Int? = null,
@@ -1091,7 +1113,19 @@ class UserPreferencesManager private constructor(private val context: Context) {
             statusBarHidden?.let { preferences[STATUS_BAR_HIDDEN] = it }
             chatHeaderTransparent?.let { preferences[CHAT_HEADER_TRANSPARENT] = it }
             chatInputTransparent?.let { preferences[CHAT_INPUT_TRANSPARENT] = it }
-            chatInputLiquidGlass?.let { preferences[CHAT_INPUT_LIQUID_GLASS] = it }
+            chatInputFloating?.let { preferences[CHAT_INPUT_FLOATING] = it }
+            chatInputLiquidGlass?.let {
+                preferences[CHAT_INPUT_LIQUID_GLASS] = it
+                if (it) {
+                    preferences[CHAT_INPUT_WATER_GLASS] = false
+                }
+            }
+            chatInputWaterGlass?.let {
+                preferences[CHAT_INPUT_WATER_GLASS] = it
+                if (it) {
+                    preferences[CHAT_INPUT_LIQUID_GLASS] = false
+                }
+            }
             forceAppBarContentColor?.let { preferences[FORCE_APP_BAR_CONTENT_COLOR_ENABLED] = it }
             appBarContentColorMode?.let { preferences[APP_BAR_CONTENT_COLOR_MODE] = it }
             chatHeaderHistoryIconColor?.let { preferences[CHAT_HEADER_HISTORY_ICON_COLOR] = it }
@@ -1105,6 +1139,15 @@ class UserPreferencesManager private constructor(private val context: Context) {
             cursorUserBubbleFollowTheme?.let { preferences[CURSOR_USER_BUBBLE_FOLLOW_THEME] = it }
             cursorUserBubbleLiquidGlass?.let {
                 preferences[CURSOR_USER_BUBBLE_LIQUID_GLASS] = it
+                if (it) {
+                    preferences[CURSOR_USER_BUBBLE_WATER_GLASS] = false
+                }
+            }
+            cursorUserBubbleWaterGlass?.let {
+                preferences[CURSOR_USER_BUBBLE_WATER_GLASS] = it
+                if (it) {
+                    preferences[CURSOR_USER_BUBBLE_LIQUID_GLASS] = false
+                }
             }
             cursorUserBubbleColor?.let { preferences[CURSOR_USER_BUBBLE_COLOR] = it }
             bubbleUserBubbleColor?.let { preferences[BUBBLE_USER_BUBBLE_COLOR] = it }
@@ -1190,7 +1233,9 @@ class UserPreferencesManager private constructor(private val context: Context) {
             preferences.remove(STATUS_BAR_HIDDEN)
             preferences.remove(CHAT_HEADER_TRANSPARENT)
             preferences.remove(CHAT_INPUT_TRANSPARENT)
+            preferences.remove(CHAT_INPUT_FLOATING)
             preferences.remove(CHAT_INPUT_LIQUID_GLASS)
+            preferences.remove(CHAT_INPUT_WATER_GLASS)
             preferences.remove(FORCE_APP_BAR_CONTENT_COLOR_ENABLED)
             preferences.remove(APP_BAR_CONTENT_COLOR_MODE)
             preferences.remove(CHAT_HEADER_HISTORY_ICON_COLOR)
@@ -1203,6 +1248,7 @@ class UserPreferencesManager private constructor(private val context: Context) {
             preferences.remove(BUBBLE_WIDE_LAYOUT_ENABLED)
             preferences.remove(CURSOR_USER_BUBBLE_FOLLOW_THEME)
             preferences.remove(CURSOR_USER_BUBBLE_LIQUID_GLASS)
+            preferences.remove(CURSOR_USER_BUBBLE_WATER_GLASS)
             preferences.remove(CURSOR_USER_BUBBLE_COLOR)
             preferences.remove(BUBBLE_USER_BUBBLE_COLOR)
             preferences.remove(BUBBLE_AI_BUBBLE_COLOR)
@@ -1521,9 +1567,12 @@ class UserPreferencesManager private constructor(private val context: Context) {
         return listOf(
             USE_SYSTEM_THEME, USE_CUSTOM_COLORS, USE_BACKGROUND_IMAGE, VIDEO_BACKGROUND_MUTED,
             VIDEO_BACKGROUND_LOOP, TOOLBAR_TRANSPARENT, USE_CUSTOM_APP_BAR_COLOR, USE_CUSTOM_STATUS_BAR_COLOR,
-            STATUS_BAR_TRANSPARENT, STATUS_BAR_HIDDEN, CHAT_HEADER_TRANSPARENT, CHAT_INPUT_TRANSPARENT, CHAT_INPUT_LIQUID_GLASS,
+            STATUS_BAR_TRANSPARENT, STATUS_BAR_HIDDEN, CHAT_HEADER_TRANSPARENT, CHAT_INPUT_TRANSPARENT, CHAT_INPUT_FLOATING,
+            CHAT_INPUT_LIQUID_GLASS,
+            CHAT_INPUT_WATER_GLASS,
             FORCE_APP_BAR_CONTENT_COLOR_ENABLED, CHAT_HEADER_OVERLAY_MODE, USE_BACKGROUND_BLUR,
-            BUBBLE_SHOW_AVATAR, BUBBLE_WIDE_LAYOUT_ENABLED, CURSOR_USER_BUBBLE_FOLLOW_THEME, CURSOR_USER_BUBBLE_LIQUID_GLASS, BUBBLE_USER_USE_IMAGE,
+            BUBBLE_SHOW_AVATAR, BUBBLE_WIDE_LAYOUT_ENABLED, CURSOR_USER_BUBBLE_FOLLOW_THEME, CURSOR_USER_BUBBLE_LIQUID_GLASS,
+            CURSOR_USER_BUBBLE_WATER_GLASS, BUBBLE_USER_USE_IMAGE,
             BUBBLE_AI_USE_IMAGE, BUBBLE_USER_ROUNDED_CORNERS_ENABLED, BUBBLE_AI_ROUNDED_CORNERS_ENABLED, KEY_SHOW_THINKING_PROCESS, KEY_SHOW_STATUS_TAGS,
             KEY_SHOW_INPUT_PROCESSING_STATUS, KEY_SHOW_CHAT_FLOATING_DOTS_ANIMATION, USE_CUSTOM_FONT,
             BUBBLE_USER_USE_CUSTOM_FONT, BUBBLE_AI_USE_CUSTOM_FONT

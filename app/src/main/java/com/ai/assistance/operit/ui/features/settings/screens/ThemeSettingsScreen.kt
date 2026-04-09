@@ -244,8 +244,13 @@ fun ThemeSettingsScreen() {
             preferencesManager.chatHeaderTransparent.collectAsState(initial = false).value
     val chatInputTransparent =
             preferencesManager.chatInputTransparent.collectAsState(initial = false).value
-    val chatInputLiquidGlass =
+    val chatInputFloating =
+            preferencesManager.chatInputFloating.collectAsState(initial = false).value
+    val chatInputLiquidGlassRaw =
             preferencesManager.chatInputLiquidGlass.collectAsState(initial = false).value
+    val chatInputWaterGlass =
+            preferencesManager.chatInputWaterGlass.collectAsState(initial = false).value
+    val chatInputLiquidGlass = chatInputLiquidGlassRaw && !chatInputWaterGlass
     val chatHeaderOverlayMode =
             preferencesManager.chatHeaderOverlayMode.collectAsState(initial = false).value
 
@@ -284,8 +289,12 @@ fun ThemeSettingsScreen() {
         preferencesManager.bubbleWideLayoutEnabled.collectAsState(initial = false).value
     val cursorUserBubbleFollowTheme =
         preferencesManager.cursorUserBubbleFollowTheme.collectAsState(initial = true).value
-    val cursorUserBubbleLiquidGlass =
+    val cursorUserBubbleLiquidGlassRaw =
         preferencesManager.cursorUserBubbleLiquidGlass.collectAsState(initial = false).value
+    val cursorUserBubbleWaterGlass =
+        preferencesManager.cursorUserBubbleWaterGlass.collectAsState(initial = false).value
+    val cursorUserBubbleLiquidGlass =
+        cursorUserBubbleLiquidGlassRaw && !cursorUserBubbleWaterGlass
     val cursorUserBubbleColor =
         preferencesManager.cursorUserBubbleColor.collectAsState(initial = null).value
     val bubbleUserBubbleColor =
@@ -481,7 +490,9 @@ fun ThemeSettingsScreen() {
     var statusBarHiddenInput by remember { mutableStateOf(statusBarHidden) }
     var chatHeaderTransparentInput by remember { mutableStateOf(chatHeaderTransparent) }
     var chatInputTransparentInput by remember { mutableStateOf(chatInputTransparent) }
+    var chatInputFloatingInput by remember { mutableStateOf(chatInputFloating) }
     var chatInputLiquidGlassInput by remember { mutableStateOf(chatInputLiquidGlass) }
+    var chatInputWaterGlassInput by remember { mutableStateOf(chatInputWaterGlass) }
     var chatHeaderOverlayModeInput by remember { mutableStateOf(chatHeaderOverlayMode) }
 
     // AppBar content color state
@@ -509,6 +520,8 @@ fun ThemeSettingsScreen() {
     var cursorUserBubbleFollowThemeInput by remember { mutableStateOf(cursorUserBubbleFollowTheme) }
     var cursorUserBubbleLiquidGlassInput by
         remember { mutableStateOf(cursorUserBubbleLiquidGlass) }
+    var cursorUserBubbleWaterGlassInput by
+        remember { mutableStateOf(cursorUserBubbleWaterGlass) }
     var cursorUserBubbleColorInput by
         remember { mutableStateOf(cursorUserBubbleColor ?: defaultCursorUserBubbleColor) }
     var bubbleUserBubbleColorInput by
@@ -1130,7 +1143,9 @@ fun ThemeSettingsScreen() {
             statusBarHidden,
             chatHeaderTransparent,
             chatInputTransparent,
+            chatInputFloating,
             chatInputLiquidGlass,
+            chatInputWaterGlass,
             chatHeaderOverlayMode,
             forceAppBarContentColor,
             appBarContentColorMode,
@@ -1144,6 +1159,7 @@ fun ThemeSettingsScreen() {
             bubbleWideLayoutEnabled,
             cursorUserBubbleFollowTheme,
             cursorUserBubbleLiquidGlass,
+            cursorUserBubbleWaterGlass,
             cursorUserBubbleColor,
             bubbleUserBubbleColor,
             bubbleAiBubbleColor,
@@ -1220,7 +1236,9 @@ fun ThemeSettingsScreen() {
         statusBarHiddenInput = statusBarHidden
         chatHeaderTransparentInput = chatHeaderTransparent
         chatInputTransparentInput = chatInputTransparent
+        chatInputFloatingInput = chatInputFloating
         chatInputLiquidGlassInput = chatInputLiquidGlass
+        chatInputWaterGlassInput = chatInputWaterGlass
         chatHeaderOverlayModeInput = chatHeaderOverlayMode
         forceAppBarContentColorInput = forceAppBarContentColor
         appBarContentColorModeInput = appBarContentColorMode
@@ -1238,6 +1256,7 @@ fun ThemeSettingsScreen() {
         bubbleWideLayoutEnabledInput = bubbleWideLayoutEnabled
         cursorUserBubbleFollowThemeInput = cursorUserBubbleFollowTheme
         cursorUserBubbleLiquidGlassInput = cursorUserBubbleLiquidGlass
+        cursorUserBubbleWaterGlassInput = cursorUserBubbleWaterGlass
         cursorUserBubbleColorInput = cursorUserBubbleColor ?: defaultCursorUserBubbleColor
         bubbleUserBubbleColorInput = bubbleUserBubbleColor ?: defaultBubbleUserBubbleColor
         bubbleAiBubbleColorInput = bubbleAiBubbleColor ?: defaultBubbleAiBubbleColor
@@ -1520,8 +1539,12 @@ fun ThemeSettingsScreen() {
             onChatHeaderOverlayModeInputChange = { chatHeaderOverlayModeInput = it },
             chatInputTransparentInput = chatInputTransparentInput,
             onChatInputTransparentInputChange = { chatInputTransparentInput = it },
+            chatInputFloatingInput = chatInputFloatingInput,
+            onChatInputFloatingInputChange = { chatInputFloatingInput = it },
             chatInputLiquidGlassInput = chatInputLiquidGlassInput,
             onChatInputLiquidGlassInputChange = { chatInputLiquidGlassInput = it },
+            chatInputWaterGlassInput = chatInputWaterGlassInput,
+            onChatInputWaterGlassInputChange = { chatInputWaterGlassInput = it },
             forceAppBarContentColorInput = forceAppBarContentColorInput,
             onForceAppBarContentColorInputChange = { forceAppBarContentColorInput = it },
             appBarContentColorModeInput = appBarContentColorModeInput,
@@ -1556,6 +1579,10 @@ fun ThemeSettingsScreen() {
             cursorUserBubbleLiquidGlassInput = cursorUserBubbleLiquidGlassInput,
             onCursorUserBubbleLiquidGlassInputChange = {
                 cursorUserBubbleLiquidGlassInput = it
+            },
+            cursorUserBubbleWaterGlassInput = cursorUserBubbleWaterGlassInput,
+            onCursorUserBubbleWaterGlassInputChange = {
+                cursorUserBubbleWaterGlassInput = it
             },
             cursorUserBubbleColorInput = cursorUserBubbleColorInput,
             bubbleUserBubbleColorInput = bubbleUserBubbleColorInput,
@@ -1796,7 +1823,9 @@ fun ThemeSettingsScreen() {
                         statusBarHiddenInput = false
                         chatHeaderTransparentInput = false
                         chatInputTransparentInput = false
+                        chatInputFloatingInput = false
                         chatInputLiquidGlassInput = false
+                        chatInputWaterGlassInput = false
                         chatHeaderOverlayModeInput = false
                         forceAppBarContentColorInput = false
                         appBarContentColorModeInput = UserPreferencesManager.APP_BAR_CONTENT_COLOR_MODE_LIGHT
@@ -1810,6 +1839,7 @@ fun ThemeSettingsScreen() {
                         bubbleWideLayoutEnabledInput = false
                         cursorUserBubbleFollowThemeInput = true
                         cursorUserBubbleLiquidGlassInput = false
+                        cursorUserBubbleWaterGlassInput = false
                         cursorUserBubbleColorInput = defaultCursorUserBubbleColor
                         bubbleUserBubbleColorInput = defaultBubbleUserBubbleColor
                         bubbleAiBubbleColorInput = defaultBubbleAiBubbleColor

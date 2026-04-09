@@ -245,31 +245,158 @@ private constructor(
     }
 
     private fun injectErudaIntoHtml(htmlContent: String): String {
-        val erudaScript =
-                """
-        <script>
-        (function() {
-            if (window.erudaInjected) { return; }
-            window.erudaInjected = true;
-            localStorage.removeItem('eruda-entry-btn');
-            var script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/eruda';
-            document.body.appendChild(script);
-            script.onload = function() {
-                if (!window.eruda) return;
-                eruda.init();
-                var entryBtn = eruda.get('entry');
-                if (entryBtn) {
-                    entryBtn.position({
-                        x: 10,
-                        y: window.innerHeight - 70
+        val consoleBootstrapScript =
+            """
+            <script>
+            (function() {
+                if (window.__operitConsoleBootstrapInstalled) { return; }
+                window.__operitConsoleBootstrapInstalled = true;
+                var originalConsole = window.console || {};
+                var levels = ['log', 'info', 'warn', 'error', 'debug'];
+                var buffer = window.__operitEarlyConsoleBuffer = window.__operitEarlyConsoleBuffer || [];
+                window.__operitConsoleReplayInProgress = false;
+                window.__operitOriginalConsoleMethods = window.__operitOriginalConsoleMethods || {};
+
+                levels.forEach(function(level) {
+                    if (window.__operitOriginalConsoleMethods[level]) {
+                        return;
+                    }
+                    var original = typeof originalConsole[level] === 'function'
+                        ? originalConsole[level].bind(originalConsole)
+                        : (typeof originalConsole.log === 'function'
+                            ? originalConsole.log.bind(originalConsole)
+                            : function() {});
+                    window.__operitOriginalConsoleMethods[level] = original;
+                    originalConsole[level] = function() {
+                        if (!window.__operitConsoleReplayInProgress) {
+                            buffer.push({
+                                level: level,
+                                args: Array.prototype.slice.call(arguments),
+                                timestamp: Date.now()
+                            });
+                            if (buffer.length > 500) {
+                                buffer.shift();
+                            }
+                        }
+                        return original.apply(null, arguments);
+                    };
+                });
+
+                window.addEventListener('error', function(event) {
+                    if (window.__operitConsoleReplayInProgress) {
+                        return;
+                    }
+                    buffer.push({
+                        level: 'error',
+                        args: [
+                            event && event.message ? event.message : 'Script error',
+                            event && event.filename ? event.filename : '',
+                            event && typeof event.lineno === 'number' ? 'line ' + event.lineno : '',
+                            event && typeof event.colno === 'number' ? 'col ' + event.colno : ''
+                        ],
+                        timestamp: Date.now()
                     });
+                });
+
+                window.addEventListener('unhandledrejection', function(event) {
+                    if (window.__operitConsoleReplayInProgress) {
+                        return;
+                    }
+                    buffer.push({
+                        level: 'error',
+                        args: ['Unhandled promise rejection', event ? event.reason : undefined],
+                        timestamp: Date.now()
+                    });
+                });
+            })();
+            </script>
+            """.trimIndent()
+
+        val erudaLoaderScript =
+            """
+            <script>
+            (function() {
+                if (window.erudaInjected) { return; }
+                window.erudaInjected = true;
+                localStorage.removeItem('eruda-entry-btn');
+                var script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/eruda';
+                script.onload = function() {
+                    if (!window.eruda) return;
+                    eruda.init();
+                    var entryBtn = eruda.get('entry');
+                    if (entryBtn) {
+                        entryBtn.position({
+                            x: 10,
+                            y: window.innerHeight - 70
+                        });
+                    }
+                    var buffer = window.__operitEarlyConsoleBuffer || [];
+                    if (buffer.length > 0) {
+                        var replayConsole = window.console || {};
+                        window.__operitConsoleReplayInProgress = true;
+                        try {
+                            buffer.forEach(function(entry) {
+                                var level = entry && entry.level ? entry.level : 'log';
+                                var logger = typeof replayConsole[level] === 'function'
+                                    ? replayConsole[level]
+                                    : replayConsole.log;
+                                if (typeof logger === 'function') {
+                                    logger.apply(replayConsole, entry.args || []);
+                                }
+                            });
+                        } finally {
+                            window.__operitEarlyConsoleBuffer = [];
+                            window.__operitConsoleReplayInProgress = false;
+                        }
+                    }
+                };
+                var parent = document.head || document.body || document.documentElement;
+                if (!parent) {
+                    return;
                 }
-            }
-        })();
-        </script>
-        """
-        return htmlContent.replace("</body>", "$erudaScript</body>", ignoreCase = true)
+                parent.appendChild(script);
+            })();
+            </script>
+            """.trimIndent()
+
+        val withBootstrap = injectHtmlAtHeadStart(htmlContent, consoleBootstrapScript)
+        return injectHtmlBeforeBodyEnd(withBootstrap, erudaLoaderScript)
+    }
+
+    private fun injectHtmlAtHeadStart(
+        htmlContent: String,
+        snippet: String
+    ): String {
+        val headRegex = Regex("<head\\b[^>]*>", RegexOption.IGNORE_CASE)
+        val headMatch = headRegex.find(htmlContent)
+        if (headMatch != null) {
+            val insertIndex = headMatch.range.last + 1
+            return htmlContent.substring(0, insertIndex) + snippet + htmlContent.substring(insertIndex)
+        }
+
+        val htmlRegex = Regex("<html\\b[^>]*>", RegexOption.IGNORE_CASE)
+        val htmlMatch = htmlRegex.find(htmlContent)
+        if (htmlMatch != null) {
+            val insertIndex = htmlMatch.range.last + 1
+            return htmlContent.substring(0, insertIndex) + "<head>$snippet</head>" + htmlContent.substring(insertIndex)
+        }
+
+        return snippet + htmlContent
+    }
+
+    private fun injectHtmlBeforeBodyEnd(
+        htmlContent: String,
+        snippet: String
+    ): String {
+        val bodyCloseRegex = Regex("</body>", RegexOption.IGNORE_CASE)
+        val bodyCloseMatch = bodyCloseRegex.find(htmlContent)
+        if (bodyCloseMatch != null) {
+            val insertIndex = bodyCloseMatch.range.first
+            return htmlContent.substring(0, insertIndex) + snippet + htmlContent.substring(insertIndex)
+        }
+
+        return htmlContent + snippet
     }
 
     private fun isInRoot(file: File): Boolean {

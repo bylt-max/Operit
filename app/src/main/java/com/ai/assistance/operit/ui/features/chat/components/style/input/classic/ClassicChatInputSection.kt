@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -33,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -67,7 +69,9 @@ import com.ai.assistance.operit.ui.features.chat.components.style.input.common.P
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModel
 import com.ai.assistance.operit.ui.floating.FloatingMode
 import com.ai.assistance.operit.ui.theme.isLiquidGlassSupported
+import com.ai.assistance.operit.ui.theme.isWaterGlassSupported
 import com.ai.assistance.operit.ui.theme.liquidGlass
+import com.ai.assistance.operit.ui.theme.waterGlass
 import com.ai.assistance.operit.util.ChatUtils
 import androidx.compose.ui.res.stringResource
 import android.net.Uri
@@ -95,7 +99,9 @@ fun ClassicChatInputSection(
     onTakePhoto: (Uri) -> Unit,
     hasBackgroundImage: Boolean = false,
     chatInputTransparent: Boolean = false,
+    chatInputFloating: Boolean = false,
     chatInputLiquidGlass: Boolean = false,
+    chatInputWaterGlass: Boolean = false,
     modifier: Modifier = Modifier,
     externalAttachmentPanelState: Boolean? = null,
     onAttachmentPanelStateChange: ((Boolean) -> Unit)? = null,
@@ -242,18 +248,52 @@ fun ClassicChatInputSection(
         else -> MaterialTheme.colorScheme.surface
     }
     val inputLiquidGlassEnabled =
-        chatInputTransparent && chatInputLiquidGlass && isLiquidGlassSupported()
+        chatInputTransparent && chatInputLiquidGlass && !chatInputWaterGlass && isLiquidGlassSupported()
+    val inputWaterGlassEnabled =
+        chatInputTransparent && chatInputWaterGlass && isWaterGlassSupported()
+    val containerShape = if (chatInputFloating) RoundedCornerShape(22.dp) else RoundedCornerShape(0.dp)
+    val containerModifier =
+        if (chatInputFloating) {
+            modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+        } else {
+            modifier
+        }
 
-    Surface(
-        color = if (inputLiquidGlassEnabled) Color.Transparent else surfaceColor,
+    Box(
         modifier =
-            modifier.liquidGlass(
-                enabled = inputLiquidGlassEnabled,
-                containerColor = MaterialTheme.colorScheme.surface,
-                borderWidth = 0.42.dp,
-                blurRadius = 20.dp,
-                overlayAlphaBoost = 0.10f,
-            ),
+            containerModifier
+                .then(
+                    if (chatInputFloating && !inputLiquidGlassEnabled && !inputWaterGlassEnabled) {
+                        Modifier.shadow(4.dp, containerShape, clip = false)
+                    } else {
+                        Modifier
+                    }
+                )
+                .waterGlass(
+                    enabled = inputWaterGlassEnabled,
+                    shape = containerShape,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    shadowElevation = if (chatInputFloating) 10.dp else 14.dp,
+                    borderWidth = 0.7.dp,
+                    overlayAlphaBoost = if (chatInputFloating) 0.04f else 0.08f,
+                )
+                .liquidGlass(
+                    enabled = inputLiquidGlassEnabled,
+                    shape = containerShape,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    shadowElevation = if (chatInputFloating) 10.dp else 14.dp,
+                    borderWidth = 0.42.dp,
+                    blurRadius = if (chatInputFloating) 16.dp else 20.dp,
+                    overlayAlphaBoost = if (chatInputFloating) 0.06f else 0.10f,
+                )
+                .clip(containerShape)
+                .background(
+                    if (inputLiquidGlassEnabled || inputWaterGlassEnabled) {
+                        Color.Transparent
+                    } else {
+                        surfaceColor
+                    }
+                ),
     ) {
         Column {
             // Reply preview section
@@ -428,30 +468,35 @@ fun ClassicChatInputSection(
                 }
             }
 
+            val classicInputRowHorizontalPadding = if (chatInputFloating) 14.dp else 22.dp
+            val classicInputRowVerticalPadding = if (chatInputFloating) 6.dp else 8.dp
 
             Row(
                 modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 8.dp, bottom = 8.dp)
+                    .padding(horizontal = classicInputRowHorizontalPadding)
+                    .padding(top = classicInputRowVerticalPadding, bottom = classicInputRowVerticalPadding)
                     .wrapContentHeight(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Input field (保持原有高度)
 
-                OutlinedTextField(
+                val classicInputShape = RoundedCornerShape(14.dp)
+                val classicInputEnabled = !isProcessing || allowTextInputWhileProcessing
+                val classicInputBorderColor =
+                    if (userMessage.text.isNotBlank()) {
+                        MaterialTheme.colorScheme.outline
+                    } else {
+                        MaterialTheme.colorScheme.outline.copy(alpha = 0.72f)
+                    }
+
+                BasicTextField(
                     value = userMessage,
                     onValueChange = onUserMessageChange,
-                    placeholder = {
-                        Text(
-                            if (isWorkspaceOpen) context.getString(R.string.input_question_with_workspace) else context.getString(R.string.input_question_hint),
-                            style = modernTextStyle
-                        )
-                    },
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 38.dp)
+                        .heightIn(min = 30.dp)
                         .onPreviewKeyEvent { keyEvent ->
                             if (!enableEnterToSend) {
                                 false
@@ -466,10 +511,10 @@ fun ClassicChatInputSection(
                                 false
                             }
                         },
-                    textStyle = modernTextStyle,
+                    textStyle = modernTextStyle.copy(color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     maxLines = 5,
                     minLines = 1,
-                    singleLine = false,
                     keyboardOptions =
                     KeyboardOptions(imeAction = if (enableEnterToSend) ImeAction.Send else ImeAction.Default),
                     keyboardActions =
@@ -478,34 +523,73 @@ fun ClassicChatInputSection(
                     } else {
                         KeyboardActions()
                     },
-                    colors =
-                    OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor =
-                        MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor =
-                        MaterialTheme.colorScheme.outline
-                    ),
-                    shape = RoundedCornerShape(16.dp),
-                    trailingIcon = {
-                        IconButton(onClick = { showFullscreenInput.value = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Fullscreen,
-                                contentDescription = stringResource(R.string.chat_fullscreen_input),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    enabled = classicInputEnabled,
+                    decorationBox = { innerTextField ->
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .border(
+                                        width = 1.dp,
+                                        color = classicInputBorderColor,
+                                        shape = classicInputShape,
+                                    )
+                                    .clip(classicInputShape)
+                                    .background(
+                                        if (inputLiquidGlassEnabled || inputWaterGlassEnabled) {
+                                            Color.Transparent
+                                        } else {
+                                            MaterialTheme.colorScheme.surface
+                                        }
+                                    )
+                                    .padding(start = 14.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .weight(1f)
+                                        .padding(end = 6.dp, top = 7.dp, bottom = 7.dp),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                if (userMessage.text.isEmpty()) {
+                                    Text(
+                                        text =
+                                            if (isWorkspaceOpen) {
+                                                context.getString(R.string.input_question_with_workspace)
+                                            } else {
+                                                context.getString(R.string.input_question_hint)
+                                            },
+                                        style = modernTextStyle,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                innerTextField()
+                            }
+
+                            IconButton(
+                                onClick = { showFullscreenInput.value = true },
+                                modifier = Modifier.size(30.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Fullscreen,
+                                    contentDescription = stringResource(R.string.chat_fullscreen_input),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
                         }
                     },
-                    enabled = !isProcessing || allowTextInputWhileProcessing
                 )
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
                 // Attachment button (+ 按钮) - 确保圆形
 
                 Box(
                     modifier =
                     Modifier
-                        .size(42.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .background(
                             if (showAttachmentPanel)
@@ -534,17 +618,17 @@ fun ClassicChatInputSection(
                         else
                             MaterialTheme.colorScheme
                                 .onSurfaceVariant,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
                 // Send button (发送按钮) - 确保圆形
                 Box(
                     modifier =
                     Modifier
-                        .size(42.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .background(
                             when {
@@ -631,7 +715,7 @@ fun ClassicChatInputSection(
                             else -> context.getString(R.string.voice_input)
                         },
                         tint = iconTint,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
@@ -654,16 +738,12 @@ fun ClassicChatInputSection(
                 )
             }
 
-            // 附件选择面板 - 移动到输入框下方
-
             AttachmentSelectorPanel(
                 visible = showAttachmentPanel,
                 onAttachImage = { filePath ->
-                    // 传递文件路径给外部处理函数
                     onAttachmentRequest(filePath)
                 },
                 onAttachFile = { filePath ->
-                    // 传递文件路径给外部处理函数
                     onAttachmentRequest(filePath)
                 },
                 onAttachScreenContent = onAttachScreenContent,

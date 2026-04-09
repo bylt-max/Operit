@@ -56,7 +56,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 41
-        versionName = "1.10.0+10"
+        versionName = "1.10.0+11"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -373,6 +373,7 @@ dependencies {
     // Color picker for theme customization
     implementation(libs.colorpicker)
     implementation(libs.backdrop)
+    implementation(libs.liquid)
     
     // NanoHTTPD for local web server
     implementation(libs.nanohttpd)

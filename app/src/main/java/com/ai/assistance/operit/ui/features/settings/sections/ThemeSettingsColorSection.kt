@@ -50,8 +50,12 @@ internal fun ThemeSettingsColorCustomizationSection(
     onChatHeaderOverlayModeInputChange: (Boolean) -> Unit,
     chatInputTransparentInput: Boolean,
     onChatInputTransparentInputChange: (Boolean) -> Unit,
+    chatInputFloatingInput: Boolean,
+    onChatInputFloatingInputChange: (Boolean) -> Unit,
     chatInputLiquidGlassInput: Boolean,
     onChatInputLiquidGlassInputChange: (Boolean) -> Unit,
+    chatInputWaterGlassInput: Boolean,
+    onChatInputWaterGlassInputChange: (Boolean) -> Unit,
     forceAppBarContentColorInput: Boolean,
     onForceAppBarContentColorInputChange: (Boolean) -> Unit,
     appBarContentColorModeInput: String,
@@ -385,6 +389,34 @@ internal fun ThemeSettingsColorCustomizationSection(
                 )
             }
 
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(id = R.string.theme_chat_input_floating),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text = stringResource(id = R.string.theme_chat_input_floating_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = chatInputFloatingInput,
+                    onCheckedChange = {
+                        onChatInputFloatingInputChange(it)
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(chatInputFloating = it)
+                        }
+                    },
+                )
+            }
+
             if (chatInputTransparentInput) {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 Row(
@@ -407,8 +439,48 @@ internal fun ThemeSettingsColorCustomizationSection(
                         checked = chatInputLiquidGlassInput,
                         onCheckedChange = {
                             onChatInputLiquidGlassInputChange(it)
+                            if (it) {
+                                onChatInputWaterGlassInputChange(false)
+                            }
                             saveThemeSettingsWithCharacterCard {
-                                preferencesManager.saveThemeSettings(chatInputLiquidGlass = it)
+                                preferencesManager.saveThemeSettings(
+                                    chatInputLiquidGlass = it,
+                                    chatInputWaterGlass = if (it) false else null,
+                                )
+                            }
+                        },
+                    )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(id = R.string.theme_chat_input_water_glass),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            text = stringResource(id = R.string.theme_chat_input_water_glass_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = chatInputWaterGlassInput,
+                        onCheckedChange = {
+                            onChatInputWaterGlassInputChange(it)
+                            if (it) {
+                                onChatInputLiquidGlassInputChange(false)
+                            }
+                            saveThemeSettingsWithCharacterCard {
+                                preferencesManager.saveThemeSettings(
+                                    chatInputWaterGlass = it,
+                                    chatInputLiquidGlass = if (it) false else null,
+                                )
                             }
                         },
                     )

@@ -924,44 +924,37 @@ class HttpVoiceProvider(
                 when (token) {
                     is JsonPathToken.Key -> {
                         val obj = current as? JsonObject
-                            ?: throw TtsException(
-                                context.getString(
-                                    R.string.http_tts_response_pipeline_pick_failed,
-                                    stepIndex + 1,
-                                    rawPath
-                                )
-                            )
+                            ?: throw buildJsonPathReadException(root, rawPath, stepIndex)
                         obj[token.name]
-                            ?: throw TtsException(
-                                context.getString(
-                                    R.string.http_tts_response_pipeline_pick_failed,
-                                    stepIndex + 1,
-                                    rawPath
-                                )
-                            )
+                            ?: throw buildJsonPathReadException(root, rawPath, stepIndex)
                     }
 
                     is JsonPathToken.Index -> {
                         val arr = current as? kotlinx.serialization.json.JsonArray
-                            ?: throw TtsException(
-                                context.getString(
-                                    R.string.http_tts_response_pipeline_pick_failed,
-                                    stepIndex + 1,
-                                    rawPath
-                                )
-                            )
+                            ?: throw buildJsonPathReadException(root, rawPath, stepIndex)
                         arr.getOrNull(token.index)
-                            ?: throw TtsException(
-                                context.getString(
-                                    R.string.http_tts_response_pipeline_pick_failed,
-                                    stepIndex + 1,
-                                    rawPath
-                                )
-                            )
+                            ?: throw buildJsonPathReadException(root, rawPath, stepIndex)
                     }
                 }
         }
         return current
+    }
+
+    private fun buildJsonPathReadException(
+        root: JsonElement,
+        rawPath: String,
+        stepIndex: Int
+    ): TtsException {
+        val rawResponse = root.toString()
+        return TtsException(
+            message = context.getString(
+                R.string.http_tts_response_pipeline_pick_failed,
+                stepIndex + 1,
+                rawPath,
+                rawResponse
+            ),
+            errorBody = rawResponse
+        )
     }
 
     private fun parseJsonPath(rawPath: String): List<JsonPathToken> {

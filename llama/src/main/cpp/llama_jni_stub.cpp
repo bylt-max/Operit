@@ -9,12 +9,23 @@
 #include <vector>
 
 #if defined(OPERIT_HAS_LLAMA_CPP) && OPERIT_HAS_LLAMA_CPP
+#include "chat.h"
 #include "llama.h"
+#include "nlohmann/json.hpp"
 #include <cstdlib>
 #include <ctime>
 #include <algorithm>
+#include <exception>
 #include <memory>
 #include <sstream>
+
+struct ToolCallGrammarConfigNative {
+    std::string grammar;
+    bool lazy = false;
+    std::vector<std::string> triggerPatterns;
+    std::vector<llama_token> triggerTokens;
+    std::string generationPrompt;
+};
 #endif
 
 #define TAG "LlamaNative"
@@ -41,8 +52,7 @@ static llama_sampler * createSamplerChain(
         float frequencyPenalty,
         float presencePenalty,
         uint32_t seed,
-        const std::string * grammar,
-        const std::vector<std::string> * triggerPatterns
+        const ToolCallGrammarConfigNative * grammarConfig
 ) {
     if (topP < 0.0f) topP = 0.0f;
     if (topP > 1.0f) topP = 1.0f;
@@ -65,17 +75,17 @@ static llama_sampler * createSamplerChain(
     llama_sampler_chain_add(chain, llama_sampler_init_top_p(topP, 1));
     llama_sampler_chain_add(chain, llama_sampler_init_temp(temperature));
 
-    if (grammar != nullptr && !grammar->empty()) {
+    if (grammarConfig != nullptr && !grammarConfig->grammar.empty()) {
         if (vocab == nullptr) {
             llama_sampler_free(chain);
             return nullptr;
         }
 
         llama_sampler * grammarSampler = nullptr;
-        if (triggerPatterns != nullptr && !triggerPatterns->empty()) {
+        if (grammarConfig->lazy) {
             std::vector<const char *> triggerPatternsC;
-            triggerPatternsC.reserve(triggerPatterns->size());
-            for (const auto & pattern : *triggerPatterns) {
+            triggerPatternsC.reserve(grammarConfig->triggerPatterns.size());
+            for (const auto & pattern : grammarConfig->triggerPatterns) {
                 if (!pattern.empty()) {
                     triggerPatternsC.push_back(pattern.c_str());
                 }
@@ -83,17 +93,17 @@ static llama_sampler * createSamplerChain(
 
             grammarSampler = llama_sampler_init_grammar_lazy_patterns(
                 vocab,
-                grammar->c_str(),
+                grammarConfig->grammar.c_str(),
                 "root",
                 triggerPatternsC.data(),
                 triggerPatternsC.size(),
-                nullptr,
-                0
+                grammarConfig->triggerTokens.data(),
+                grammarConfig->triggerTokens.size()
             );
         } else {
             grammarSampler = llama_sampler_init_grammar(
                 vocab,
-                grammar->c_str(),
+                grammarConfig->grammar.c_str(),
                 "root"
             );
         }
@@ -268,6 +278,24 @@ Java_com_ai_assistance_llama_LlamaNative_nativeApplyChatTemplate(
     return nullptr;
 }
 
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ai_assistance_llama_LlamaNative_nativeApplyStructuredChatTemplate(
+        JNIEnv * env,
+        jclass clazz,
+        jlong sessionPtr,
+        jstring messagesJson,
+        jstring toolsJson,
+        jboolean addAssistant
+) {
+    (void) env;
+    (void) clazz;
+    (void) sessionPtr;
+    (void) messagesJson;
+    (void) toolsJson;
+    (void) addAssistant;
+    return nullptr;
+}
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ai_assistance_llama_LlamaNative_nativeGenerateStream(JNIEnv * env, jclass clazz, jlong sessionPtr, jstring prompt, jint maxTokens, jobject callback) {
     (void) env;
@@ -303,6 +331,15 @@ Java_com_ai_assistance_llama_LlamaNative_nativeClearToolCallGrammar(JNIEnv * env
     return JNI_FALSE;
 }
 
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ai_assistance_llama_LlamaNative_nativeParseToolCallResponse(JNIEnv * env, jclass clazz, jlong sessionPtr, jstring content) {
+    (void) env;
+    (void) clazz;
+    (void) sessionPtr;
+    (void) content;
+    return nullptr;
+}
+
 #else
 
 namespace {
@@ -318,17 +355,15 @@ struct SamplingParamsNative {
     uint32_t seed = static_cast<uint32_t>(std::rand());
 };
 
-struct ToolCallGrammarConfigNative {
-    std::string grammar;
-    std::vector<std::string> triggerPatterns;
-};
-
 struct LlamaSessionNative {
     llama_model * model = nullptr;
     llama_context * ctx = nullptr;
     llama_sampler * sampler = nullptr;
+    common_chat_templates_ptr chatTemplates;
     SamplingParamsNative samplingParams;
     ToolCallGrammarConfigNative toolCallGrammar;
+    common_chat_parser_params toolCallParserParams;
+    bool hasToolCallParser = false;
     std::atomic_bool cancel{false};
 };
 
@@ -353,12 +388,6 @@ static bool rebuildSamplerForSession(LlamaSessionNative * session) {
     }
 
     const llama_vocab * vocab = llama_model_get_vocab(session->model);
-    const std::string * grammar = session->toolCallGrammar.grammar.empty()
-        ? nullptr
-        : &session->toolCallGrammar.grammar;
-    const std::vector<std::string> * triggerPatterns = session->toolCallGrammar.triggerPatterns.empty()
-        ? nullptr
-        : &session->toolCallGrammar.triggerPatterns;
 
     llama_sampler * next = createSamplerChain(
         vocab,
@@ -370,8 +399,7 @@ static bool rebuildSamplerForSession(LlamaSessionNative * session) {
         session->samplingParams.frequencyPenalty,
         session->samplingParams.presencePenalty,
         session->samplingParams.seed,
-        grammar,
-        triggerPatterns
+        &session->toolCallGrammar
     );
 
     if (!next) {
@@ -419,6 +447,140 @@ static int32_t tokenizeText(const llama_vocab * vocab, const std::string & text,
     return std::max<int32_t>(0, n);
 }
 
+static std::vector<llama_token> tokenizeTextToVector(const llama_vocab * vocab, const std::string & text, bool addSpecial) {
+    std::vector<llama_token> tokens;
+    if (vocab == nullptr || text.empty()) {
+        return tokens;
+    }
+
+    int32_t capacity = static_cast<int32_t>(text.size()) + 8;
+    tokens.resize(std::max(16, capacity));
+
+    int32_t n = llama_tokenize(
+        vocab,
+        text.c_str(),
+        static_cast<int32_t>(text.size()),
+        tokens.data(),
+        static_cast<int32_t>(tokens.size()),
+        addSpecial,
+        true
+    );
+
+    if (n < 0) {
+        tokens.resize(static_cast<size_t>(-n));
+        n = llama_tokenize(
+            vocab,
+            text.c_str(),
+            static_cast<int32_t>(text.size()),
+            tokens.data(),
+            static_cast<int32_t>(tokens.size()),
+            addSpecial,
+            true
+        );
+    }
+
+    if (n <= 0) {
+        tokens.clear();
+        return tokens;
+    }
+
+    tokens.resize(static_cast<size_t>(n));
+    return tokens;
+}
+
+static ToolCallGrammarConfigNative buildToolCallGrammarConfig(const common_chat_params & params) {
+    ToolCallGrammarConfigNative config;
+    config.grammar = params.grammar;
+    config.lazy = params.grammar_lazy;
+    config.generationPrompt = params.generation_prompt;
+
+    for (const auto & trigger : params.grammar_triggers) {
+        switch (trigger.type) {
+            case COMMON_GRAMMAR_TRIGGER_TYPE_WORD:
+                config.triggerPatterns.push_back(regex_escape(trigger.value));
+                break;
+            case COMMON_GRAMMAR_TRIGGER_TYPE_PATTERN:
+                config.triggerPatterns.push_back(trigger.value);
+                break;
+            case COMMON_GRAMMAR_TRIGGER_TYPE_PATTERN_FULL:
+                if (trigger.value.empty()) {
+                    config.triggerPatterns.push_back("^$");
+                } else {
+                    std::string anchored;
+                    if (trigger.value.front() != '^') {
+                        anchored.push_back('^');
+                    }
+                    anchored += trigger.value;
+                    if (trigger.value.back() != '$') {
+                        anchored.push_back('$');
+                    }
+                    config.triggerPatterns.push_back(std::move(anchored));
+                }
+                break;
+            case COMMON_GRAMMAR_TRIGGER_TYPE_TOKEN:
+                if (trigger.token != LLAMA_TOKEN_NULL) {
+                    config.triggerTokens.push_back(trigger.token);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    return config;
+}
+
+static void resetToolCallState(LlamaSessionNative * session) {
+    if (session == nullptr) {
+        return;
+    }
+
+    session->toolCallGrammar = ToolCallGrammarConfigNative{};
+    session->toolCallParserParams = common_chat_parser_params();
+    session->hasToolCallParser = false;
+}
+
+static bool initializeChatTemplatesForSession(LlamaSessionNative * session) {
+    if (session == nullptr || session->model == nullptr) {
+        return false;
+    }
+
+    try {
+        session->chatTemplates = common_chat_templates_init(session->model, "");
+        return static_cast<bool>(session->chatTemplates);
+    } catch (const std::exception & e) {
+        LOGE("Failed to initialize chat templates: %s", e.what());
+        session->chatTemplates.reset();
+        return false;
+    } catch (...) {
+        LOGE("Failed to initialize chat templates: unknown error");
+        session->chatTemplates.reset();
+        return false;
+    }
+}
+
+static bool buildChatMessages(
+        const std::vector<std::string> & roles,
+        const std::vector<std::string> & contents,
+        std::vector<common_chat_msg> & outMessages
+) {
+    if (roles.size() != contents.size()) {
+        return false;
+    }
+
+    outMessages.clear();
+    outMessages.reserve(roles.size());
+
+    for (size_t i = 0; i < roles.size(); ++i) {
+        common_chat_msg msg;
+        msg.role = roles[i];
+        msg.content = contents[i];
+        outMessages.push_back(std::move(msg));
+    }
+
+    return true;
+}
+
 static bool tokenToPiece(const llama_vocab * vocab, llama_token token, std::string & out) {
     if (vocab == nullptr) return false;
     std::vector<char> buf;
@@ -432,6 +594,21 @@ static bool tokenToPiece(const llama_vocab * vocab, llama_token token, std::stri
     if (n <= 0) return false;
     out.assign(buf.data(), buf.data() + n);
     return true;
+}
+
+static void prefillToolCallGenerationPrompt(LlamaSessionNative * session) {
+    if (session == nullptr || session->model == nullptr || session->sampler == nullptr) {
+        return;
+    }
+    if (session->toolCallGrammar.grammar.empty() || session->toolCallGrammar.generationPrompt.empty()) {
+        return;
+    }
+
+    const llama_vocab * vocab = llama_model_get_vocab(session->model);
+    auto tokens = tokenizeTextToVector(vocab, session->toolCallGrammar.generationPrompt, false);
+    for (const auto token : tokens) {
+        llama_sampler_accept(session->sampler, token);
+    }
 }
 
 } // namespace
@@ -471,6 +648,14 @@ Java_com_ai_assistance_llama_LlamaNative_nativeCreateSession(JNIEnv * env, jclas
     session->model = llama_model_load_from_file(modelPath.c_str(), mparams);
     if (!session->model) {
         LOGE("Failed to load model from file");
+        delete session;
+        return 0;
+    }
+
+    if (!initializeChatTemplatesForSession(session)) {
+        LOGE("Failed to initialize chat templates for model");
+        llama_model_free(session->model);
+        session->model = nullptr;
         delete session;
         return 0;
     }
@@ -528,6 +713,8 @@ Java_com_ai_assistance_llama_LlamaNative_nativeReleaseSession(JNIEnv * env, jcla
         llama_free(session->ctx);
         session->ctx = nullptr;
     }
+
+    session->chatTemplates.reset();
 
     if (session->model) {
         llama_model_free(session->model);
@@ -628,15 +815,22 @@ Java_com_ai_assistance_llama_LlamaNative_nativeSetToolCallGrammar(
         }
     }
 
-    const std::string previousGrammar = session->toolCallGrammar.grammar;
-    const std::vector<std::string> previousPatterns = session->toolCallGrammar.triggerPatterns;
+    const ToolCallGrammarConfigNative previousConfig = session->toolCallGrammar;
+    const common_chat_parser_params previousParserParams = session->toolCallParserParams;
+    const bool previousHasParser = session->hasToolCallParser;
 
     session->toolCallGrammar.grammar = grammarStr;
+    session->toolCallGrammar.lazy = !patterns.empty();
     session->toolCallGrammar.triggerPatterns = patterns;
+    session->toolCallGrammar.triggerTokens.clear();
+    session->toolCallGrammar.generationPrompt.clear();
+    session->toolCallParserParams = common_chat_parser_params();
+    session->hasToolCallParser = false;
 
     if (!rebuildSamplerForSession(session)) {
-        session->toolCallGrammar.grammar = previousGrammar;
-        session->toolCallGrammar.triggerPatterns = previousPatterns;
+        session->toolCallGrammar = previousConfig;
+        session->toolCallParserParams = previousParserParams;
+        session->hasToolCallParser = previousHasParser;
         (void) rebuildSamplerForSession(session);
         LOGE("Failed to enable tool-call grammar");
         return JNI_FALSE;
@@ -655,15 +849,16 @@ Java_com_ai_assistance_llama_LlamaNative_nativeClearToolCallGrammar(JNIEnv * env
     auto * session = reinterpret_cast<LlamaSessionNative *>(sessionPtr);
     if (!session->ctx || !session->model) return JNI_FALSE;
 
-    const std::string previousGrammar = session->toolCallGrammar.grammar;
-    const std::vector<std::string> previousPatterns = session->toolCallGrammar.triggerPatterns;
+    const ToolCallGrammarConfigNative previousConfig = session->toolCallGrammar;
+    const common_chat_parser_params previousParserParams = session->toolCallParserParams;
+    const bool previousHasParser = session->hasToolCallParser;
 
-    session->toolCallGrammar.grammar.clear();
-    session->toolCallGrammar.triggerPatterns.clear();
+    resetToolCallState(session);
 
     if (!rebuildSamplerForSession(session)) {
-        session->toolCallGrammar.grammar = previousGrammar;
-        session->toolCallGrammar.triggerPatterns = previousPatterns;
+        session->toolCallGrammar = previousConfig;
+        session->toolCallParserParams = previousParserParams;
+        session->hasToolCallParser = previousHasParser;
         (void) rebuildSamplerForSession(session);
         LOGE("Failed to clear tool-call grammar");
         return JNI_FALSE;
@@ -685,7 +880,7 @@ Java_com_ai_assistance_llama_LlamaNative_nativeApplyChatTemplate(
 
     if (sessionPtr == 0 || roles == nullptr || contents == nullptr) return nullptr;
     auto * session = reinterpret_cast<LlamaSessionNative *>(sessionPtr);
-    if (!session->model) return nullptr;
+    if (!session->model || !session->chatTemplates) return nullptr;
 
     const jsize nRoles = env->GetArrayLength(roles);
     const jsize nContents = env->GetArrayLength(contents);
@@ -705,34 +900,142 @@ Java_com_ai_assistance_llama_LlamaNative_nativeApplyChatTemplate(
         if (jcontent) env->DeleteLocalRef(jcontent);
     }
 
-    std::vector<llama_chat_message> msgs;
-    msgs.reserve(static_cast<size_t>(nRoles));
-    for (jsize i = 0; i < nRoles; i++) {
-        llama_chat_message m;
-        m.role = roleBuf[static_cast<size_t>(i)].c_str();
-        m.content = contentBuf[static_cast<size_t>(i)].c_str();
-        msgs.push_back(m);
+    std::vector<common_chat_msg> messages;
+    if (!buildChatMessages(roleBuf, contentBuf, messages)) {
+        return nullptr;
     }
 
-    const char * tmpl = llama_model_chat_template(session->model, nullptr);
-    if (!tmpl) return nullptr;
+    common_chat_templates_inputs inputs;
+    inputs.messages = std::move(messages);
+    inputs.add_generation_prompt = addAssistant == JNI_TRUE;
+    inputs.use_jinja = true;
 
-    int32_t need = llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), addAssistant == JNI_TRUE, nullptr, 0);
-    if (need < 0) return nullptr;
+    try {
+        const common_chat_params params = common_chat_templates_apply(session->chatTemplates.get(), inputs);
+        if (params.prompt.empty()) {
+            return nullptr;
+        }
+        return bytesUtf8ToJstring(env, params.prompt);
+    } catch (const std::exception & e) {
+        LOGE("Failed to apply chat template: %s", e.what());
+        return nullptr;
+    } catch (...) {
+        LOGE("Failed to apply chat template: unknown error");
+        return nullptr;
+    }
+}
 
-    std::vector<char> buf;
-    buf.resize(static_cast<size_t>(need));
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ai_assistance_llama_LlamaNative_nativeApplyStructuredChatTemplate(
+    JNIEnv * env,
+    jclass clazz,
+    jlong sessionPtr,
+    jstring messagesJson,
+    jstring toolsJson,
+    jboolean addAssistant
+) {
+    (void) clazz;
 
-    int32_t res = llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), addAssistant == JNI_TRUE, buf.data(), static_cast<int32_t>(buf.size()));
-    if (res < 0) return nullptr;
-    if (res > (int32_t) buf.size()) {
-        buf.resize(static_cast<size_t>(res));
-        res = llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), addAssistant == JNI_TRUE, buf.data(), static_cast<int32_t>(buf.size()));
-        if (res < 0) return nullptr;
+    if (sessionPtr == 0 || messagesJson == nullptr) return nullptr;
+    auto * session = reinterpret_cast<LlamaSessionNative *>(sessionPtr);
+    if (!session->model || !session->chatTemplates || !session->ctx) return nullptr;
+
+    const std::string messagesStr = jstringToString(env, messagesJson);
+    const std::string toolsStr = jstringToString(env, toolsJson);
+
+    const ToolCallGrammarConfigNative previousConfig = session->toolCallGrammar;
+    const common_chat_parser_params previousParserParams = session->toolCallParserParams;
+    const bool previousHasParser = session->hasToolCallParser;
+
+    try {
+        const auto messages = nlohmann::ordered_json::parse(messagesStr);
+        const auto tools = toolsStr.empty()
+            ? nlohmann::ordered_json()
+            : nlohmann::ordered_json::parse(toolsStr);
+
+        common_chat_templates_inputs inputs;
+        inputs.messages = common_chat_msgs_parse_oaicompat(messages);
+        inputs.tools = common_chat_tools_parse_oaicompat(tools);
+        inputs.tool_choice = inputs.tools.empty()
+            ? COMMON_CHAT_TOOL_CHOICE_NONE
+            : COMMON_CHAT_TOOL_CHOICE_AUTO;
+        inputs.add_generation_prompt = addAssistant == JNI_TRUE;
+        inputs.use_jinja = true;
+
+        const common_chat_params params = common_chat_templates_apply(session->chatTemplates.get(), inputs);
+        if (params.prompt.empty()) {
+            return nullptr;
+        }
+
+        session->toolCallGrammar = buildToolCallGrammarConfig(params);
+        session->toolCallParserParams = common_chat_parser_params(params);
+        session->toolCallParserParams.parse_tool_calls = true;
+        session->hasToolCallParser = !params.parser.empty();
+        if (session->hasToolCallParser) {
+            session->toolCallParserParams.parser.load(params.parser);
+        }
+
+        if (!rebuildSamplerForSession(session)) {
+            session->toolCallGrammar = previousConfig;
+            session->toolCallParserParams = previousParserParams;
+            session->hasToolCallParser = previousHasParser;
+            (void) rebuildSamplerForSession(session);
+            LOGE("Failed to apply structured chat template sampler state");
+            return nullptr;
+        }
+
+        return bytesUtf8ToJstring(env, params.prompt);
+    } catch (const std::exception & e) {
+        session->toolCallGrammar = previousConfig;
+        session->toolCallParserParams = previousParserParams;
+        session->hasToolCallParser = previousHasParser;
+        (void) rebuildSamplerForSession(session);
+        LOGE("Failed to apply structured chat template: %s", e.what());
+        return nullptr;
+    } catch (...) {
+        session->toolCallGrammar = previousConfig;
+        session->toolCallParserParams = previousParserParams;
+        session->hasToolCallParser = previousHasParser;
+        (void) rebuildSamplerForSession(session);
+        LOGE("Failed to apply structured chat template: unknown error");
+        return nullptr;
+    }
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ai_assistance_llama_LlamaNative_nativeParseToolCallResponse(
+    JNIEnv * env,
+    jclass clazz,
+    jlong sessionPtr,
+    jstring content
+) {
+    (void) clazz;
+
+    if (sessionPtr == 0 || content == nullptr) return nullptr;
+    auto * session = reinterpret_cast<LlamaSessionNative *>(sessionPtr);
+    if (!session->hasToolCallParser) return nullptr;
+
+    const std::string contentStr = jstringToString(env, content);
+    if (contentStr.empty()) {
+        return nullptr;
     }
 
-    std::string out(buf.data(), buf.data() + res);
-    return bytesUtf8ToJstring(env, out);
+    try {
+        const common_chat_msg parsed = common_chat_parse(contentStr, false, session->toolCallParserParams);
+        if (parsed.tool_calls.empty()) {
+            return nullptr;
+        }
+
+        auto normalized = nlohmann::ordered_json::object();
+        normalized["tool_calls"] = parsed.to_json_oaicompat()["tool_calls"];
+        return bytesUtf8ToJstring(env, normalized.dump());
+    } catch (const std::exception & e) {
+        LOGE("Failed to parse tool-call response: %s", e.what());
+        return nullptr;
+    } catch (...) {
+        LOGE("Failed to parse tool-call response: unknown error");
+        return nullptr;
+    }
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -873,6 +1176,8 @@ Java_com_ai_assistance_llama_LlamaNative_nativeGenerateStream(JNIEnv * env, jcla
     n_past = llama_model_has_encoder(session->model)
         ? 1
         : static_cast<int32_t>(promptTokens.size());
+
+    prefillToolCallGenerationPrompt(session);
 
     // Generation loop
     std::vector<llama_token> generatedTokens;

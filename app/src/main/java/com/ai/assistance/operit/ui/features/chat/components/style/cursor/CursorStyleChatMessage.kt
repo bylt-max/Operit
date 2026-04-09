@@ -14,6 +14,7 @@ fun CursorStyleChatMessage(
         message: ChatMessage,
         userMessageColor: Color,
         userMessageLiquidGlassEnabled: Boolean = false,
+        userMessageWaterGlassEnabled: Boolean = false,
         aiMessageColor: Color,
         userTextColor: Color,
         aiTextColor: Color,
@@ -35,6 +36,7 @@ fun CursorStyleChatMessage(
                     message = message,
                     backgroundColor = userMessageColor,
                     enableLiquidGlass = userMessageLiquidGlassEnabled,
+                    enableWaterGlass = userMessageWaterGlassEnabled,
                     textColor = userTextColor,
                     enableDialogs = enableDialogs
             )

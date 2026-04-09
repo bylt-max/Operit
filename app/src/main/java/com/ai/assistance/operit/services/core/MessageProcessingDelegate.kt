@@ -263,6 +263,24 @@ class MessageProcessingDelegate(
         }
     }
 
+    private fun ChatMessage.withTurnMetrics(
+        inputTokens: Int,
+        outputTokens: Int,
+        cachedInputTokens: Int,
+        sentAt: Long,
+        outputDurationMs: Long,
+        waitDurationMs: Long
+    ): ChatMessage {
+        return copy(
+            inputTokens = inputTokens,
+            outputTokens = outputTokens,
+            cachedInputTokens = cachedInputTokens,
+            sentAt = sentAt,
+            outputDurationMs = outputDurationMs,
+            waitDurationMs = waitDurationMs
+        )
+    }
+
     private suspend fun detachStreamingAiMessage(chatId: String) {
         val streamingMessage =
             getChatHistory(chatId).lastOrNull { it.sender == "ai" && it.contentStream != null }
@@ -485,7 +503,7 @@ class MessageProcessingDelegate(
                         originalMessageText.isBlank() &&
                         attachments.isEmpty())
             var userMessageAdded = false
-            val userMessage = ChatMessage(
+            var userMessage = ChatMessage(
                 sender = "user",
                 content = finalMessageContent,
                 roleName = context.getString(R.string.message_role_user) // 用户消息的角色名固定为"用户"
@@ -543,6 +561,12 @@ class MessageProcessingDelegate(
             var isWaifuModeEnabled = false
             var didStreamAutoRead = false
             val effectiveRoleCardId = roleCardId
+            var requestSentAt = 0L
+            var requestStartElapsed = 0L
+            var firstResponseElapsed: Long? = null
+            var turnInputTokens = 0
+            var turnOutputTokens = 0
+            var turnCachedInputTokens = 0
             try {
                 // if (!NetworkUtils.isNetworkAvailable(context)) {
                 //     withContext(Dispatchers.Main) { showErrorMessage("网络连接不可用") }
@@ -647,6 +671,13 @@ class MessageProcessingDelegate(
                         finalMessageContent
                     }
 
+                requestSentAt = System.currentTimeMillis()
+                requestStartElapsed = messageTimingNow()
+                if (userMessageAdded && chatId != null) {
+                    userMessage = userMessage.copy(sentAt = requestSentAt)
+                    addMessageToChat(chatId, userMessage)
+                }
+
                 val prepareResponseStreamStartTime = messageTimingNow()
                 val responseStream = AIMessageManager.sendMessage(
                     enhancedAiService = service,
@@ -740,7 +771,8 @@ class MessageProcessingDelegate(
                     timestamp = System.currentTimeMillis()+50,
                     roleName = currentRoleName,
                     provider = provider,
-                    modelName = modelName
+                    modelName = modelName,
+                    sentAt = requestSentAt
                 )
                 AppLogger.d(
                     TAG,
@@ -862,6 +894,9 @@ class MessageProcessingDelegate(
                             sharedCharStream.collect { chunk ->
                                 if (!hasLoggedFirstChunk) {
                                     hasLoggedFirstChunk = true
+                                    if (firstResponseElapsed == null) {
+                                        firstResponseElapsed = messageTimingNow()
+                                    }
                                     logMessageTiming(
                                         stage = "delegate.firstResponseChunk",
                                         startTimeMs = responseStartTime,
@@ -907,6 +942,58 @@ class MessageProcessingDelegate(
                 val streamCollectionError = streamCollectionResult.await()
                 if (streamCollectionError != null) {
                     throw streamCollectionError
+                }
+
+                runCatching {
+                    val turnService =
+                        service.getAIServiceForFunction(
+                            functionType = FunctionType.CHAT,
+                            chatModelConfigIdOverride = chatModelConfigIdOverride,
+                            chatModelIndexOverride = chatModelIndexOverride
+                        )
+                    turnInputTokens = turnService.inputTokenCount
+                    turnOutputTokens = turnService.outputTokenCount
+                    turnCachedInputTokens = turnService.cachedInputTokenCount
+                }.onFailure {
+                    AppLogger.w(TAG, "读取本轮 token 统计失败", it)
+                }
+
+                val waitDurationMs =
+                    if (requestStartElapsed > 0L && firstResponseElapsed != null) {
+                        (firstResponseElapsed!! - requestStartElapsed).coerceAtLeast(0L)
+                    } else {
+                        0L
+                    }
+                val outputDurationMs =
+                    if (firstResponseElapsed != null) {
+                        (messageTimingNow() - firstResponseElapsed!!).coerceAtLeast(0L)
+                    } else {
+                        0L
+                    }
+
+                if (requestSentAt > 0L) {
+                    if (userMessageAdded && chatId != null) {
+                        userMessage =
+                            userMessage.withTurnMetrics(
+                                inputTokens = turnInputTokens,
+                                outputTokens = turnOutputTokens,
+                                cachedInputTokens = turnCachedInputTokens,
+                                sentAt = requestSentAt,
+                                outputDurationMs = outputDurationMs,
+                                waitDurationMs = waitDurationMs
+                            )
+                        addMessageToChat(chatId, userMessage)
+                    }
+
+                    aiMessage =
+                        aiMessage.withTurnMetrics(
+                            inputTokens = turnInputTokens,
+                            outputTokens = turnOutputTokens,
+                            cachedInputTokens = turnCachedInputTokens,
+                            sentAt = requestSentAt,
+                            outputDurationMs = outputDurationMs,
+                            waitDurationMs = waitDurationMs
+                        )
                 }
 
                 val stateAfterStream =
@@ -1112,7 +1199,13 @@ class MessageProcessingDelegate(
                                 timestamp = System.currentTimeMillis() + index * 10,
                                 roleName = currentRoleName,
                                 provider = provider,
-                                modelName = modelName
+                                modelName = modelName,
+                                inputTokens = aiMessage.inputTokens,
+                                outputTokens = aiMessage.outputTokens,
+                                cachedInputTokens = aiMessage.cachedInputTokens,
+                                sentAt = aiMessage.sentAt,
+                                outputDurationMs = aiMessage.outputDurationMs,
+                                waitDurationMs = aiMessage.waitDurationMs
                             )
 
                             withContext(Dispatchers.Main) {

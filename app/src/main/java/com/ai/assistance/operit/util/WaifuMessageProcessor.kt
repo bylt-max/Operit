@@ -169,7 +169,9 @@ object WaifuMessageProcessor {
      * 清理内容中的状态标签和XML标签，只保留纯文本
      */
     fun cleanContentForWaifu(content: String): String {
-        return content
+        val sanitizedContent = ChatUtils.stripGeminiThoughtSignatureMeta(content)
+
+        return sanitizedContent
             // 移除状态标签
             .replace(ChatMarkupRegex.statusTag, "")
             .replace(ChatMarkupRegex.statusSelfClosingTag, "")

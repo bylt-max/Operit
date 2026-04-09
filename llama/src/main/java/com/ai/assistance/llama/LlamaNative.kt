@@ -39,6 +39,14 @@ object LlamaNative {
     ): String?
 
     @JvmStatic
+    external fun nativeApplyStructuredChatTemplate(
+        sessionPtr: Long,
+        messagesJson: String,
+        toolsJson: String?,
+        addAssistant: Boolean
+    ): String?
+
+    @JvmStatic
     external fun nativeGenerateStream(
         sessionPtr: Long,
         prompt: String,
@@ -47,14 +55,13 @@ object LlamaNative {
     ): Boolean
 
     @JvmStatic
-    external fun nativeSetToolCallGrammar(
-        sessionPtr: Long,
-        grammar: String,
-        triggerPatterns: Array<String>
-    ): Boolean
+    external fun nativeClearToolCallGrammar(sessionPtr: Long): Boolean
 
     @JvmStatic
-    external fun nativeClearToolCallGrammar(sessionPtr: Long): Boolean
+    external fun nativeParseToolCallResponse(
+        sessionPtr: Long,
+        content: String
+    ): String?
 
     interface GenerationCallback {
         fun onToken(token: String): Boolean

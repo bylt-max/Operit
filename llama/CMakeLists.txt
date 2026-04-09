@@ -13,7 +13,7 @@ endif()
 
 if (DEFINED OPERIT_LLAMA_CPP_DIR)
     # Reduce build scope when embedded
-    set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_COMMON ON CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -30,9 +30,11 @@ add_library(
 
 if (DEFINED OPERIT_LLAMA_CPP_DIR)
     target_compile_definitions(LlamaWrapper PRIVATE OPERIT_HAS_LLAMA_CPP=1)
+    target_include_directories(LlamaWrapper PRIVATE "${OPERIT_LLAMA_CPP_DIR}")
+    target_include_directories(LlamaWrapper PRIVATE "${OPERIT_LLAMA_CPP_DIR}/common")
     target_include_directories(LlamaWrapper PRIVATE "${OPERIT_LLAMA_CPP_DIR}/include")
     target_include_directories(LlamaWrapper PRIVATE "${OPERIT_LLAMA_CPP_DIR}/ggml/include")
-    target_link_libraries(LlamaWrapper llama)
+    target_link_libraries(LlamaWrapper llama common)
 else()
     target_compile_definitions(LlamaWrapper PRIVATE OPERIT_HAS_LLAMA_CPP=0)
 endif()

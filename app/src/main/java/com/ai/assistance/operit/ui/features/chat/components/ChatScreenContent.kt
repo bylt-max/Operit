@@ -33,28 +33,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.ChatMessage
-import com.ai.assistance.operit.data.model.CharacterCard
-import com.ai.assistance.operit.data.model.CharacterGroupCard
+import com.ai.assistance.operit.data.model.ActivePrompt
 
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
-import com.ai.assistance.operit.data.preferences.CharacterCardManager
-import com.ai.assistance.operit.data.preferences.CharacterGroupCardManager
-import com.ai.assistance.operit.data.preferences.ActivePromptManager
-import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModel
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatHistoryDisplayMode
-import com.ai.assistance.operit.ui.common.rememberLocal
 import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleImageStyleConfig
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspaceBackupManager
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.flowOf
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -87,6 +81,7 @@ import kotlin.math.roundToInt
 fun ChatScreenContent(
         modifier: Modifier = Modifier,
         paddingValues: PaddingValues,
+        bottomInset: Dp = 0.dp,
         actualViewModel: ChatViewModel,
         enableMessageDialogs: Boolean = true,
         showChatHistorySelector: Boolean,
@@ -118,11 +113,14 @@ fun ChatScreenContent(
         currentChatId: String,
         chatHeaderTransparent: Boolean,
         chatHeaderHistoryIconColor: Int?,
-        chatHeaderPipIconColor: Int?,
-        chatHeaderOverlayMode: Boolean,
-        chatStyle: ChatStyle, // Add chatStyle parameter
+          chatHeaderPipIconColor: Int?,
+          chatHeaderOverlayMode: Boolean,
+          chatStyle: ChatStyle, // Add chatStyle parameter
         cursorUserBubbleLiquidGlass: Boolean = false,
+        cursorUserBubbleWaterGlass: Boolean = false,
         historyListState: LazyListState,
+        showCharacterSelector: Boolean,
+        onShowCharacterSelectorChange: (Boolean) -> Unit,
         onSwitchCharacter: (CharacterSelectorTarget) -> Unit,
         onOpenCharacterSettings: () -> Unit,
         chatAreaHorizontalPadding: Float = 16f, // 聊天区域水平内边距
@@ -138,7 +136,6 @@ fun ChatScreenContent(
 ) {
     val density = LocalDensity.current
     var headerHeight by remember { mutableStateOf(0.dp) }
-    var showCharacterSelector by remember { mutableStateOf(false) }
 
     // 多选模式状态
     var isMultiSelectMode by remember { mutableStateOf(false) }
@@ -149,23 +146,6 @@ fun ChatScreenContent(
         }.toSet()
     }
     var isGeneratingImage by remember { mutableStateOf(false) }
-
-    // 使用 rememberLocal 持久化历史记录显示设置
-    var historyDisplayMode by rememberLocal(
-        "chat_history_display_mode", 
-        ChatHistoryDisplayMode.BY_FOLDER
-    )
-    var autoSwitchCharacterCard by rememberLocal(
-        "chat_history_auto_switch_character_card", 
-        false
-    )
-    
-    // 同步 autoSwitchCharacterCard 到 ViewModel（ViewModel 内部逻辑需要这个值）
-    LaunchedEffect(autoSwitchCharacterCard) {
-        actualViewModel.setAutoSwitchCharacterCard(autoSwitchCharacterCard)
-    }
-    
-    val currentChat = chatHistories.find { it.id == currentChatId }
 
     // 导出相关状态
     val context = LocalContext.current
@@ -190,92 +170,6 @@ fun ChatScreenContent(
     // 监听朗读状态
     val isPlaying by actualViewModel.isPlaying.collectAsState()
     val isAutoReadEnabled by actualViewModel.isAutoReadEnabled.collectAsState()
-    val characterCardManager = remember { CharacterCardManager.getInstance(context) }
-    val characterGroupCardManager = remember { CharacterGroupCardManager.getInstance(context) }
-    val activePromptManager = remember { ActivePromptManager.getInstance(context) }
-    val activePrompt by activePromptManager.activePromptFlow.collectAsState(
-        initial = ActivePrompt.CharacterCard(CharacterCardManager.DEFAULT_CHARACTER_CARD_ID)
-    )
-    val activeCharacterCard by remember(activePrompt) {
-        when (val prompt = activePrompt) {
-            is ActivePrompt.CharacterCard -> characterCardManager.getCharacterCardFlow(prompt.id)
-            is ActivePrompt.CharacterGroup -> flowOf(null)
-        }
-    }.collectAsState(initial = null)
-    val activeCharacterGroup by remember(activePrompt) {
-        when (val prompt = activePrompt) {
-            is ActivePrompt.CharacterGroup -> characterGroupCardManager.getCharacterGroupCardFlow(prompt.id)
-            is ActivePrompt.CharacterCard -> flowOf(null)
-        }
-    }.collectAsState(initial = null)
-    val displayedChatHistories =
-            remember(chatHistories, activePrompt, activeCharacterCard, activeCharacterGroup, historyDisplayMode) {
-                when (historyDisplayMode) {
-                    ChatHistoryDisplayMode.CURRENT_CHARACTER_ONLY -> {
-                        when (activePrompt) {
-                            is ActivePrompt.CharacterGroup -> {
-                                val group = activeCharacterGroup ?: return@remember emptyList()
-                                chatHistories.filter { history ->
-                                    history.characterGroupId == group.id
-                                }
-                            }
-                            is ActivePrompt.CharacterCard -> {
-                                val activeCard = activeCharacterCard ?: return@remember emptyList()
-                                chatHistories.filter { history ->
-                                    val historyCard = history.characterCardName
-                                    if (activeCard.isDefault) {
-                                        historyCard == null || historyCard == activeCard.name
-                                    } else {
-                                        historyCard == activeCard.name
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    else -> {
-                        chatHistories
-                    }
-                }
-            }
-
-    LaunchedEffect(
-        activePrompt,
-        activeCharacterCard,
-        activeCharacterGroup,
-        displayedChatHistories,
-        currentChatId,
-        chatHistories,
-        historyDisplayMode
-    ) {
-        if (historyDisplayMode != ChatHistoryDisplayMode.CURRENT_CHARACTER_ONLY) {
-            return@LaunchedEffect
-        }
-        val hasActiveTarget = when (activePrompt) {
-            is ActivePrompt.CharacterGroup -> activeCharacterGroup != null
-            is ActivePrompt.CharacterCard -> activeCharacterCard != null
-        }
-        if (!hasActiveTarget) {
-            return@LaunchedEffect
-        }
-        if (displayedChatHistories.isEmpty()) {
-            return@LaunchedEffect
-        }
-        val hasCurrentChatInFilter = displayedChatHistories.any { it.id == currentChatId }
-        val hasCurrentChatInAll =
-            currentChatId.isNotBlank() && chatHistories.any { it.id == currentChatId }
-        if (currentChatId.isBlank()) {
-            actualViewModel.switchChat(displayedChatHistories.first().id)
-            return@LaunchedEffect
-        }
-        if (!hasCurrentChatInFilter) {
-            if (!hasCurrentChatInAll) {
-                return@LaunchedEffect
-            }
-            actualViewModel.switchChat(displayedChatHistories.first().id)
-        }
-    }
-
     LaunchedEffect(pendingRollbackIndex) {
         val index = pendingRollbackIndex
         if (index != null) {
@@ -332,8 +226,10 @@ fun ChatScreenContent(
                         onInsertSummary = { index, message -> actualViewModel.insertSummary(index, message) }, // 添加插入总结回调
                         onMentionRoleFromAvatar = { roleName -> actualViewModel.insertRoleMention(roleName) },
                         topPadding = headerHeight,
+                        bottomPadding = bottomInset,
                         chatStyle = chatStyle, // Pass chat style
                         cursorUserBubbleLiquidGlass = cursorUserBubbleLiquidGlass,
+                        cursorUserBubbleWaterGlass = cursorUserBubbleWaterGlass,
                         isMultiSelectMode = isMultiSelectMode,
                         selectedMessageIndices = selectedMessageIndices,
                         onToggleMultiSelectMode = { initialIndex ->
@@ -373,7 +269,7 @@ fun ChatScreenContent(
                         chatHeaderTransparent = chatHeaderTransparent,
                         chatHeaderHistoryIconColor = chatHeaderHistoryIconColor,
                         chatHeaderPipIconColor = chatHeaderPipIconColor,
-                        onCharacterSwitcherClick = { showCharacterSelector = true }
+                        onCharacterSwitcherClick = { onShowCharacterSelectorChange(true) }
                 )
             }
         } else {
@@ -385,7 +281,7 @@ fun ChatScreenContent(
                         chatHeaderTransparent = chatHeaderTransparent,
                         chatHeaderHistoryIconColor = chatHeaderHistoryIconColor,
                         chatHeaderPipIconColor = chatHeaderPipIconColor,
-                        onCharacterSwitcherClick = { showCharacterSelector = true }
+                        onCharacterSwitcherClick = { onShowCharacterSelectorChange(true) }
                 )
                 ChatArea(
                         chatHistory = chatHistory,
@@ -412,8 +308,10 @@ fun ChatScreenContent(
                         onInsertSummary = { index, message -> actualViewModel.insertSummary(index, message) }, // 添加插入总结回调
                         onAutoReadMessage = { content -> actualViewModel.enableAutoReadAndSpeak(content) }, // 添加自动朗读回调
                         onMentionRoleFromAvatar = { roleName -> actualViewModel.insertRoleMention(roleName) },
+                        bottomPadding = bottomInset,
                         chatStyle = chatStyle, // Pass chat style
                         cursorUserBubbleLiquidGlass = cursorUserBubbleLiquidGlass,
+                        cursorUserBubbleWaterGlass = cursorUserBubbleWaterGlass,
                         isMultiSelectMode = isMultiSelectMode,
                         selectedMessageIndices = selectedMessageIndices,
                         horizontalPadding = chatAreaHorizontalPadding.dp,
@@ -453,7 +351,7 @@ fun ChatScreenContent(
             exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(16.dp)
+                .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = bottomInset + 16.dp)
         ) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -643,17 +541,18 @@ fun ChatScreenContent(
             val containerWidthPx = with(density) { maxWidth.toPx() }
             val containerHeightPx = with(density) { maxHeight.toPx() }
             val fabSizePx = with(density) { fabSize.toPx() }
+            val bottomInsetPx = with(density) { bottomInset.toPx() }
 
             val initialOffsetXPx =
                 (containerWidthPx - with(density) { (endPadding + fabSize).toPx() }).coerceAtLeast(0f)
             val initialOffsetYPx =
-                (containerHeightPx - with(density) { (bottomPadding + fabSize).toPx() }).coerceAtLeast(0f)
+                (containerHeightPx - with(density) { (bottomPadding + bottomInset + fabSize).toPx() }).coerceAtLeast(0f)
 
             var stopButtonOffsetXPx by rememberSaveable { mutableFloatStateOf(initialOffsetXPx) }
             var stopButtonOffsetYPx by rememberSaveable { mutableFloatStateOf(initialOffsetYPx) }
 
             val maxX = (containerWidthPx - fabSizePx).coerceAtLeast(0f)
-            val maxY = (containerHeightPx - fabSizePx).coerceAtLeast(0f)
+            val maxY = (containerHeightPx - fabSizePx - bottomInsetPx).coerceAtLeast(0f)
 
             // 屏幕尺寸变化（旋转/分屏）时，确保按钮仍然在可见区域内
             LaunchedEffect(maxX, maxY) {
@@ -696,58 +595,6 @@ fun ChatScreenContent(
             }
         }
 
-        // 角色选择器
-        CharacterSelectorPanel(
-            isVisible = showCharacterSelector,
-            onDismiss = { showCharacterSelector = false },
-            onSelectCharacter = onSwitchCharacter,
-            onOpenCharacterSettings = onOpenCharacterSettings
-        )
-
-        // 遮罩层 - 独立的淡入淡出效果，覆盖整个屏幕
-        AnimatedVisibility(
-                visible = showChatHistorySelector,
-                enter = fadeIn(animationSpec = tween(300)),
-                exit = fadeOut(animationSpec = tween(300)),
-                modifier = Modifier.fillMaxSize()
-        ) {
-            Box(
-                    modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectTapGestures {
-                                    actualViewModel.toggleChatHistorySelector()
-                                }
-                            }
-                            .background(Color.Black.copy(alpha = 0.3f))
-            )
-        }
-
-        // 历史选择器面板 - 滑入滑出效果
-        AnimatedVisibility(
-                visible = showChatHistorySelector,
-                enter = slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(300)),
-                exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(300)),
-                modifier = Modifier.align(Alignment.TopStart)
-        ) {
-            val chatHistorySearchQuery by actualViewModel.chatHistorySearchQuery.collectAsState()
-            ChatHistorySelectorPanel(
-                    actualViewModel = actualViewModel,
-                    chatHistories = displayedChatHistories,
-                    currentChatId = currentChatId,
-                    showChatHistorySelector = showChatHistorySelector,
-                    historyListState = historyListState,
-                    onChatScreenGestureConsumed = onChatScreenGestureConsumed,
-                    searchQuery = chatHistorySearchQuery,
-                    onSearchQueryChange = actualViewModel::onChatHistorySearchQueryChange,
-                    activePrompt = activePrompt,
-                    historyDisplayMode = historyDisplayMode,
-                    onDisplayModeChange = { historyDisplayMode = it },
-                    autoSwitchCharacterCard = autoSwitchCharacterCard,
-                    onAutoSwitchCharacterCardChange = { autoSwitchCharacterCard = it }
-            )
-        }
-
         // 滚动到底部按钮
         ScrollToBottomButton(
             scrollState = scrollState,
@@ -756,7 +603,7 @@ fun ChatScreenContent(
             onAutoScrollToBottomChange = onAutoScrollToBottomChange,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 16.dp)
+                .padding(bottom = bottomInset + 16.dp)
         )
 
 

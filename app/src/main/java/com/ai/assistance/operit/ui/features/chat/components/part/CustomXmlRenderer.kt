@@ -41,11 +41,14 @@ import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRenderer
 import com.ai.assistance.operit.ui.common.markdown.XmlContentRenderer
 import com.ai.assistance.operit.ui.common.markdown.XmlRenderPluginRegistry
 import com.ai.assistance.operit.ui.common.rememberLocal
+import com.ai.assistance.operit.util.ChatUtils
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.util.stream.stream
 
 /** 支持多种 XML 标签的自定义渲染器 包含高效的前缀检测，直接解析标签类型 */
+private const val TOOL_PARAM_TOKEN_THRESHOLD = 50
+
 class CustomXmlRenderer(
     private val showThinkingProcess: Boolean = true,
     private val showStatusTags: Boolean = true,
@@ -60,7 +63,6 @@ class CustomXmlRenderer(
         val rawToolName: String,
         val paramText: String,
         val displayToolName: String,
-        val isLongContent: Boolean,
         val isClosed: Boolean,
     )
 
@@ -177,7 +179,7 @@ class CustomXmlRenderer(
             "think" -> renderThinkContent(trimmedContent, Modifier, textColor, xmlStream)
             "thinking" -> renderThinkContent(trimmedContent, Modifier, textColor, xmlStream)
             "search" -> renderSearchContent(trimmedContent, Modifier, textColor)
-            "tool" -> renderToolRequest(trimmedContent, Modifier, textColor)
+            "tool" -> renderToolRequest(trimmedContent, Modifier, textColor, xmlStream)
             "tool_result" -> renderToolResult(trimmedContent, Modifier, textColor)
             "status" -> renderStatus(trimmedContent, Modifier, textColor)
             "html" -> renderHtmlContent(trimmedContent, Modifier, textColor)
@@ -722,7 +724,13 @@ class CustomXmlRenderer(
 
     /** 渲染标准工具请求标签 <tool name="..."><param name="param_name">param_value</param></tool> */
     @Composable
-    private fun renderToolRequest(content: String, modifier: Modifier, textColor: Color) {
+    private fun renderToolRequest(
+        content: String,
+        modifier: Modifier,
+        textColor: Color,
+        xmlStream: Stream<String>?
+    ) {
+        val paramTokenEstimate = rememberToolParamTokenEstimate(content, xmlStream)
         val renderState =
             run {
                 val nameRegex = "name=\"([^\"]+)\"".toRegex()
@@ -731,13 +739,11 @@ class CustomXmlRenderer(
                 val params = extractParamsFromTool(content)
                 val paramText = extractContentFromXml(content, "tool").trim()
                 val displayToolName = resolveToolDisplayNameForRender(rawToolName, params)
-                val contentLengthThreshold = 200
 
                 ToolRequestRenderState(
                     rawToolName = rawToolName,
                     paramText = paramText,
                     displayToolName = displayToolName,
-                    isLongContent = paramText.length > contentLengthThreshold,
                     isClosed = isXmlFullyClosed(content),
                 )
             }
@@ -763,7 +769,7 @@ class CustomXmlRenderer(
             }
         } else {
             // 对于其他工具，保持原有逻辑
-            if (renderState.isLongContent) {
+            if (!renderState.isClosed && paramTokenEstimate > TOOL_PARAM_TOKEN_THRESHOLD) {
                 DetailedToolDisplay(
                         toolName = renderState.rawToolName,
                         params = renderState.paramText,
@@ -780,6 +786,97 @@ class CustomXmlRenderer(
                         enableDialog = enableDialogs  // 传递弹窗启用状态
                 )
             }
+        }
+    }
+
+    @Composable
+    private fun rememberToolParamTokenEstimate(content: String, xmlStream: Stream<String>?): Int {
+        val fallbackEstimate = remember(content) {
+            val paramText = extractContentFromXml(content, "tool").trim()
+            ChatUtils.estimateTokenCount(paramText)
+        }
+
+        if (xmlStream == null) {
+            return fallbackEstimate
+        }
+
+        val estimatedTokens by produceState(initialValue = fallbackEstimate, key1 = xmlStream) {
+            val counter = XmlInnerTokenCounter(tagName = "tool")
+            xmlStream.collect { chunk ->
+                value = maxOf(value, counter.append(chunk))
+            }
+        }
+
+        return estimatedTokens
+    }
+
+    private class IncrementalTokenEstimator {
+        private var chineseCharCount: Int = 0
+        private var otherCharCount: Int = 0
+
+        fun append(text: CharSequence) {
+            for (index in 0 until text.length) {
+                append(text[index])
+            }
+        }
+
+        fun append(char: Char) {
+            if (char.code in 0x4E00..0x9FFF) {
+                chineseCharCount++
+            } else {
+                otherCharCount++
+            }
+        }
+
+        fun estimate(): Int {
+            return (chineseCharCount * 1.5 + otherCharCount * 0.25).toInt()
+        }
+    }
+
+    private class XmlInnerTokenCounter(tagName: String) {
+        private val openingTagEndChar = '>'
+        private val closingPattern = "</$tagName>"
+        private val estimator = IncrementalTokenEstimator()
+        private val closeCandidate = StringBuilder()
+
+        private var isInsideOuterContent = false
+        private var isClosed = false
+
+        fun append(chunk: String): Int {
+            if (isClosed || chunk.isEmpty()) {
+                return estimator.estimate()
+            }
+
+            for (char in chunk) {
+                if (isClosed) break
+
+                if (!isInsideOuterContent) {
+                    if (char == openingTagEndChar) {
+                        isInsideOuterContent = true
+                    }
+                    continue
+                }
+
+                if (closeCandidate.isNotEmpty() || char == '<') {
+                    val candidate = closeCandidate.toString() + char
+                    if (closingPattern.startsWith(candidate)) {
+                        closeCandidate.append(char)
+                        if (candidate == closingPattern) {
+                            isClosed = true
+                            closeCandidate.clear()
+                        }
+                        continue
+                    }
+
+                    estimator.append(candidate)
+                    closeCandidate.clear()
+                    continue
+                }
+
+                estimator.append(char)
+            }
+
+            return estimator.estimate()
         }
     }
 

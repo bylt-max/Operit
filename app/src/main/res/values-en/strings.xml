@@ -708,6 +708,7 @@
 
     <!-- Context Menu -->
     <string name="copy_message">Copy Message</string>
+    <string name="info">Info</string>
     <string name="read_message">Read Message</string>
     <string name="auto_read_message">Auto Read</string>
     <string name="auto_read_desc">When enabled, AI responses will be automatically read aloud</string>
@@ -1560,6 +1561,23 @@
     <string name="avatar_crop_failed">Avatar crop failed: %1$s</string>
     <string name="cannot_open_file">Cannot open file: %1$s</string>
     <string name="message_copied_to_clipboard">Message copied to clipboard</string>
+    <string name="message_info_title">Message Info</string>
+    <string name="message_info_sender">Sender</string>
+    <string name="message_info_role_name">Role</string>
+    <string name="message_info_provider">Provider</string>
+    <string name="message_info_model_name">Model</string>
+    <string name="message_info_message_time">Message Time</string>
+    <string name="message_info_sent_at">Sent At</string>
+    <string name="message_info_input_tokens">Input Tokens</string>
+    <string name="message_info_cached_input_tokens">Cached Input Tokens</string>
+    <string name="message_info_output_tokens">Output Tokens</string>
+    <string name="message_info_wait_duration">Wait Duration</string>
+    <string name="message_info_output_duration">Output Duration</string>
+    <string name="message_info_token_summary">Token Summary</string>
+    <string name="message_info_token_input_short">↑</string>
+    <string name="message_info_token_output_short">↓</string>
+    <string name="message_info_token_cached_short">Cached</string>
+    <string name="message_info_unavailable">Not recorded</string>
     <string name="selected_content_copied">Selected content copied</string>
     <string name="requesting_root_permission">Requesting Root permission...</string>
     <string name="root_permission_granted">Root permission granted</string>
@@ -2124,8 +2142,12 @@
     <string name="theme_chat_input_transparent_title">Input Box Settings</string>
     <string name="theme_chat_input_transparent">Transparent Input Box</string>
     <string name="theme_chat_input_transparent_desc">When enabled, the chat input box will become transparent</string>
-    <string name="theme_chat_input_liquid_glass">Liquid Glass Input Box</string>
-    <string name="theme_chat_input_liquid_glass_desc">When enabled, the transparent input box will use an iOS-style liquid glass effect</string>
+    <string name="theme_chat_input_floating">Floating Input Box</string>
+    <string name="theme_chat_input_floating_desc">When enabled, the input box will float above the bottom edge as a fully rounded rectangle for both input styles</string>
+    <string name="theme_chat_input_liquid_glass">Frosted Glass Input Box</string>
+    <string name="theme_chat_input_liquid_glass_desc">When enabled, the transparent input box will use an iOS-style frosted glass effect</string>
+    <string name="theme_chat_input_water_glass">Water Glass Input Box</string>
+    <string name="theme_chat_input_water_glass_desc">When enabled, the transparent input box will use a water glass effect and disable frosted glass</string>
     <string name="theme_toolbar_transparent">Toolbar Settings</string>
     <string name="theme_toolbar_transparent_desc">Transparent Toolbar</string>
     <string name="theme_toolbar_transparent_desc_desc">When enabled, the toolbar will become transparent</string>
@@ -3590,8 +3612,10 @@
     <string name="input_style_agent_reserved">Agent style is in development; this is a reserved entry for now</string>
     <string name="chat_style_cursor_user_follow_theme">Follow theme color for command-style user bubble</string>
     <string name="chat_style_cursor_user_follow_theme_desc">When disabled, you can set a custom command-style user bubble color (including alpha)</string>
-    <string name="chat_style_cursor_user_bubble_liquid_glass">Command-style user bubble liquid glass</string>
-    <string name="chat_style_cursor_user_bubble_liquid_glass_desc">When enabled, the command-style user bubble background will use an iOS-style liquid glass effect</string>
+    <string name="chat_style_cursor_user_bubble_liquid_glass">Command-style user bubble frosted glass</string>
+    <string name="chat_style_cursor_user_bubble_liquid_glass_desc">When enabled, the command-style user bubble background will use an iOS-style frosted glass effect</string>
+    <string name="chat_style_cursor_user_bubble_water_glass">Command-style user bubble water glass</string>
+    <string name="chat_style_cursor_user_bubble_water_glass_desc">When enabled, the command-style user bubble background will use a water glass effect and disable frosted glass</string>
     <string name="chat_style_cursor_user_bubble_color">Command-style user bubble</string>
     <string name="chat_style_bubble_color_title">Dialog-style bubble colors</string>
     <string name="chat_style_bubble_user_color">User bubble</string>
@@ -4621,6 +4645,7 @@
     <string name="execution_failed">Execution Failed</string>
     <string name="copy_result">Copy Result</string>
     <string name="tool_call_parameters">Call Parameters</string>
+    <string name="tool_call_param_bytes">%1$d↓</string>
     <string name="tool_call">Tool Call</string>
     <string name="lines_count">lines</string>
     <string name="edit_message">Edit Message</string>
@@ -7043,7 +7068,7 @@
     <string name="http_tts_response_pipeline_http_body_missing">HTTP TTS response pipeline step %1$d POST HTTP object is missing body</string>
     <string name="http_tts_response_pipeline_http_content_type_missing">HTTP TTS response pipeline step %1$d POST HTTP object is missing content_type</string>
     <string name="http_tts_response_pipeline_base64_decode_failed">HTTP TTS response pipeline step %1$d failed to decode Base64</string>
-    <string name="http_tts_response_pipeline_pick_failed">HTTP TTS response pipeline step %1$d could not resolve path: %2$s</string>
+    <string name="http_tts_response_pipeline_pick_failed">HTTP TTS response pipeline step %1$d could not resolve path: %2$s; API returned: %3$s</string>
 
     <!-- ConversationMarkupManager -->
     <string name="conversation_markup_multiple_tools_warning">Multiple tool calls detected. The system will only execute the first tool `%1$s` and ignore other tool calls. Please avoid calling multiple tools in a single message.</string>

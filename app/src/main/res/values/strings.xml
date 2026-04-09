@@ -753,8 +753,12 @@
     <string name="theme_chat_input_transparent_title">输入框设置</string>
     <string name="theme_chat_input_transparent">透明输入框</string>
     <string name="theme_chat_input_transparent_desc">开启后聊天输入框将变为透明</string>
-    <string name="theme_chat_input_liquid_glass">液态玻璃输入框</string>
-    <string name="theme_chat_input_liquid_glass_desc">开启后，透明输入框会显示 iOS 风格液态玻璃效果</string>
+    <string name="theme_chat_input_floating">输入框悬浮</string>
+    <string name="theme_chat_input_floating_desc">开启后，输入框将从贴底布局改为悬浮的全圆角矩形，两种输入样式都会生效</string>
+    <string name="theme_chat_input_liquid_glass">磨砂玻璃输入框</string>
+    <string name="theme_chat_input_liquid_glass_desc">开启后，透明输入框会显示 iOS 风格磨砂玻璃效果</string>
+    <string name="theme_chat_input_water_glass">水玻璃输入框</string>
+    <string name="theme_chat_input_water_glass_desc">开启后，透明输入框会显示水玻璃效果，并与磨砂玻璃互斥</string>
     
     <!-- Floating Window -->
     <string name="floating_chat_window">聊天悬浮窗</string>
@@ -1523,6 +1527,7 @@
 
     <!-- Context Menu -->
     <string name="copy_message">复制消息</string>
+    <string name="info">信息</string>
     <string name="read_message">朗读消息</string>
     <string name="auto_read_message">自动朗读</string>
     <string name="auto_read_desc">启用后，AI回复会自动朗读</string>
@@ -1626,6 +1631,23 @@
     <string name="avatar_crop_failed">头像裁剪失败: %1$s</string>
     <string name="cannot_open_file">无法打开文件: %1$s</string>
     <string name="message_copied_to_clipboard">消息已复制到剪贴板</string>
+    <string name="message_info_title">消息信息</string>
+    <string name="message_info_sender">发送方</string>
+    <string name="message_info_role_name">角色名</string>
+    <string name="message_info_provider">提供商</string>
+    <string name="message_info_model_name">模型</string>
+    <string name="message_info_message_time">消息时间</string>
+    <string name="message_info_sent_at">发送时间</string>
+    <string name="message_info_input_tokens">Token 上行</string>
+    <string name="message_info_cached_input_tokens">缓存 Token 上行</string>
+    <string name="message_info_output_tokens">Token 下行</string>
+    <string name="message_info_wait_duration">等待耗时</string>
+    <string name="message_info_output_duration">输出耗时</string>
+    <string name="message_info_token_summary">Token 统计</string>
+    <string name="message_info_token_input_short">↑</string>
+    <string name="message_info_token_output_short">↓</string>
+    <string name="message_info_token_cached_short">缓存</string>
+    <string name="message_info_unavailable">未记录</string>
     <string name="selected_content_copied">已复制选中内容</string>
     <string name="requesting_root_permission">正在请求Root权限...</string>
     <string name="root_permission_granted">Root权限已授予</string>
@@ -3480,8 +3502,10 @@
     <string name="chat_style_bubble_padding_right">右内边距</string>
     <string name="chat_style_cursor_user_follow_theme">命令式用户消息框跟随主题色</string>
     <string name="chat_style_cursor_user_follow_theme_desc">关闭后可自定义命令式用户消息框颜色（支持透明度）</string>
-    <string name="chat_style_cursor_user_bubble_liquid_glass">命令式用户消息液态玻璃背景</string>
-    <string name="chat_style_cursor_user_bubble_liquid_glass_desc">开启后，命令式用户消息背景会显示 iOS 风格液态玻璃效果</string>
+    <string name="chat_style_cursor_user_bubble_liquid_glass">命令式用户消息磨砂玻璃背景</string>
+    <string name="chat_style_cursor_user_bubble_liquid_glass_desc">开启后，命令式用户消息背景会显示 iOS 风格磨砂玻璃效果</string>
+    <string name="chat_style_cursor_user_bubble_water_glass">命令式用户消息水玻璃背景</string>
+    <string name="chat_style_cursor_user_bubble_water_glass_desc">开启后，命令式用户消息背景会显示水玻璃效果，并与磨砂玻璃互斥</string>
     <string name="chat_style_cursor_user_bubble_color">命令式用户消息框</string>
     <string name="chat_style_bubble_color_title">对话式气泡颜色</string>
     <string name="chat_style_bubble_user_color">用户气泡</string>
@@ -4611,6 +4635,7 @@
     <string name="execution_failed">执行失败</string>
     <string name="copy_result">复制结果</string>
     <string name="tool_call_parameters">调用参数</string>
+    <string name="tool_call_param_bytes">%1$d↓</string>
     <string name="tool_call">工具调用</string>
     <string name="lines_count">行</string>
     <string name="edit_message">编辑消息</string>
@@ -7075,7 +7100,7 @@
     <string name="http_tts_response_pipeline_http_body_missing">HTTP TTS 响应处理第 %1$d 步的 POST HTTP 对象缺少 body</string>
     <string name="http_tts_response_pipeline_http_content_type_missing">HTTP TTS 响应处理第 %1$d 步的 POST HTTP 对象缺少 content_type</string>
     <string name="http_tts_response_pipeline_base64_decode_failed">HTTP TTS 响应处理第 %1$d 步 Base64 解码失败</string>
-    <string name="http_tts_response_pipeline_pick_failed">HTTP TTS 响应处理第 %1$d 步无法读取路径: %2$s</string>
+    <string name="http_tts_response_pipeline_pick_failed">HTTP TTS 响应处理第 %1$d 步无法读取路径: %2$s；接口返回: %3$s</string>
 
     <!-- ConversationMarkupManager -->
     <string name="conversation_markup_multiple_tools_warning">检测到多个工具调用。系统将只执行第一个工具 `%1$s`，忽略其它工具调用。请避免在单个消息中同时调用多个工具。</string>

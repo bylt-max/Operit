@@ -8,7 +8,7 @@ import kotlin.math.abs
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal object MNNStructuredToolCallBridge {
+internal object StructuredToolCallBridge {
     private data class ToolResultRecord(
         val name: String?,
         val content: String

@@ -14,6 +14,7 @@ import com.ai.assistance.operit.core.chat.plugins.MessageProcessingHookParams
 import com.ai.assistance.operit.core.chat.plugins.MessageProcessingPluginRegistry
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.MemoryQueryResultData
+import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ChatMessage
@@ -85,12 +86,14 @@ object AIMessageManager {
     )
 
     private lateinit var toolHandler: AIToolHandler
+    private lateinit var packageManager: PackageManager
     private lateinit var context: Context
     private lateinit var apiPreferences: ApiPreferences
 
     fun initialize(context: Context) {
         this.context = context
         toolHandler = AIToolHandler.getInstance(context)
+        packageManager = PackageManager.getInstance(context, toolHandler)
         apiPreferences = ApiPreferences.getInstance(context)
     }
 
@@ -538,6 +541,14 @@ object AIMessageManager {
         activeEnhancedAiServiceByChatId.remove(chatKey)?.let {
             AppLogger.d(TAG, "正在取消 EnhancedAIService 对话: chatId=$chatKey")
             it.cancelConversation()
+        }
+
+        if (chatId.isNotBlank()) {
+            runCatching {
+                packageManager.cancelToolPkgExecutionsForChat(chatKey, "User cancelled")
+            }.onFailure { error ->
+                AppLogger.e(TAG, "取消ToolPkg JS执行失败: chatId=$chatKey", error)
+            }
         }
 
         AppLogger.d(TAG, "AI操作取消请求已发送: chatId=$chatKey")

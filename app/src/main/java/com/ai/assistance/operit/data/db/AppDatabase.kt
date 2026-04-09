@@ -15,7 +15,7 @@ import com.ai.assistance.operit.data.model.MessageEntity
 /** 应用数据库，包含问题记录表、聊天表和消息表 */
 @Database(
     entities = [ProblemEntity::class, ChatEntity::class, MessageEntity::class],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 @TypeConverters(StringListConverter::class)
@@ -96,6 +96,36 @@ abstract class AppDatabase : RoomDatabase() {
                         db.execSQL("ALTER TABLE chats ADD COLUMN `characterGroupId` TEXT")
                     } catch (_: Exception) {
 
+                    }
+                }
+            }
+
+        private val MIGRATION_12_13 =
+            object : Migration(12, 13) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    try {
+                        db.execSQL("ALTER TABLE messages ADD COLUMN `inputTokens` INTEGER NOT NULL DEFAULT 0")
+                    } catch (_: Exception) {
+                    }
+                    try {
+                        db.execSQL("ALTER TABLE messages ADD COLUMN `outputTokens` INTEGER NOT NULL DEFAULT 0")
+                    } catch (_: Exception) {
+                    }
+                    try {
+                        db.execSQL("ALTER TABLE messages ADD COLUMN `cachedInputTokens` INTEGER NOT NULL DEFAULT 0")
+                    } catch (_: Exception) {
+                    }
+                    try {
+                        db.execSQL("ALTER TABLE messages ADD COLUMN `sentAt` INTEGER NOT NULL DEFAULT 0")
+                    } catch (_: Exception) {
+                    }
+                    try {
+                        db.execSQL("ALTER TABLE messages ADD COLUMN `outputDurationMs` INTEGER NOT NULL DEFAULT 0")
+                    } catch (_: Exception) {
+                    }
+                    try {
+                        db.execSQL("ALTER TABLE messages ADD COLUMN `waitDurationMs` INTEGER NOT NULL DEFAULT 0")
+                    } catch (_: Exception) {
                     }
                 }
             }
@@ -208,7 +238,8 @@ abstract class AppDatabase : RoomDatabase() {
                                 MIGRATION_8_9,
                                 MIGRATION_9_10,
                                 MIGRATION_10_11,
-                                MIGRATION_11_12
+                                MIGRATION_11_12,
+                                MIGRATION_12_13
                             ) // 添加新的迁移
                             .build()
                     INSTANCE = instance

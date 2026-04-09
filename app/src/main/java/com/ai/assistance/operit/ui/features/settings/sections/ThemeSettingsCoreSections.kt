@@ -258,6 +258,8 @@ internal fun ThemeSettingsChatStyleSection(
     onCursorUserBubbleFollowThemeInputChange: (Boolean) -> Unit,
     cursorUserBubbleLiquidGlassInput: Boolean,
     onCursorUserBubbleLiquidGlassInputChange: (Boolean) -> Unit,
+    cursorUserBubbleWaterGlassInput: Boolean,
+    onCursorUserBubbleWaterGlassInputChange: (Boolean) -> Unit,
     cursorUserBubbleColorInput: Int,
     bubbleUserBubbleColorInput: Int,
     bubbleAiBubbleColorInput: Int,
@@ -437,15 +439,6 @@ internal fun ThemeSettingsChatStyleSection(
                 }
             }
 
-            if (inputStyleInput == UserPreferencesManager.INPUT_STYLE_AGENT) {
-                Text(
-                    text = stringResource(id = R.string.input_style_agent_reserved),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-
             if (chatStyleInput == UserPreferencesManager.CHAT_STYLE_CURSOR) {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -507,9 +500,54 @@ internal fun ThemeSettingsChatStyleSection(
                         checked = cursorUserBubbleLiquidGlassInput,
                         onCheckedChange = {
                             onCursorUserBubbleLiquidGlassInputChange(it)
+                            if (it) {
+                                onCursorUserBubbleWaterGlassInputChange(false)
+                            }
                             saveThemeSettingsWithCharacterCard {
                                 preferencesManager.saveThemeSettings(
                                     cursorUserBubbleLiquidGlass = it,
+                                    cursorUserBubbleWaterGlass = if (it) false else null,
+                                )
+                            }
+                        },
+                    )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text =
+                                stringResource(
+                                    id = R.string.chat_style_cursor_user_bubble_water_glass
+                                ),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            text =
+                                stringResource(
+                                    id = R.string.chat_style_cursor_user_bubble_water_glass_desc
+                                ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = cursorUserBubbleWaterGlassInput,
+                        onCheckedChange = {
+                            onCursorUserBubbleWaterGlassInputChange(it)
+                            if (it) {
+                                onCursorUserBubbleLiquidGlassInputChange(false)
+                            }
+                            saveThemeSettingsWithCharacterCard {
+                                preferencesManager.saveThemeSettings(
+                                    cursorUserBubbleWaterGlass = it,
+                                    cursorUserBubbleLiquidGlass = if (it) false else null,
                                 )
                             }
                         },

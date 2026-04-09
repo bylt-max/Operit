@@ -1,18 +1,14 @@
 package com.ai.assistance.operit.ui.features.chat.components.part
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Terminal
@@ -24,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -37,8 +32,6 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.ai.assistance.operit.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -60,10 +53,14 @@ fun CompactToolDisplay(
     }
     // 弹窗状态
     var showDetailDialog by remember { mutableStateOf(false) }
-    val clipboardManager = LocalClipboardManager.current
     val hasParams = displayParams.isNotBlank()
     val semanticDescription = remember(displayToolName, displayParams.length) {
-        buildToolSemanticDescription(context, displayToolName, displayParams)
+        buildToolSemanticDescription(
+            context = context,
+            toolName = displayToolName,
+            params = displayParams,
+            useByteSummary = false
+        )
     }
 
     // 显示详细内容的弹窗 - 仅在启用弹窗时显示
@@ -111,14 +108,14 @@ fun CompactToolDisplay(
                 overflow = TextOverflow.Ellipsis
         )
 
-        // 参数内容（如果有）
+        // 参数内容摘要（如果有）
         if (displayParams.isNotBlank()) {
             val summary = remember(displayParams.length) {
                 // 尝试从XML中提取第一个参数的值作为摘要
                 val firstParamRegex = "<param.*?>([^<]*)<\\/param>".toRegex()
                 val match = firstParamRegex.find(displayParams)
                 match?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
-                    ?: displayParams.replace("\n", " ").trim() // 如果没有匹配或值为空，则显示清理后的原始参数
+                    ?: displayParams.replace("\n", " ").trim()
             }
             Text(
                     text = summary,
@@ -145,15 +142,20 @@ fun DetailedToolDisplay(
     val (displayToolName, displayParams) = remember(toolName, params) {
         normalizeToolDisplayForStrictProxy(toolName, params)
     }
-    // 弹窗状态
     var showDetailDialog by remember { mutableStateOf(false) }
-    val clipboardManager = LocalClipboardManager.current
     val hasParams = displayParams.isNotBlank()
     val semanticDescription = remember(displayToolName, displayParams.length) {
-        buildToolSemanticDescription(context, displayToolName, displayParams)
+        buildToolSemanticDescription(
+            context = context,
+            toolName = displayToolName,
+            params = displayParams,
+            useByteSummary = true
+        )
+    }
+    val paramsSizeLabel = remember(displayParams) {
+        buildToolParamsSizeLabel(context, displayParams)
     }
 
-    // 显示详细内容的弹窗 - 仅在启用弹窗时显示
     if (showDetailDialog && hasParams && enableDialog) {
         ContentDetailDialog(
             title = "$displayToolName ${context.getString(R.string.tool_call_parameters)}",
@@ -163,110 +165,47 @@ fun DetailedToolDisplay(
         )
     }
 
-    Card(
-            modifier =
-                    modifier.fillMaxWidth()
-                            .padding(top = 4.dp)
-                            .clearAndSetSemantics {
-                                contentDescription = semanticDescription
-                            }
-                            .clickable(enabled = hasParams && enableDialog) {
-                                // 仅在启用弹窗时才允许点击打开详情
-                                if (hasParams && enableDialog) showDetailDialog = true
-                            },
-            colors =
-                    CardDefaults.cardColors(
-                            containerColor =
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                    ),
-            border =
-                    BorderStroke(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                    ),
-            shape = RoundedCornerShape(8.dp)
+    Row(
+        modifier =
+            modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(4.dp))
+                .clearAndSetSemantics {
+                    contentDescription = semanticDescription
+                }
+                .clickable(enabled = hasParams && enableDialog) {
+                    if (hasParams && enableDialog) showDetailDialog = true
+                }
+                .padding(top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            // 工具标题行
-            Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-            ) {
-                // 工具图标 - 与CompactToolDisplay保持一致的大小和位置
-                Icon(
-                        imageVector = getToolIcon(displayToolName),
-                        contentDescription = context.getString(R.string.tool_call),
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                        modifier = Modifier.size(16.dp)
-                )
+        Icon(
+            imageVector = getToolIcon(displayToolName),
+            contentDescription = context.getString(R.string.tool_call),
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+            modifier = Modifier.size(16.dp)
+        )
 
-                Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
-                // 工具名称
-                Text(
-                        text = displayToolName,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                )
+        Text(
+            text = displayToolName,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.widthIn(min = 80.dp, max = 120.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
 
-                // 参数行数指示
-                if (hasParams) {
-                    val lineCount = remember(displayParams.length) { displayParams.lines().size }
-                    Text(
-                            text = "$lineCount ${context.getString(R.string.lines_count)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            // 参数内容 - 使用代码风格显示
-            if (displayParams.isNotBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 按行拆分参数文本，并用remember缓存，仅在params改变时重新计算
-                val lines = remember(displayParams.length) {
-                    displayParams.lines().map { line ->
-                        normalizeIndentForDisplay(unescapeXmlForDisplay(line))
-                    }
-                }
-
-                // 创建LazyListState以控制滚动
-                val listState = rememberLazyListState()
-
-                // 当内容更新时，自动滚动到底部
-                LaunchedEffect(lines.size) {
-                    if (lines.isNotEmpty()) listState.animateScrollToItem(lines.lastIndex)
-                }
-
-                // 使用有高度限制的代码显示区域
-                Box(
-                        modifier =
-                                Modifier.fillMaxWidth()
-                                        .heightIn(min = 10.dp, max = 200.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(
-                                                MaterialTheme.colorScheme.surfaceVariant.copy(
-                                                        alpha = 0.5f
-                                                )
-                                        )
-                ) {
-                    // 显示带行号的代码内容
-                    CodeContentWithLineNumbers(
-                            lines = lines,
-                            textColor = textColor,
-                            listState = listState,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                    )
-                }
-            }
+        if (hasParams) {
+            Text(
+                text = paramsSizeLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = textColor.copy(alpha = 0.7f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -588,14 +527,70 @@ private fun escapeXmlText(input: String): String {
         .replace(">", "&gt;")
 }
 
-private fun buildToolSemanticDescription(context: android.content.Context, toolName: String, params: String): String {
+private fun buildToolSemanticDescription(
+    context: android.content.Context,
+    toolName: String,
+    params: String,
+    useByteSummary: Boolean
+): String {
     val toolLabel = context.getString(R.string.tool_call)
     if (params.isBlank()) {
         return "$toolLabel: $toolName"
     }
     val paramsLabel = context.getString(R.string.tool_call_parameters)
-    val preview = buildParamsHeadPreview(params)
-    return "$toolLabel: $toolName, $paramsLabel: $preview"
+    val summary =
+        if (useByteSummary) {
+            buildToolParamsSizeLabel(context, params)
+        } else {
+            buildParamsHeadPreview(params)
+        }
+    return "$toolLabel: $toolName, $paramsLabel: $summary"
+}
+
+private fun buildToolParamsSizeLabel(context: android.content.Context, params: String): String {
+    return context.getString(R.string.tool_call_param_bytes, calculateToolParamsBytes(params))
+}
+
+private fun calculateToolParamsBytes(params: String): Int {
+    if (params.isBlank()) return 0
+
+    val targetTexts = extractParamPayloadsForSize(params)
+    return targetTexts.sumOf { it.toByteArray(Charsets.UTF_8).size }
+}
+
+private fun extractParamPayloadsForSize(params: String): List<String> {
+    val tagRegex = "</?param\\b[^>]*>".toRegex()
+    val payloads = mutableListOf<String>()
+    var insideParam = false
+    var valueStart = -1
+
+    for (match in tagRegex.findAll(params)) {
+        val tagText = match.value
+        if (tagText.startsWith("</")) {
+            if (insideParam) {
+                val rawValue = params.substring(valueStart, match.range.first)
+                payloads += normalizeEscapedTextForDisplay(rawValue)
+                insideParam = false
+                valueStart = -1
+            }
+            continue
+        }
+
+        if (!insideParam) {
+            insideParam = true
+            valueStart = match.range.last + 1
+        }
+    }
+
+    if (insideParam && valueStart in 0..params.length) {
+        payloads += normalizeEscapedTextForDisplay(params.substring(valueStart))
+    }
+
+    return if (payloads.isNotEmpty()) {
+        payloads
+    } else {
+        listOf(normalizeEscapedTextForDisplay(params))
+    }
 }
 
 private fun buildParamsHeadPreview(params: String, maxChars: Int = 120): String {

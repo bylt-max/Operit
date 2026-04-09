@@ -73,6 +73,7 @@ class JsEngine(private val context: Context) {
         val future: CompletableFuture<Any?>,
         val intermediateResultCallback: ((Any?) -> Unit)?,
         val envOverrides: Map<String, String>,
+        val packageChatId: String?,
         val toolPkgLogSnapshot: JsToolPkgExecutionContext.LogSnapshot,
         val executionListener: JsExecutionListener?
     )
@@ -245,6 +246,11 @@ class JsEngine(private val context: Context) {
             future = CompletableFuture(),
             intermediateResultCallback = onIntermediateResult,
             envOverrides = envOverrides,
+            packageChatId =
+                params["__operit_package_chat_id"]
+                    ?.toString()
+                    ?.trim()
+                    ?.ifBlank { null },
             toolPkgLogSnapshot = toolPkgExecutionContext.capture(script, functionName, params),
             executionListener = executionListener
         )
@@ -263,7 +269,7 @@ class JsEngine(private val context: Context) {
         activeExecutionSessions.clear()
         sessions.forEach { session ->
             if (!session.future.isDone) {
-                session.future.complete(reason)
+                session.future.complete("Error: $reason")
             }
             cancelExecutionSessionInJs(
                 callId = session.callId,
@@ -886,6 +892,35 @@ class JsEngine(private val context: Context) {
     fun cancelCurrentExecution(reason: String = "Execution canceled: requested by caller") {
         AppLogger.d(TAG, "Cancel current JS execution: $reason")
         resetState(cancellationMessage = reason)
+    }
+
+    fun cancelExecutionsForChat(
+        chatId: String,
+        reason: String = "Execution canceled: requested by caller"
+    ): Boolean {
+        val normalizedChatId = chatId.trim()
+        if (normalizedChatId.isEmpty()) {
+            return false
+        }
+
+        val matchingSessions =
+            activeExecutionSessions.values
+                .filter { session -> session.packageChatId == normalizedChatId }
+        if (matchingSessions.isEmpty()) {
+            return false
+        }
+
+        matchingSessions.forEach { session ->
+            removeExecutionSession(session.callId)
+            if (!session.future.isDone) {
+                session.future.complete("Error: $reason")
+            }
+            cancelExecutionSessionInJs(
+                callId = session.callId,
+                reason = reason
+            )
+        }
+        return true
     }
 
     /** 重置引擎状态，避免多次调用时的状态干扰 */

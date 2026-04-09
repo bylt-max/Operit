@@ -57,17 +57,22 @@ class LlamaSession private constructor(
         )
     }
 
-    fun setToolCallGrammar(grammar: String, triggerPatterns: List<String>): Boolean {
+    fun applyStructuredChatTemplate(
+        messagesJson: String,
+        toolsJson: String?,
+        addAssistant: Boolean
+    ): String? {
         val ptr: Long
         synchronized(lock) {
             checkValid()
             ptr = sessionPtr
         }
 
-        return LlamaNative.nativeSetToolCallGrammar(
+        return LlamaNative.nativeApplyStructuredChatTemplate(
             ptr,
-            grammar,
-            triggerPatterns.toTypedArray()
+            messagesJson,
+            toolsJson,
+            addAssistant
         )
     }
 
@@ -79,6 +84,16 @@ class LlamaSession private constructor(
         }
 
         return LlamaNative.nativeClearToolCallGrammar(ptr)
+    }
+
+    fun parseToolCallResponse(content: String): String? {
+        val ptr: Long
+        synchronized(lock) {
+            checkValid()
+            ptr = sessionPtr
+        }
+
+        return LlamaNative.nativeParseToolCallResponse(ptr, content)
     }
 
     fun applyChatTemplate(

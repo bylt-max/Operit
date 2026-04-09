@@ -61,6 +61,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import io.github.fletchmckee.liquid.liquefiable
+import io.github.fletchmckee.liquid.rememberLiquidState
 
 private val DarkColorScheme =
         darkColorScheme(primary = Purple80, secondary = PurpleGrey80, tertiary = Pink80)
@@ -348,8 +350,12 @@ fun OperitTheme(content: @Composable () -> Unit) {
     // 应用主题和自定义背景
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val liquidGlassBackdrop = rememberLayerBackdrop()
+        val waterGlassState = if (isWaterGlassSupported()) rememberLiquidState() else null
 
-        CompositionLocalProvider(LocalLiquidGlassBackdrop provides liquidGlassBackdrop) {
+        CompositionLocalProvider(
+            LocalLiquidGlassBackdrop provides liquidGlassBackdrop,
+            LocalWaterGlassState provides waterGlassState,
+        ) {
             Box(
                 modifier = Modifier.fillMaxSize().layerBackdrop(liquidGlassBackdrop)
             ) {
@@ -358,6 +364,13 @@ fun OperitTheme(content: @Composable () -> Unit) {
                         Modifier
                             .fillMaxSize()
                             .background(if (darkTheme) Color.Black else Color.White)
+                            .then(
+                                if (waterGlassState != null) {
+                                    Modifier.liquefiable(waterGlassState)
+                                } else {
+                                    Modifier
+                                },
+                            )
                 )
 
                 if (useBackgroundImage && backgroundImageUri != null) {
@@ -413,7 +426,13 @@ fun OperitTheme(content: @Composable () -> Unit) {
                                             Modifier.blur(radius = backgroundBlurRadius.dp)
                                         } else {
                                             Modifier
-                                        }
+                                        },
+                                    ).then(
+                                        if (waterGlassState != null) {
+                                            Modifier.liquefiable(waterGlassState)
+                                        } else {
+                                            Modifier
+                                        },
                                     ),
                             contentScale = ContentScale.Crop,
                         )
@@ -457,7 +476,14 @@ fun OperitTheme(content: @Composable () -> Unit) {
                                             )
                                         )
                                 },
-                                modifier = Modifier.fillMaxSize(),
+                                modifier =
+                                    Modifier.fillMaxSize().then(
+                                        if (waterGlassState != null) {
+                                            Modifier.liquefiable(waterGlassState)
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
                             )
                         }
                     }

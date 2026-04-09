@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.ai.assistance.operit.data.model.MessageEntity
 
 /** 消息DAO接口，定义对消息表的数据访问方法 */
@@ -37,6 +38,10 @@ interface MessageDao {
     /** 更新消息内容 */
     @Query("UPDATE messages SET content = :content WHERE messageId = :messageId")
     suspend fun updateMessageContent(messageId: Long, content: String)
+
+    /** 更新整条消息 */
+    @Update
+    suspend fun updateMessage(message: MessageEntity)
 
     /** 获取指定聊天中最大的序号 */
     @Query("SELECT MAX(orderIndex) FROM messages WHERE chatId = :chatId")

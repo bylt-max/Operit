@@ -456,8 +456,14 @@ class ChatHistoryManager private constructor(private val context: Context) {
                     val shouldUpdateChatMetadata =
                         message.contentStream == null ||
                             (existingMessage.content.isEmpty() && message.content.isNotEmpty())
-                    // 更新现有消息
-                    messageDao.updateMessageContent(existingMessage.messageId, message.content)
+                    val updatedMessageEntity =
+                        MessageEntity.fromChatMessage(
+                            chatId = chatId,
+                            message = message,
+                            orderIndex = existingMessage.orderIndex,
+                            messageId = existingMessage.messageId
+                        )
+                    messageDao.updateMessage(updatedMessageEntity)
 
                     if (shouldUpdateChatMetadata) {
                         // 更新聊天元数据时间戳

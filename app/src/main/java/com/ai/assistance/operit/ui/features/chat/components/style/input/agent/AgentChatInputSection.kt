@@ -142,7 +142,9 @@ import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModel
 import com.ai.assistance.operit.ui.floating.FloatingMode
 import com.ai.assistance.operit.ui.permissions.PermissionLevel
 import com.ai.assistance.operit.ui.theme.isLiquidGlassSupported
+import com.ai.assistance.operit.ui.theme.isWaterGlassSupported
 import com.ai.assistance.operit.ui.theme.liquidGlass
+import com.ai.assistance.operit.ui.theme.waterGlass
 import com.ai.assistance.operit.util.ChatUtils
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -171,7 +173,9 @@ fun AgentChatInputSection(
     onTakePhoto: (Uri) -> Unit,
     hasBackgroundImage: Boolean = false,
     chatInputTransparent: Boolean = false,
+    chatInputFloating: Boolean = false,
     chatInputLiquidGlass: Boolean = false,
+    chatInputWaterGlass: Boolean = false,
     modifier: Modifier = Modifier,
     externalAttachmentPanelState: Boolean? = null,
     onAttachmentPanelStateChange: ((Boolean) -> Unit)? = null,
@@ -567,7 +571,14 @@ fun AgentChatInputSection(
             Triple(MaterialTheme.colorScheme.primary, "", 0f)
         }
 
-    Surface(color = Color.Transparent, modifier = modifier) {
+    val floatingContainerModifier =
+        if (chatInputFloating) {
+            modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+        } else {
+            modifier
+        }
+
+    Surface(color = Color.Transparent, modifier = floatingContainerModifier) {
         Column {
             replyToMessage?.let { message ->
                 Surface(
@@ -662,9 +673,16 @@ fun AgentChatInputSection(
                 }
             }
 
-            val inputCardShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+            val inputCardShape =
+                if (chatInputFloating) {
+                    RoundedCornerShape(22.dp)
+                } else {
+                    RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                }
             val inputLiquidGlassEnabled =
-                chatInputTransparent && chatInputLiquidGlass && isLiquidGlassSupported()
+                chatInputTransparent && chatInputLiquidGlass && !chatInputWaterGlass && isLiquidGlassSupported()
+            val inputWaterGlassEnabled =
+                chatInputTransparent && chatInputWaterGlass && isWaterGlassSupported()
             val inputLiquidGlassTint =
                 if (isDarkTheme) {
                     darkModeInputColor
@@ -675,14 +693,20 @@ fun AgentChatInputSection(
                 if (isDarkTheme) {
                     Modifier.topEdgeHighlight(
                         shape = inputCardShape,
-                        lineColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
-                        glowColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.015f),
-                        glowHeight = 2.dp,
+                        lineColor =
+                            MaterialTheme.colorScheme.onSurface.copy(
+                                alpha = if (chatInputFloating) 0.03f else 0.05f,
+                            ),
+                        glowColor =
+                            MaterialTheme.colorScheme.onSurface.copy(
+                                alpha = if (chatInputFloating) 0.008f else 0.015f,
+                            ),
+                        glowHeight = if (chatInputFloating) 1.dp else 2.dp,
                     )
                 } else {
                     Modifier.outerDiffuseShadow(
                         shape = inputCardShape,
-                        spread = 6.dp,
+                        spread = if (chatInputFloating) 3.dp else 6.dp,
                     )
                 }
 
@@ -692,20 +716,28 @@ fun AgentChatInputSection(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(top = 4.dp)
+                            .padding(top = if (chatInputFloating) 2.dp else 4.dp)
                             .then(inputContainerEffectModifier)
+                            .waterGlass(
+                                enabled = inputWaterGlassEnabled,
+                                shape = inputCardShape,
+                                containerColor = inputLiquidGlassTint,
+                                shadowElevation = if (chatInputFloating) 12.dp else 18.dp,
+                                borderWidth = 0.7.dp,
+                                overlayAlphaBoost = if (chatInputFloating) 0.04f else 0.08f,
+                            )
                             .liquidGlass(
                                 enabled = inputLiquidGlassEnabled,
                                 shape = inputCardShape,
                                 containerColor = inputLiquidGlassTint,
-                                shadowElevation = 18.dp,
+                                shadowElevation = if (chatInputFloating) 12.dp else 18.dp,
                                 borderWidth = 0.42.dp,
-                                blurRadius = 20.dp,
-                                overlayAlphaBoost = 0.10f,
+                                blurRadius = if (chatInputFloating) 16.dp else 20.dp,
+                                overlayAlphaBoost = if (chatInputFloating) 0.06f else 0.10f,
                             )
                             .clip(inputCardShape)
                             .background(
-                                if (inputLiquidGlassEnabled) {
+                                if (inputLiquidGlassEnabled || inputWaterGlassEnabled) {
                                     Color.Transparent
                                 } else {
                                     inputContainerColor
@@ -981,20 +1013,28 @@ fun AgentChatInputSection(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(top = 4.dp)
+                            .padding(top = if (chatInputFloating) 2.dp else 4.dp)
                             .then(inputContainerEffectModifier)
+                            .waterGlass(
+                                enabled = inputWaterGlassEnabled,
+                                shape = inputCardShape,
+                                containerColor = inputLiquidGlassTint,
+                                shadowElevation = if (chatInputFloating) 12.dp else 18.dp,
+                                borderWidth = 0.7.dp,
+                                overlayAlphaBoost = if (chatInputFloating) 0.04f else 0.08f,
+                            )
                             .liquidGlass(
                                 enabled = inputLiquidGlassEnabled,
                                 shape = inputCardShape,
                                 containerColor = inputLiquidGlassTint,
-                                shadowElevation = 18.dp,
+                                shadowElevation = if (chatInputFloating) 12.dp else 18.dp,
                                 borderWidth = 0.42.dp,
-                                blurRadius = 20.dp,
-                                overlayAlphaBoost = 0.10f,
+                                blurRadius = if (chatInputFloating) 16.dp else 20.dp,
+                                overlayAlphaBoost = if (chatInputFloating) 0.06f else 0.10f,
                             )
                             .clip(inputCardShape)
                             .background(
-                                if (inputLiquidGlassEnabled) {
+                                if (inputLiquidGlassEnabled || inputWaterGlassEnabled) {
                                     Color.Transparent
                                 } else {
                                     inputContainerColor
