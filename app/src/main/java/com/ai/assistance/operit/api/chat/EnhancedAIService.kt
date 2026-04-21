@@ -1619,6 +1619,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                     context = context,
                     content = finalContent,
                     enableMemoryQuery = enableMemoryQuery,
+                    onNonFatalError = onNonFatalError,
                     isSubTask = isSubTask,
                     chatId = chatId,
                     characterName = characterName,
@@ -1793,6 +1794,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         context: MessageExecutionContext,
         content: String,
         enableMemoryQuery: Boolean,
+        onNonFatalError: suspend (error: String) -> Unit,
         isSubTask: Boolean,
         chatId: String? = null,
         characterName: String? = null,
@@ -1816,15 +1818,22 @@ class EnhancedAIService private constructor(private val context: Context) {
 
         if (enableMemoryQuery) {
             // 保存会话记忆到记忆库
-            toolProcessingScope.launch {
-                com.ai.assistance.operit.api.chat.library.MemoryLibrary.saveMemoryAsync(
-                        this@EnhancedAIService.context,
-                        toolHandler,
-                        context.conversationHistory.toRoleContentPairs(),
-                        content,
-                        multiServiceManager.getServiceForFunction(FunctionType.MEMORY)
-                )
-            }
+            com.ai.assistance.operit.api.chat.library.MemoryLibrary.saveMemoryAsync(
+                this@EnhancedAIService.context,
+                toolHandler,
+                context.conversationHistory.toRoleContentPairs(),
+                content,
+                multiServiceManager.getServiceForFunction(FunctionType.MEMORY),
+                onError = { e ->
+                    AppLogger.e(TAG, "自动保存会话记忆失败", e)
+                    onNonFatalError(
+                        this@EnhancedAIService.context.getString(
+                            R.string.chat_auto_update_memory_failed,
+                            e.message ?: ""
+                        )
+                    )
+                }
+            )
         }
 
         if (!isSubTask) {
@@ -2820,24 +2829,36 @@ class EnhancedAIService private constructor(private val context: Context) {
      * @param conversationHistory The history of the conversation to save.
      * @param lastContent The content of the last message in the conversation.
      */
-    suspend fun saveConversationToMemory(
+    fun saveConversationToMemoryAsync(
         conversationHistory: List<Pair<String, String>>,
-        lastContent: String
+        lastContent: String,
+        onSuccess: (suspend () -> Unit)? = null,
+        onError: (suspend (Exception) -> Unit)? = null
     ) {
         AppLogger.d(TAG, "手动触发记忆更新...")
-        withContext(Dispatchers.IO) {
+        toolProcessingScope.launch {
             try {
+                val memoryService = multiServiceManager.getServiceForFunction(FunctionType.MEMORY)
                 com.ai.assistance.operit.api.chat.library.MemoryLibrary.saveMemoryAsync(
-                    context,
-                    toolHandler,
-                    conversationHistory,
-                    lastContent,
-                    multiServiceManager.getServiceForFunction(FunctionType.MEMORY)
+                    context = context,
+                    toolHandler = toolHandler,
+                    conversationHistory = conversationHistory,
+                    content = lastContent,
+                    aiService = memoryService,
+                    onSuccess = {
+                        AppLogger.d(TAG, "手动记忆更新成功")
+                        onSuccess?.invoke()
+                    },
+                    onError = { e ->
+                        AppLogger.e(TAG, "手动记忆更新失败", e)
+                        onError?.invoke(e)
+                    }
                 )
-                AppLogger.d(TAG, "手动记忆更新成功")
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "手动记忆更新失败", e)
+            } catch (e: CancellationException) {
                 throw e
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "手动记忆更新初始化失败", e)
+                onError?.invoke(e)
             }
         }
     }

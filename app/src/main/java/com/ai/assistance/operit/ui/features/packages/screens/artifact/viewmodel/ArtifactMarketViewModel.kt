@@ -14,9 +14,11 @@ import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.data.api.GitHubApiService
 import com.ai.assistance.operit.data.api.GitHubComment
 import com.ai.assistance.operit.data.api.GitHubIssue
+import com.ai.assistance.operit.data.api.MarketStatsApiService
 import com.ai.assistance.operit.data.api.GitHubReaction
 import com.ai.assistance.operit.data.api.GitHubRepository
 import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
+import com.ai.assistance.operit.data.preferences.GitHubUser
 import com.ai.assistance.operit.ui.features.packages.market.ArtifactMarketItem
 import com.ai.assistance.operit.ui.features.packages.market.ArtifactMarketMetadata
 import com.ai.assistance.operit.ui.features.packages.market.ArtifactMarketScope
@@ -24,16 +26,27 @@ import com.ai.assistance.operit.ui.features.packages.market.ForgeRepoInfo
 import com.ai.assistance.operit.ui.features.packages.market.GitHubForgePublishService
 import com.ai.assistance.operit.ui.features.packages.market.GitHubIssueMarketService
 import com.ai.assistance.operit.ui.features.packages.market.LocalPublishableArtifact
+import com.ai.assistance.operit.ui.features.packages.market.MarketEntryStats
 import com.ai.assistance.operit.ui.features.packages.market.MarketRegistrationPayload
+import com.ai.assistance.operit.ui.features.packages.market.MarketSortOption
 import com.ai.assistance.operit.ui.features.packages.market.PublishArtifactRequest
 import com.ai.assistance.operit.ui.features.packages.market.PublishArtifactType
 import com.ai.assistance.operit.ui.features.packages.market.PublishAttemptResult
 import com.ai.assistance.operit.ui.features.packages.market.PublishProgressStage
+import com.ai.assistance.operit.ui.features.packages.market.buildMarketDisplayState
 import com.ai.assistance.operit.ui.features.packages.market.formatSupportedAppVersions
 import com.ai.assistance.operit.ui.features.packages.market.isAppVersionSupported
+import com.ai.assistance.operit.ui.features.packages.market.loadMarketStatsMap
 import com.ai.assistance.operit.ui.features.packages.market.normalizeAppVersionOrNull
 import com.ai.assistance.operit.ui.features.packages.market.normalizeMarketArtifactId
+import com.ai.assistance.operit.ui.features.packages.market.resolveArtifactMarketEntryId
+import com.ai.assistance.operit.ui.features.packages.market.resolveArtifactMarketStatsType
+import com.ai.assistance.operit.ui.features.packages.market.resolveMarketDownloadTarget
+import com.ai.assistance.operit.ui.features.packages.market.toRankMetric
+import com.ai.assistance.operit.ui.features.packages.market.toMarketStatsType
+import com.ai.assistance.operit.ui.features.packages.market.toMarketEntryStats
 import com.ai.assistance.operit.ui.features.packages.market.toArtifactMarketItem
+import com.ai.assistance.operit.ui.features.packages.market.updateMarketEntryStats
 import com.ai.assistance.operit.ui.features.packages.utils.ArtifactIssueParser
 import com.ai.assistance.operit.util.AppLogger
 import java.io.File
@@ -41,6 +54,7 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -48,7 +62,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -58,6 +71,7 @@ class ArtifactMarketViewModel(
     private val scope: ArtifactMarketScope
 ) : ViewModel() {
     private val githubApiService = GitHubApiService(context)
+    private val marketStatsApiService = MarketStatsApiService()
     private val githubAuth = GitHubAuthPreferences.getInstance(context)
     private val forgePublishService = GitHubForgePublishService(context, githubApiService)
     private val packageManager =
@@ -84,16 +98,27 @@ class ArtifactMarketViewModel(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
+    private val _sortOption = MutableStateFlow(MarketSortOption.UPDATED)
+    val sortOption: StateFlow<MarketSortOption> = _sortOption.asStateFlow()
+
+    private val _marketStats = MutableStateFlow<Map<String, MarketEntryStats>>(emptyMap())
+    val marketStats: StateFlow<Map<String, MarketEntryStats>> = _marketStats.asStateFlow()
+
     private val _marketItems = MutableStateFlow<List<ArtifactMarketItem>>(emptyList())
     private val _searchResultItems = MutableStateFlow<List<ArtifactMarketItem>>(emptyList())
 
     val marketItems: StateFlow<List<ArtifactMarketItem>> =
-        combine(_marketItems, _searchQuery, _searchResultItems) { items, query, searchItems ->
-            if (query.isBlank()) items else searchItems
-        }.stateIn(
+        buildMarketDisplayState(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
+            baseItems = _marketItems,
+            searchQuery = _searchQuery,
+            searchResults = _searchResultItems,
+            sortOption = _sortOption,
+            stats = _marketStats,
+            idSelector = { resolveArtifactMarketEntryId(it.metadata) },
+            updatedAtSelector = { it.issue.updated_at },
+            titleSelector = { it.metadata.displayName.ifBlank { it.issue.title } },
+            likesSelector = { it.issue.reactions?.thumbs_up ?: 0 }
         )
 
     private val _publishableArtifacts = MutableStateFlow<List<LocalPublishableArtifact>>(emptyList())
@@ -133,7 +158,7 @@ class ArtifactMarketViewModel(
             initialValue = false
         )
 
-    val currentUser =
+    val currentUser: StateFlow<GitHubUser?> =
         githubAuth.userInfoFlow.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5000),
@@ -165,7 +190,8 @@ class ArtifactMarketViewModel(
     val repositoryCache: StateFlow<Map<String, GitHubRepository>> = _repositoryCache.asStateFlow()
 
     private val supportedTypes = scope.supportedTypes()
-    private var currentPage = 1
+    private val currentBrowsePages = mutableMapOf<PublishArtifactType, Int>()
+    private val totalBrowsePages = mutableMapOf<PublishArtifactType, Int>()
     private var searchJob: Job? = null
     private var pendingPublishRequest: PublishArtifactRequest? = null
     private var pendingMarketRegistrationPayload: MarketRegistrationPayload? = null
@@ -209,18 +235,12 @@ class ArtifactMarketViewModel(
             _isLoading.value = true
             _isLoadingMore.value = false
             _errorMessage.value = null
-            _hasMore.value = true
-            currentPage = 1
+            _hasMore.value = false
+            currentBrowsePages.clear()
+            totalBrowsePages.clear()
             try {
-                fetchOpenIssuesForPage(page = 1).fold(
-                    onSuccess = { items ->
-                        _marketItems.value = items
-                        _hasMore.value = items.isNotEmpty()
-                    },
-                    onFailure = { error ->
-                        _errorMessage.value = error.message ?: "Failed to load market data"
-                    }
-                )
+                refreshMarketStats()
+                loadBrowsePages(reset = true)
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "Failed to load market data"
                 AppLogger.e(TAG, "Failed to load market data", e)
@@ -231,24 +251,14 @@ class ArtifactMarketViewModel(
     }
 
     fun loadMoreMarketData() {
-        if (_isLoading.value || _isLoadingMore.value || !_hasMore.value || _searchQuery.value.isNotBlank()) {
+        if (_searchQuery.value.isNotBlank() || _isLoading.value || _isLoadingMore.value || !_hasMore.value) {
             return
         }
 
         viewModelScope.launch {
             _isLoadingMore.value = true
             try {
-                val nextPage = currentPage + 1
-                fetchOpenIssuesForPage(page = nextPage).fold(
-                    onSuccess = { items ->
-                        _marketItems.value = mergeAndSortItems(_marketItems.value + items)
-                        currentPage = nextPage
-                        _hasMore.value = items.isNotEmpty()
-                    },
-                    onFailure = { error ->
-                        _errorMessage.value = error.message ?: "Failed to load more market data"
-                    }
-                )
+                loadBrowsePages(reset = false)
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "Failed to load more market data"
                 AppLogger.e(TAG, "Failed to load more market data", e)
@@ -264,6 +274,8 @@ class ArtifactMarketViewModel(
 
         val trimmed = query.trim()
         if (trimmed.isBlank()) {
+            _isLoading.value = false
+            _errorMessage.value = null
             _searchResultItems.value = emptyList()
             return
         }
@@ -271,6 +283,24 @@ class ArtifactMarketViewModel(
         searchJob = viewModelScope.launch {
             delay(300)
             searchMarket(trimmed)
+        }
+    }
+
+    fun onSortOptionChanged(option: MarketSortOption) {
+        _sortOption.value = option
+        loadMarketData()
+    }
+
+    fun ensureMarketStatsLoaded(entryId: String? = null) {
+        if (entryId != null && _marketStats.value.containsKey(entryId)) {
+            return
+        }
+        if (entryId == null && _marketStats.value.isNotEmpty()) {
+            return
+        }
+
+        viewModelScope.launch {
+            refreshMarketStats()
         }
     }
 
@@ -291,6 +321,8 @@ class ArtifactMarketViewModel(
                     }
                 }
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (query == _searchQuery.value.trim()) {
                 _errorMessage.value = e.message ?: "Failed to search market data"
@@ -626,6 +658,7 @@ class ArtifactMarketViewModel(
             _installingIds.value = _installingIds.value + itemId
             _errorMessage.value = null
             try {
+                trackArtifactDownload(item)
                 val tempFile = withContext(Dispatchers.IO) { downloadArtifactToTempFile(item) }
                 val importResult =
                     withContext(Dispatchers.IO) {
@@ -754,14 +787,76 @@ class ArtifactMarketViewModel(
         }
     }
 
-    private suspend fun fetchOpenIssuesForPage(page: Int): Result<List<ArtifactMarketItem>> {
-        return aggregateResults { service -> service.getOpenIssues(page = page) }
-            .map { issues -> issues.mapNotNull(::toArtifactMarketItem) }
-    }
-
     private suspend fun searchOpenIssues(query: String): Result<List<ArtifactMarketItem>> {
         return aggregateResults { service -> service.searchOpenIssues(rawQuery = query, page = 1) }
             .map { issues -> issues.mapNotNull(::toArtifactMarketItem) }
+    }
+
+    private suspend fun loadBrowsePages(reset: Boolean) {
+        val loadedItems = mutableListOf<ArtifactMarketItem>()
+        var firstError: Throwable? = null
+
+        for (type in supportedTypes) {
+            val nextPage =
+                if (reset) {
+                    1
+                } else {
+                    val totalPages = totalBrowsePages[type] ?: Int.MAX_VALUE
+                    val candidate = (currentBrowsePages[type] ?: 0) + 1
+                    if (candidate > totalPages) continue
+                    candidate
+                }
+
+            marketStatsApiService.getRankPage(
+                type = type.toMarketStatsType().wireValue,
+                metric = _sortOption.value.toRankMetric(),
+                page = nextPage
+            ).fold(
+                onSuccess = { page ->
+                    currentBrowsePages[type] = page.page
+                    totalBrowsePages[type] = page.totalPages.coerceAtLeast(1)
+                    page.items.forEach { entry ->
+                        _marketStats.updateMarketEntryStats(entry.id) {
+                            entry.toMarketEntryStats()
+                        }
+                    }
+                    loadedItems += page.items.mapNotNull { entry -> toArtifactMarketItem(entry) }
+                },
+                onFailure = { error ->
+                    if (firstError == null) {
+                        firstError = error
+                    }
+                    AppLogger.e(
+                        TAG,
+                        "Failed to load ${type.wireValue} market browse page $nextPage",
+                        error
+                    )
+                }
+            )
+        }
+
+        if (loadedItems.isNotEmpty()) {
+            val mergedItems =
+                if (reset) {
+                    loadedItems
+                } else {
+                    _marketItems.value + loadedItems
+                }
+            _marketItems.value = mergedItems.distinctBy { it.issue.id }
+        } else if (reset) {
+            _marketItems.value = emptyList()
+        }
+
+        _hasMore.value =
+            supportedTypes.any { type ->
+                val currentPage = currentBrowsePages[type] ?: 0
+                val totalPages = totalBrowsePages[type] ?: 0
+                totalPages > 0 && currentPage < totalPages
+            }
+
+        firstError?.let { error ->
+            _errorMessage.value = error.message ?: "Failed to load market data"
+        }
     }
 
     private suspend fun aggregateResults(
@@ -779,10 +874,6 @@ class ArtifactMarketViewModel(
                 .distinctBy { it.id }
                 .sortedByDescending { it.updated_at }
         )
-    }
-
-    private fun mergeAndSortItems(items: List<ArtifactMarketItem>): List<ArtifactMarketItem> {
-        return items.distinctBy { it.issue.id }.sortedByDescending { it.issue.updated_at }
     }
 
     private fun stageMessage(stage: PublishProgressStage): String? {
@@ -856,6 +947,37 @@ class ArtifactMarketViewModel(
         }
 
         return targetFile
+    }
+
+    private suspend fun refreshMarketStats() {
+        _marketStats.value =
+            loadMarketStatsMap(
+                marketStatsApiService = marketStatsApiService,
+                types = supportedTypes.map { it.toMarketStatsType() },
+                logTag = TAG
+            )
+    }
+
+    private suspend fun trackArtifactDownload(item: ArtifactMarketItem) {
+        val statsType = resolveArtifactMarketStatsType(item.metadata) ?: return
+        val entryId = resolveArtifactMarketEntryId(item.metadata)
+        val targetUrl =
+            resolveMarketDownloadTarget(
+                preferredUrl = item.metadata.downloadUrl,
+                fallbackUrl = item.issue.html_url
+            )
+
+        marketStatsApiService.trackDownload(
+            type = statsType.wireValue,
+            id = entryId,
+            targetUrl = targetUrl
+        ).onSuccess {
+            _marketStats.updateMarketEntryStats(entryId) { current ->
+                current.copy(downloads = current.downloads + 1)
+            }
+        }.onFailure { error ->
+            AppLogger.w(TAG, "Failed to track artifact download for $entryId: ${error.message}")
+        }
     }
 
     private fun writeStreamToFile(inputStream: InputStream, targetFile: File) {

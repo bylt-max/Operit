@@ -51,12 +51,15 @@ fun GlobalDisplaySettingsScreen(
     val showModelName by displayPreferencesManager.showModelName.collectAsState(initial = false)
     val showRoleName by displayPreferencesManager.showRoleName.collectAsState(initial = false)
     val showUserName by displayPreferencesManager.showUserName.collectAsState(initial = false)
+    val showMessageTokenStats by displayPreferencesManager.showMessageTokenStats.collectAsState(initial = false)
+    val showMessageTimingStats by displayPreferencesManager.showMessageTimingStats.collectAsState(initial = false)
     val toolCollapseMode by displayPreferencesManager.toolCollapseMode.collectAsState(initial = ToolCollapseMode.ALL)
     val showFpsCounter by displayPreferencesManager.showFpsCounter.collectAsState(initial = false)
     val enableReplyNotification by displayPreferencesManager.enableReplyNotification.collectAsState(initial = true)
     val enableReplyNotificationSound by displayPreferencesManager.enableReplyNotificationSound.collectAsState(initial = false)
     val enableReplyNotificationVibration by displayPreferencesManager.enableReplyNotificationVibration.collectAsState(initial = false)
     val enableEnterToSend by displayPreferencesManager.enableEnterToSend.collectAsState(initial = false)
+    val enableNewSidebar by displayPreferencesManager.enableNewSidebar.collectAsState(initial = true)
     val enableNavigationAnimation by displayPreferencesManager.enableNavigationAnimation.collectAsState(initial = true)
     val enableExperimentalVirtualDisplay by displayPreferencesManager.enableExperimentalVirtualDisplay.collectAsState(initial = true)
     val hideRuntimeTaskView by displayPreferencesManager.hideRuntimeTaskView.collectAsState(initial = false)
@@ -232,6 +235,30 @@ fun GlobalDisplaySettingsScreen(
                 backgroundColor = componentBackgroundColor
             )
 
+            DisplayToggleItem(
+                title = stringResource(R.string.show_message_token_stats),
+                subtitle = stringResource(R.string.show_message_token_stats_description),
+                checked = showMessageTokenStats,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(showMessageTokenStats = it)
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
+            DisplayToggleItem(
+                title = stringResource(R.string.show_message_timing_stats),
+                subtitle = stringResource(R.string.show_message_timing_stats_description),
+                checked = showMessageTimingStats,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(showMessageTimingStats = it)
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -371,6 +398,18 @@ fun GlobalDisplaySettingsScreen(
                 onCheckedChange = {
                     scope.launch {
                         displayPreferencesManager.saveDisplaySettings(enableEnterToSend = it)
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
+            DisplayToggleItem(
+                title = stringResource(R.string.enable_new_sidebar),
+                subtitle = stringResource(R.string.enable_new_sidebar_description),
+                checked = enableNewSidebar,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(enableNewSidebar = it)
                     }
                 },
                 backgroundColor = componentBackgroundColor

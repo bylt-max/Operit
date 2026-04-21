@@ -28,6 +28,8 @@
     <string name="nav_terminal">终端</string>
     <string name="nav_toolbox">工具箱</string>
     <string name="nav_item_agreement">用户协议</string>
+    <string name="sidebar_permission_short">权限</string>
+    <string name="sidebar_status_normal">正常</string>
 
     <!-- Chat Module -->
     <string name="chat_fullscreen_input">全屏输入</string>
@@ -1548,8 +1550,6 @@
     <string name="manage_packages">管理包</string>
     <string name="disable_user_preference_description">禁用用户偏好描述</string>
     <string name="disable_user_preference_description_desc">禁用后，系统提示词中不再附加“User preference description”段落</string>
-    <string name="disable_latex_description">禁用 LaTeX 描述</string>
-    <string name="disable_latex_description_desc">禁用后，系统提示词中不再包含 LaTeX 公式格式说明</string>
     <string name="disable_status_tags">禁用状态标签</string>
     <string name="disable_status_tags_desc">禁用后，系统提示词中不再附加要求以“任务完成 / 等待响应”状态标签结束回复的规则</string>
     <string name="reply_message">回复</string>
@@ -2979,6 +2979,16 @@
     <string name="chat_message_updated">消息已更新</string>
     <string name="chat_update_message_failed">更新消息失败: %1$s</string>
     <string name="chat_only_user_message_allowed">只能对用户消息执行此操作</string>
+    <string name="chat_only_ai_message_allowed">只能对 AI 消息执行此操作</string>
+    <string name="chat_regenerate_single">单条重新生成</string>
+    <string name="chat_regenerating_single">正在重新生成该条回答...</string>
+    <string name="chat_regenerate_single_failed">单条重新生成失败: %1$s</string>
+    <string name="chat_regenerate_busy">当前已有消息在处理中，请稍后再试</string>
+    <string name="chat_regenerate_single_tool_unsupported">包含工具调用的回答暂不支持单条重新生成</string>
+    <string name="chat_switch_variant_failed">切换回答失败: %1$s</string>
+    <string name="chat_message_variant_counter">%1$d/%2$d</string>
+    <string name="chat_previous_variant">上一条回答</string>
+    <string name="chat_next_variant">下一条回答</string>
     <string name="chat_rewind_failed">回档失败: %1$s</string>
     <string name="chat_preparing_resend">正在准备重新发送消息</string>
     <string name="chat_rolled_back_message_in_input">已回滚，消息内容已放入输入框</string>
@@ -3692,6 +3702,7 @@
     <string name="provider_siliconflow">硅基流动</string>
     <string name="provider_iflow">iFlow</string>
     <string name="provider_openrouter">OpenRouter (多模型聚合)</string>
+    <string name="provider_nous_portal">Nous Portal</string>
     <string name="provider_infiniai">无问芯穹</string>
     <string name="provider_alipay_bailing">支付宝百灵大模型</string>
     <string name="provider_lmstudio">LM Studio</string>
@@ -4068,6 +4079,19 @@
     <string name="login_github_to_manage_packages">登录 GitHub 以发布和管理您的工具包</string>
     <string name="browse">浏览</string>
     <string name="my_tab">我的</string>
+    <string name="market_tab_artifact">沙盒包</string>
+    <string name="market_tab_mcp">MCP</string>
+    <string name="market_tab_skill">Skill</string>
+    <string name="market_tab_mine">我的</string>
+    <string name="market_section_manage">管理</string>
+    <string name="market_section_publish">发布</string>
+    <string name="market_manage_artifact">管理包</string>
+    <string name="market_manage_skill">管理 Skill</string>
+    <string name="market_manage_mcp">管理 MCP</string>
+    <string name="market_publish_artifact">发布包</string>
+    <string name="market_publish_skill">发布 Skill</string>
+    <string name="market_publish_mcp">发布 MCP</string>
+    <string name="market_login_required_hint">登录 GitHub 后可管理和发布市场内容</string>
     <string name="user_avatar">用户头像</string>
     <string name="clear_search">清空搜索</string>
     <string name="available_mcp_plugins">可用的 MCP 插件</string>
@@ -4078,7 +4102,7 @@
     <string name="no_matching_skills_found">未找到匹配的 Skill</string>
     <string name="no_matching_scripts_found">未找到匹配的脚本</string>
     <string name="no_matching_packages_found">未找到匹配的工具包</string>
-    <string name="skill_market_search_placeholder">搜索 Skill 名称、描述、作者...</string>
+    <string name="skill_market_search_placeholder">搜索 Skill 或作者</string>
     <string name="script_market_search_placeholder">搜索脚本名称、描述、作者...</string>
     <string name="package_market_search_placeholder">搜索工具包名称、描述、作者...</string>
     <string name="skill_repo_url_not_found">未找到仓库地址</string>
@@ -4190,7 +4214,7 @@
     <string name="login_github_to_manage_artifacts">登录 GitHub 后即可管理和发布脚本/工具包</string>
     <string name="need_login_github_manage_artifacts">需要登录 GitHub 才能管理您发布的脚本和工具包</string>
     <string name="available_artifacts_market">可用的脚本和工具包</string>
-    <string name="artifact_market_search_placeholder">搜索名称、描述、作者...</string>
+    <string name="artifact_market_search_placeholder">搜索名称或作者</string>
     <string name="no_matching_artifacts_found">未找到匹配的条目</string>
     <string name="no_artifacts_available">暂无可用的脚本或工具包</string>
     <string name="publish_new_artifact">发布新条目</string>
@@ -4200,6 +4224,7 @@
     <string name="click_button_publish_first_artifact">点击上方按钮发布您的第一个脚本或工具包</string>
     <string name="confirm_remove_artifact_from_market">确定要从市场移除条目「%1$s」吗？此操作会关闭对应的 Issue，但不会删除您的发布仓库。</string>
     <string name="screen_title_artifact_market">脚本与工具包市场</string>
+    <string name="screen_title_market">市场</string>
     <string name="screen_title_artifact_manage">管理脚本与工具包</string>
     <string name="screen_title_artifact_publish">发布脚本或工具包</string>
     <string name="artifact_publish_info_description">条目会先上传到您自己的 OperitForge 发布仓库，再根据类型自动登记到脚本市场或工具包市场。请确认内容、版本和兼容范围准确无误。</string>
@@ -4238,6 +4263,10 @@
     <string name="downloading">下载中</string>
     <string name="download_script">下载脚本</string>
     <string name="download_package">下载工具包</string>
+    <string name="market_sort_updated">最近更新</string>
+    <string name="market_sort_downloads">下载量</string>
+    <string name="market_sort_likes">点赞量</string>
+    <string name="market_stat_downloads_short">下载 %1$d</string>
     <string name="open_asset">打开资源</string>
     <string name="metadata_title">元数据</string>
     <string name="type_label">类型</string>
@@ -4252,6 +4281,19 @@
     <string name="comments_with_count">评论 (%1$d)</string>
     <string name="no_comments_yet">还没有评论</string>
     <string name="be_first_comment_here">来留下第一条反馈吧。</string>
+    <string name="market_detail_about_title">简介</string>
+    <string name="market_detail_status_available">可用</string>
+    <string name="market_detail_status_closed">已关闭</string>
+    <string name="market_detail_open_page">打开页面</string>
+    <string name="market_detail_post_comment">发表评论</string>
+    <string name="market_detail_like_action">点赞</string>
+    <string name="market_detail_favorite_action">收藏</string>
+    <string name="market_detail_category_label">分类</string>
+    <string name="market_detail_created_label">创建时间</string>
+    <string name="market_detail_published_label">发布时间</string>
+    <string name="market_detail_author_role">作者</string>
+    <string name="market_detail_publisher_role">发布者</string>
+    <string name="market_detail_sharer_role">分享者</string>
     <string name="comment_label">评论</string>
     <string name="publish_action">发布</string>
     <string name="invalid_artifact_metadata">该市场条目的元数据无效，无法展示详情。</string>
@@ -4733,43 +4775,6 @@
     <string name="dialog_button_confirm">重新加载</string>
     <string name="dialog_button_dismiss">取消</string>
 
-    <string name="migration_import_failed">导入失败</string>
-    <string name="migration_import_error">导入过程中出错: %1$s</string>
-    <string name="migration_open_file_failed">无法打开文件: %1$s</string>
-    <string name="migration_info_cd">迁移信息</string>
-    <string name="migration_found_old_chat_title">发现旧版聊天记录</string>
-    <string name="migration_found_old_chat_desc">检测到之前版本的聊天记录数据，您可以将这些聊天记录导入到新版本中。</string>
-    <string name="migration_error_during_migration">迁移过程中出现错误</string>
-    <string name="migration_start">开始迁移</string>
-    <string name="migration_skip">跳过</string>
-    <string name="migration_advanced_options">高级选项</string>
-    <string name="migration_manual_backup_desc">您也可以手动备份或导入聊天记录：</string>
-    <string name="migration_export_cd">导出</string>
-    <string name="migration_export_backup">导出备份</string>
-    <string name="migration_import_cd">导入</string>
-    <string name="migration_import_backup">导入备份</string>
-    <string name="migration_in_progress_title">正在迁移数据...</string>
-    <string name="migration_in_progress_desc">请耐心等待，迁移过程中请勿关闭应用</string>
-    <string name="migration_completed_cd">迁移完成</string>
-    <string name="migration_completed_title">迁移完成</string>
-    <string name="migration_completed_desc">成功迁移 %1$d 条聊天记录</string>
-    <string name="migration_continue">继续</string>
-    <string name="migration_failed_cd">迁移失败</string>
-    <string name="migration_failed_title">迁移失败</string>
-    <string name="migration_retry">重试</string>
-    <string name="migration_exporting_title">正在导出备份...</string>
-    <string name="migration_export_failed">导出失败</string>
-    <string name="migration_exported_cd">导出完成</string>
-    <string name="migration_exported_title">导出完成</string>
-    <string name="migration_exported_desc">备份文件已保存到:\n%1$s</string>
-    <string name="migration_back">返回</string>
-    <string name="migration_importing_title">正在导入备份...</string>
-    <string name="migration_imported_cd">导入完成</string>
-    <string name="migration_imported_title">导入完成</string>
-    <string name="migration_imported_desc">成功导入 %1$d 条聊天记录</string>
-    <string name="migration_back_to_screen">返回迁移界面</string>
-
-
     <string name="settings_context_card_title">设置说明:</string>
     <string name="settings_context_card_content">· 上下文长度: 建议设为您日常使用的最大值。\n· 最大上下文长度: 建议设为模型API支持的最大值。\n软件会在上下文达到阈值时自动压缩，以防超限。请注意，上下文并非越大越好，需用户与软件协同配合。</string>
 
@@ -4989,6 +4994,12 @@
     <string name="show_role_name_description">在AI消息中显示当前角色卡名称</string>
     <string name="show_user_name">显示用户名字</string>
     <string name="show_user_name_description">在用户消息中显示用户名字</string>
+    <string name="show_message_token_stats">显示消息 Token 简报</string>
+    <string name="show_message_token_stats_description">在 AI 消息底部显示简洁的 token 上下行与缓存信息</string>
+    <string name="show_message_timing_stats">显示消息耗时简报</string>
+    <string name="show_message_timing_stats_description">在 AI 消息底部显示首包与生成耗时</string>
+    <string name="chat_message_token_stats_compact">token: %1$d(cache: %2$d) ↑ %3$d ↓ %4$d</string>
+    <string name="chat_message_timing_stats_compact">time: %1$s (首 %2$s 生成 %3$s)</string>
     <string name="global_user_name">全局用户名字</string>
     <string name="system_display_settings">系统显示设置</string>
     <string name="show_fps_counter_description">在屏幕上显示帧率性能指标</string>
@@ -5197,7 +5208,7 @@
     <string name="backup_select_export_format">选择导出格式</string>
     <string name="backup_select_format_hint">请选择要导出的聊天记录格式：</string>
     <string name="backup_format_json">JSON（推荐）</string>
-    <string name="backup_format_json_desc">Operit 原生格式，完整保留所有数据</string>
+    <string name="backup_format_json_desc">Operit 原生格式，完整保留消息切换等所有数据</string>
     <string name="backup_format_markdown">Markdown</string>
     <string name="backup_format_markdown_desc">轻量级标记格式，便于阅读和编辑</string>
     <string name="backup_format_html">HTML</string>
@@ -5209,7 +5220,7 @@
     <string name="backup_select_import_format">选择导入格式</string>
     <string name="backup_import_format_hint">请选择要导入的聊天记录格式：</string>
     <string name="backup_format_operit">Operit JSON（推荐）</string>
-    <string name="backup_format_operit_desc">本应用的原生格式，完整保留所有数据</string>
+    <string name="backup_format_operit_desc">本应用的原生格式，完整保留消息切换等所有数据</string>
     <string name="backup_format_chatgpt">ChatGPT</string>
     <string name="backup_format_chatgpt_desc">OpenAI ChatGPT conversations.json 导出格式</string>
     <string name="backup_format_chatbox">ChatBox</string>
@@ -5755,7 +5766,7 @@
     <string name="pkg_no_tools">暂无可用工具</string>
 
     <!-- MCP Market Screen -->
-    <string name="mcp_market_search_hint">搜索插件名称、描述、作者...</string>
+    <string name="mcp_market_search_hint">搜索插件或作者</string>
     <string name="mcp_market_search">搜索</string>
     <string name="mcp_market_clear_search">清空搜索</string>
     <string name="mcp_market_refresh">刷新</string>
@@ -6585,6 +6596,8 @@
     <string name="visit_web_wait_time_value">%1$d 秒</string>
     <string name="enable_enter_to_send">回车发送</string>
     <string name="enable_enter_to_send_description">开启后，聊天输入框按回车会直接发送，键盘发送键也会显示为发送。</string>
+    <string name="enable_new_sidebar">新版侧边栏</string>
+    <string name="enable_new_sidebar_description">开启后启用新版侧边栏入口，后续侧边栏的大改版也会基于这里继续迭代。</string>
     <string name="tool_collapse_mode_title">折叠工具</string>
     <string name="tool_collapse_mode_desc">设置消息中工具调用分组的默认折叠范围</string>
     <string name="tool_collapse_mode_read_only">折叠多个只读工具</string>
@@ -6795,6 +6808,7 @@
     <string name="chat_history_empty_no_update">聊天历史为空，无需更新记忆</string>
     <string name="chat_memory_manually_updated">记忆已手动更新</string>
     <string name="chat_manual_update_memory_failed">手动更新记忆失败: %1$s</string>
+    <string name="chat_auto_update_memory_failed">自动更新记忆失败: %1$s</string>
     <string name="chat_summarizing_please_wait">正在总结中，请稍候</string>
     <string name="chat_conversation_summary_generated">对话总结已生成</string>
     <string name="chat_compressing_history">正在压缩历史记录...</string>

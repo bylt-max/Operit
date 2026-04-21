@@ -30,9 +30,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -41,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
@@ -61,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.AiReference
 import com.ai.assistance.operit.data.model.ChatMessage
+import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 
 import androidx.compose.ui.window.PopupProperties
 
@@ -79,6 +84,7 @@ import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleI
 import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleStyleChatMessage
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.WaifuMessageProcessor
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -291,6 +297,8 @@ fun ChatArea(
     onDeleteMessage: ((Int) -> Unit)? = null,
     onDeleteMessagesFrom: ((Int) -> Unit)? = null,
     onRollbackToMessage: ((Int) -> Unit)? = null, // 回滚到指定消息的回调
+    onRegenerateMessage: ((Int) -> Unit)? = null,
+    onSwitchMessageVariant: ((Int, Int) -> Unit)? = null,
     onSpeakMessage: ((String) -> Unit)? = null, // 添加朗读回调参数
     onAutoReadMessage: ((String) -> Unit)? = null, // 添加自动朗读回调参数
     onReplyToMessage: ((ChatMessage) -> Unit)? = null, // 添加回复回调参数
@@ -325,6 +333,12 @@ fun ChatArea(
     bubbleAiContentPaddingRight: Float = 12f,
     showChatFloatingDotsAnimation: Boolean = true,
 ) {
+    val context = LocalContext.current
+    val displayPreferencesManager = remember { DisplayPreferencesManager.getInstance(context) }
+    val showMessageTokenStats by
+        displayPreferencesManager.showMessageTokenStats.collectAsState(initial = false)
+    val showMessageTimingStats by
+        displayPreferencesManager.showMessageTimingStats.collectAsState(initial = false)
     var newestVisibleDepthState by remember(currentChatId) { mutableStateOf(1) }
     var oldestVisibleDepthState by remember(currentChatId) { mutableStateOf(1) }
     var viewportHeightPx by remember { mutableStateOf(0) }
@@ -536,12 +550,16 @@ fun ChatArea(
                             onDeleteMessage = onDeleteMessage,
                             onDeleteMessagesFrom = onDeleteMessagesFrom,
                             onRollbackToMessage = onRollbackToMessage,
+                            onRegenerateMessage = onRegenerateMessage,
+                            onSwitchMessageVariant = onSwitchMessageVariant,
                             onSpeakMessage = onSpeakMessage,
                             onReplyToMessage = onReplyToMessage,
                             onCreateBranch = onCreateBranch,
                             onInsertSummary = onInsertSummary,
                             onMentionRoleFromAvatar = onMentionRoleFromAvatar,
                             chatStyle = chatStyle,
+                            showMessageTokenStats = showMessageTokenStats,
+                            showMessageTimingStats = showMessageTimingStats,
                             cursorUserBubbleLiquidGlass = cursorUserBubbleLiquidGlass,
                             cursorUserBubbleWaterGlass = cursorUserBubbleWaterGlass,
                             bubbleUserBubbleLiquidGlass = bubbleUserBubbleLiquidGlass,
@@ -669,12 +687,16 @@ private fun MessageItem(
     onDeleteMessage: ((Int) -> Unit)?,
     onDeleteMessagesFrom: ((Int) -> Unit)?,
     onRollbackToMessage: ((Int) -> Unit)? = null, // 回滚到指定消息的回调
+    onRegenerateMessage: ((Int) -> Unit)? = null,
+    onSwitchMessageVariant: ((Int, Int) -> Unit)? = null,
     onSpeakMessage: ((String) -> Unit)? = null, // 添加朗读回调
     onReplyToMessage: ((ChatMessage) -> Unit)? = null, // 添加回复回调
     onCreateBranch: ((Long) -> Unit)? = null, // 添加创建分支回调
     onInsertSummary: ((Int, ChatMessage) -> Unit)? = null, // 添加插入总结回调
     onMentionRoleFromAvatar: ((String) -> Unit)? = null, // 长按角色头像提及
     chatStyle: ChatStyle, // 新增参数
+    showMessageTokenStats: Boolean = false,
+    showMessageTimingStats: Boolean = false,
     cursorUserBubbleLiquidGlass: Boolean = false,
     cursorUserBubbleWaterGlass: Boolean = false,
     bubbleUserBubbleLiquidGlass: Boolean = false,
@@ -729,60 +751,79 @@ private fun MessageItem(
                 },
             ),
     ) {
-        when (chatStyle) {
-            ChatStyle.CURSOR -> {
-                CursorStyleChatMessage(
-                    message = message,
-                    userMessageColor = userMessageColor,
-                    userMessageLiquidGlassEnabled = cursorUserBubbleLiquidGlass,
-                    userMessageWaterGlassEnabled = cursorUserBubbleWaterGlass,
-                    aiMessageColor = aiMessageColor,
-                    userTextColor = userTextColor,
-                    aiTextColor = aiTextColor,
-                    systemMessageColor = systemMessageColor,
-                    systemTextColor = systemTextColor,
-                    thinkingBackgroundColor = thinkingBackgroundColor,
-                    thinkingTextColor = thinkingTextColor,
-                    supportToolMarkup = true,
-                    initialThinkingExpanded = true,
-                    onDeleteMessage = onDeleteMessage,
-                    index = index,
-                    enableDialogs = enableDialogs,
-                    onEditSummary = { summaryMessage ->
-                        onSelectMessageToEdit?.invoke(index, summaryMessage, "summary")
-                    }
-                )
+        Column {
+            when (chatStyle) {
+                ChatStyle.CURSOR -> {
+                    CursorStyleChatMessage(
+                        message = message,
+                        userMessageColor = userMessageColor,
+                        userMessageLiquidGlassEnabled = cursorUserBubbleLiquidGlass,
+                        userMessageWaterGlassEnabled = cursorUserBubbleWaterGlass,
+                        aiMessageColor = aiMessageColor,
+                        userTextColor = userTextColor,
+                        aiTextColor = aiTextColor,
+                        systemMessageColor = systemMessageColor,
+                        systemTextColor = systemTextColor,
+                        thinkingBackgroundColor = thinkingBackgroundColor,
+                        thinkingTextColor = thinkingTextColor,
+                        supportToolMarkup = true,
+                        initialThinkingExpanded = true,
+                        onDeleteMessage = onDeleteMessage,
+                        index = index,
+                        enableDialogs = enableDialogs,
+                        onEditSummary = { summaryMessage ->
+                            onSelectMessageToEdit?.invoke(index, summaryMessage, "summary")
+                        }
+                    )
+                }
+
+                ChatStyle.BUBBLE -> {
+                    BubbleStyleChatMessage(
+                        message = message,
+                        userMessageColor = userMessageColor,
+                        aiMessageColor = aiMessageColor,
+                        userTextColor = userTextColor,
+                        aiTextColor = aiTextColor,
+                        systemMessageColor = systemMessageColor,
+                        systemTextColor = systemTextColor,
+                        userMessageLiquidGlassEnabled = bubbleUserBubbleLiquidGlass,
+                        userMessageWaterGlassEnabled = bubbleUserBubbleWaterGlass,
+                        aiMessageLiquidGlassEnabled = bubbleAiBubbleLiquidGlass,
+                        aiMessageWaterGlassEnabled = bubbleAiBubbleWaterGlass,
+                        userBubbleImageStyle = bubbleUserImageStyle,
+                        aiBubbleImageStyle = bubbleAiImageStyle,
+                        bubbleUserRoundedCornersEnabled = bubbleUserRoundedCornersEnabled,
+                        bubbleAiRoundedCornersEnabled = bubbleAiRoundedCornersEnabled,
+                        bubbleUserContentPaddingLeft = bubbleUserContentPaddingLeft,
+                        bubbleUserContentPaddingRight = bubbleUserContentPaddingRight,
+                        bubbleAiContentPaddingLeft = bubbleAiContentPaddingLeft,
+                        bubbleAiContentPaddingRight = bubbleAiContentPaddingRight,
+                        isHidden = isHidden,
+                        onDeleteMessage = onDeleteMessage,
+                        index = index,
+                        enableDialogs = enableDialogs,
+                        onRoleAvatarLongPress = onMentionRoleFromAvatar,
+                        onEditSummary = { summaryMessage ->
+                            onSelectMessageToEdit?.invoke(index, summaryMessage, "summary")
+                        }
+                    )
+                }
             }
 
-            ChatStyle.BUBBLE -> {
-                BubbleStyleChatMessage(
+            if (message.sender == "ai" &&
+                (
+                    message.variantCount > 1 ||
+                        (showMessageTokenStats && hasDisplayableTokenStats(message)) ||
+                        (showMessageTimingStats && hasDisplayableTimingStats(message))
+                )
+            ) {
+                MessageFooterBar(
                     message = message,
-                    userMessageColor = userMessageColor,
-                    aiMessageColor = aiMessageColor,
-                    userTextColor = userTextColor,
-                    aiTextColor = aiTextColor,
-                    systemMessageColor = systemMessageColor,
-                    systemTextColor = systemTextColor,
-                    userMessageLiquidGlassEnabled = bubbleUserBubbleLiquidGlass,
-                    userMessageWaterGlassEnabled = bubbleUserBubbleWaterGlass,
-                    aiMessageLiquidGlassEnabled = bubbleAiBubbleLiquidGlass,
-                    aiMessageWaterGlassEnabled = bubbleAiBubbleWaterGlass,
-                    userBubbleImageStyle = bubbleUserImageStyle,
-                    aiBubbleImageStyle = bubbleAiImageStyle,
-                    bubbleUserRoundedCornersEnabled = bubbleUserRoundedCornersEnabled,
-                    bubbleAiRoundedCornersEnabled = bubbleAiRoundedCornersEnabled,
-                    bubbleUserContentPaddingLeft = bubbleUserContentPaddingLeft,
-                    bubbleUserContentPaddingRight = bubbleUserContentPaddingRight,
-                    bubbleAiContentPaddingLeft = bubbleAiContentPaddingLeft,
-                    bubbleAiContentPaddingRight = bubbleAiContentPaddingRight,
-                    isHidden = isHidden,
-                    onDeleteMessage = onDeleteMessage,
-                    index = index,
-                    enableDialogs = enableDialogs,
-                    onRoleAvatarLongPress = onMentionRoleFromAvatar,
-                    onEditSummary = { summaryMessage ->
-                        onSelectMessageToEdit?.invoke(index, summaryMessage, "summary")
-                    }
+                    showMessageTokenStats = showMessageTokenStats,
+                    showMessageTimingStats = showMessageTimingStats,
+                    onSelectVariant = { targetVariantIndex ->
+                        onSwitchMessageVariant?.invoke(index, targetVariantIndex)
+                    },
                 )
             }
         }
@@ -791,7 +832,7 @@ private fun MessageItem(
             expanded = showContextMenu,
             onDismissRequest = { showContextMenu = false },
             modifier = Modifier
-                .width(140.dp)
+                .width(180.dp)
                 .background(MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(6.dp)),
             properties = PopupProperties(
                 focusable = true,
@@ -906,6 +947,28 @@ private fun MessageItem(
                     modifier = Modifier.height(36.dp)
                 )
             } else if (message.sender == "ai") {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(id = R.string.chat_regenerate_single),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontSize = 13.sp
+                        )
+                    },
+                    onClick = {
+                        onRegenerateMessage?.invoke(index)
+                        showContextMenu = false
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = stringResource(id = R.string.chat_regenerate_single),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    modifier = Modifier.height(36.dp)
+                )
                 // 修改记忆选项
                 DropdownMenuItem(
                     text = {
@@ -1081,6 +1144,132 @@ private fun MessageItem(
             MessageInfoDialog(
                 message = message,
                 onDismiss = { showMessageInfoDialog = false }
+            )
+        }
+    }
+}
+
+private fun hasDisplayableTokenStats(message: ChatMessage): Boolean {
+    return message.inputTokens > 0 || message.cachedInputTokens > 0 || message.outputTokens > 0
+}
+
+private fun hasDisplayableTimingStats(message: ChatMessage): Boolean {
+    return message.waitDurationMs > 0L || message.outputDurationMs > 0L
+}
+
+private fun formatCompactDuration(durationMs: Long): String {
+    if (durationMs <= 0L) return "0ms"
+    return if (durationMs >= 1000L) {
+        if (durationMs >= 10_000L) {
+            String.format(Locale.getDefault(), "%.0fs", durationMs / 1000f)
+        } else {
+            String.format(Locale.getDefault(), "%.1fs", durationMs / 1000f)
+        }
+    } else {
+        "${durationMs}ms"
+    }
+}
+
+@Composable
+private fun MessageFooterBar(
+    message: ChatMessage,
+    showMessageTokenStats: Boolean,
+    showMessageTimingStats: Boolean,
+    onSelectVariant: (Int) -> Unit,
+) {
+    val hasPrevious = message.selectedVariantIndex > 0
+    val hasNext = message.selectedVariantIndex < message.variantCount - 1
+    val context = LocalContext.current
+    val tokenSummary =
+        remember(message.inputTokens, message.cachedInputTokens, message.outputTokens) {
+            val totalInputTokens = message.inputTokens + message.cachedInputTokens
+            context.getString(
+                R.string.chat_message_token_stats_compact,
+                totalInputTokens,
+                message.cachedInputTokens,
+                message.inputTokens,
+                message.outputTokens,
+            )
+        }
+    val timeSummary =
+        remember(message.waitDurationMs, message.outputDurationMs) {
+            val totalDuration = (message.waitDurationMs + message.outputDurationMs).coerceAtLeast(0L)
+            context.getString(
+                R.string.chat_message_timing_stats_compact,
+                formatCompactDuration(totalDuration),
+                formatCompactDuration(message.waitDurationMs),
+                formatCompactDuration(message.outputDurationMs),
+            )
+        }
+    val statsTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.68f)
+
+    Column(
+        modifier = Modifier.padding(start = 16.dp, top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (message.variantCount > 1) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.chat_previous_variant),
+                    tint =
+                        if (hasPrevious) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                        },
+                    modifier =
+                        Modifier
+                            .size(16.dp)
+                            .clickable(enabled = hasPrevious) {
+                                onSelectVariant(message.selectedVariantIndex - 1)
+                            },
+                )
+                Text(
+                    text =
+                        stringResource(
+                            R.string.chat_message_variant_counter,
+                            message.selectedVariantIndex + 1,
+                            message.variantCount,
+                        ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = stringResource(R.string.chat_next_variant),
+                    tint =
+                        if (hasNext) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                        },
+                    modifier =
+                        Modifier
+                            .size(16.dp)
+                            .clickable(enabled = hasNext) {
+                                onSelectVariant(message.selectedVariantIndex + 1)
+                            },
+                )
+            }
+        }
+
+        if (showMessageTokenStats && hasDisplayableTokenStats(message)) {
+            Text(
+                text = tokenSummary,
+                style = MaterialTheme.typography.labelSmall,
+                color = statsTextColor,
+            )
+        }
+
+        if (showMessageTimingStats && hasDisplayableTimingStats(message)) {
+            Text(
+                text = timeSummary,
+                style = MaterialTheme.typography.labelSmall,
+                color = statsTextColor,
             )
         }
     }

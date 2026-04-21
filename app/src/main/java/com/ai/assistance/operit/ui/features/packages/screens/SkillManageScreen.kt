@@ -28,6 +28,7 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.api.GitHubIssue
 import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
 import com.ai.assistance.operit.data.skill.SkillRepository
+import com.ai.assistance.operit.ui.features.github.GitHubLoginWebViewDialog
 import com.ai.assistance.operit.ui.features.packages.components.MarketManageDangerActionButton
 import com.ai.assistance.operit.ui.features.packages.components.MarketManageDeleteDialog
 import com.ai.assistance.operit.ui.features.packages.components.MarketManageItemCard
@@ -62,6 +63,7 @@ fun SkillManageScreen(
     val userPublishedSkills by viewModel.userPublishedSkills.collectAsState()
 
     var showDeleteDialog by remember { mutableStateOf<GitHubIssue?>(null) }
+    var showGitHubLogin by remember { mutableStateOf(false) }
 
     LaunchedEffect(isLoggedIn) {
         if (isLoggedIn) {
@@ -74,7 +76,7 @@ fun SkillManageScreen(
         isLoading = isLoading,
         errorMessage = errorMessage,
         isEmpty = userPublishedSkills.isEmpty(),
-        onLogin = { viewModel.initiateGitHubLogin(context) },
+        onLogin = { showGitHubLogin = true },
         onPublish = onNavigateToPublish,
         publishContentDescription = stringResource(R.string.publish_new_skill),
         loginDescription = stringResource(R.string.need_login_github_manage_skills),
@@ -131,6 +133,12 @@ fun SkillManageScreen(
                 viewModel.removeSkillFromMarket(deletingIssue.number)
             },
             onDismiss = { showDeleteDialog = null }
+        )
+    }
+
+    if (showGitHubLogin) {
+        GitHubLoginWebViewDialog(
+            onDismissRequest = { showGitHubLogin = false }
         )
     }
 }

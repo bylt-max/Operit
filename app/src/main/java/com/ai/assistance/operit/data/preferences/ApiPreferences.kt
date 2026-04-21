@@ -153,9 +153,6 @@ class ApiPreferences private constructor(private val context: Context) {
         // Key for Disable User Preference Description
         val DISABLE_USER_PREFERENCE_DESCRIPTION = booleanPreferencesKey("disable_user_preference_description")
 
-        // Key for Disable LaTeX Description
-        val DISABLE_LATEX_DESCRIPTION = booleanPreferencesKey("disable_latex_description")
-
         // Key for Disable Status Tags
         val DISABLE_STATUS_TAGS = booleanPreferencesKey("disable_status_tags")
 
@@ -184,9 +181,6 @@ class ApiPreferences private constructor(private val context: Context) {
 
         // Default value for Disable User Preference Description
         const val DEFAULT_DISABLE_USER_PREFERENCE_DESCRIPTION = false
-
-        // Default value for Disable LaTeX Description
-        const val DEFAULT_DISABLE_LATEX_DESCRIPTION = false
 
         // Default value for Disable Status Tags
         const val DEFAULT_DISABLE_STATUS_TAGS = false
@@ -342,12 +336,6 @@ class ApiPreferences private constructor(private val context: Context) {
             preferences[DISABLE_USER_PREFERENCE_DESCRIPTION] ?: DEFAULT_DISABLE_USER_PREFERENCE_DESCRIPTION
         }
 
-    // Flow for Disable LaTeX Description
-    val disableLatexDescriptionFlow: Flow<Boolean> =
-        context.apiDataStore.data.map { preferences ->
-            preferences[DISABLE_LATEX_DESCRIPTION] ?: DEFAULT_DISABLE_LATEX_DESCRIPTION
-        }
-
     // Flow for Disable Status Tags
     val disableStatusTagsFlow: Flow<Boolean> =
         context.apiDataStore.data.map { preferences ->
@@ -486,11 +474,6 @@ class ApiPreferences private constructor(private val context: Context) {
         context.apiDataStore.edit { preferences ->
             preferences[DISABLE_USER_PREFERENCE_DESCRIPTION] = isDisabled
         }
-    }
-
-    // Save Disable LaTeX Description setting
-    suspend fun saveDisableLatexDescription(isDisabled: Boolean) {
-        context.apiDataStore.edit { preferences -> preferences[DISABLE_LATEX_DESCRIPTION] = isDisabled }
     }
 
     // Save Disable Status Tags setting

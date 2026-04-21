@@ -185,7 +185,10 @@ export function BubbleUserMessageComposable({
               <strong className={message.display_name_is_proxy ? 'is-proxy' : ''}>{userName}</strong>
             ) : null}
             {showAvatar ? (
-              <UserBubbleAvatar name={userName || 'User'} url={theme?.avatars.user_avatar_url} />
+              <UserBubbleAvatar
+                name={userName || 'User'}
+                url={message.avatar_url ?? theme?.avatars.user_avatar_url}
+              />
             ) : null}
           </div>
         ) : null}
@@ -241,7 +244,10 @@ export function BubbleUserMessageComposable({
           </BubbleImageBackgroundSurface>
         </div>
         {showAvatar ? (
-          <UserBubbleAvatar name={userName || 'User'} url={theme?.avatars.user_avatar_url} />
+          <UserBubbleAvatar
+            name={userName || 'User'}
+            url={message.avatar_url ?? theme?.avatars.user_avatar_url}
+          />
         ) : null}
       </div>
     </article>

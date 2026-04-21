@@ -103,6 +103,8 @@ data class WebChatMessage(
     val displayName: String? = null,
     @SerialName("display_name_is_proxy")
     val displayNameIsProxy: Boolean = false,
+    @SerialName("avatar_url")
+    val avatarUrl: String? = null,
     @SerialName("reply_preview")
     val replyPreview: WebReplyPreview? = null,
     @SerialName("image_links")

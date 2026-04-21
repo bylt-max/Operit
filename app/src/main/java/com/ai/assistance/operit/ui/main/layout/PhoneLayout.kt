@@ -11,10 +11,13 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,20 +27,24 @@ import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.NavGroup
 import com.ai.assistance.operit.ui.main.NavigationTransitionSource
+import com.ai.assistance.operit.ui.main.TopBarTitleContent
 import com.ai.assistance.operit.ui.main.components.AppContent
 import com.ai.assistance.operit.ui.main.components.DrawerContent
 import com.ai.assistance.operit.ui.main.components.rememberNavigationDrawerAppearance
@@ -70,10 +77,15 @@ fun PhoneLayout(
         canGoBack: Boolean,
         onGoBack: () -> Unit,
         isNavigatingBack: Boolean = false,
-        topBarActions: @Composable RowScope.() -> Unit = {}
+        topBarActions: @Composable RowScope.() -> Unit = {},
+        topBarTitleContent: TopBarTitleContent? = null
 ) {
         // 使用 updateTransition 来创建更复杂的动画
         val transition = updateTransition(drawerState.targetValue, label = "drawer_transition")
+        val context = LocalContext.current
+        val displayPreferencesManager = remember(context) { DisplayPreferencesManager.getInstance(context) }
+        val enableNewSidebar by displayPreferencesManager.enableNewSidebar.collectAsState(initial = true)
+        val drawerTopInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
         val drawerProgress by
                 transition.animateFloat(
@@ -151,7 +163,9 @@ fun PhoneLayout(
                 selectedItem,
                 isNetworkAvailable,
                 networkType,
-                drawerAppearance
+                drawerAppearance,
+                enableNewSidebar,
+                drawerTopInset
         ) {
                 cachedDrawerContent = {
                         DrawerContent(
@@ -161,6 +175,7 @@ fun PhoneLayout(
                                 isNetworkAvailable = isNetworkAvailable,
                                 networkType = networkType,
                                 appearance = drawerAppearance,
+                                topContentPadding = if (enableNewSidebar) 0.dp else drawerTopInset,
                                 scope = scope,
                                 drawerState = drawerState,
                                 onScreenSelected = { screen, item -> onDrawerItemSelected(screen, item) }
@@ -259,7 +274,8 @@ fun PhoneLayout(
                         canGoBack = canGoBack,
                         onGoBack = onGoBack,
                         isNavigatingBack = isNavigatingBack,
-                        actions = topBarActions
+                        actions = topBarActions,
+                        titleContent = topBarTitleContent
                     )
                 }
 
@@ -277,6 +293,7 @@ fun PhoneLayout(
                 Surface(
                         modifier =
                                 Modifier.width(drawerWidth)
+                                        .padding(top = if (enableNewSidebar) drawerTopInset else 0.dp)
                                         .fillMaxHeight()
                                         .graphicsLayer {
                                                 translationX = drawerOffset.toPx()

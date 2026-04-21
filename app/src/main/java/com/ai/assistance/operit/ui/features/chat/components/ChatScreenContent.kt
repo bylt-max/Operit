@@ -224,6 +224,10 @@ fun ChatScreenContent(
                         onDeleteMessage = { index -> actualViewModel.deleteMessage(index) },
                         onDeleteMessagesFrom = { index -> actualViewModel.deleteMessagesFrom(index) },
                         onRollbackToMessage = { index -> pendingRollbackIndex = index },
+                        onRegenerateMessage = { index -> actualViewModel.regenerateSingleAiMessage(index) },
+                        onSwitchMessageVariant = { index, targetVariantIndex ->
+                            actualViewModel.switchMessageVariant(index, targetVariantIndex)
+                        },
                         onSpeakMessage = { content -> actualViewModel.speakMessage(content) }, // 添加朗读回调
                         onAutoReadMessage = { content -> actualViewModel.enableAutoReadAndSpeak(content) }, // 添加自动朗读回调
                         onReplyToMessage = { message -> actualViewModel.setReplyToMessage(message) }, // 添加回复回调
@@ -315,6 +319,10 @@ fun ChatScreenContent(
                         onDeleteMessage = { index -> actualViewModel.deleteMessage(index) },
                         onDeleteMessagesFrom = { index -> actualViewModel.deleteMessagesFrom(index) },
                         onRollbackToMessage = { index -> pendingRollbackIndex = index },
+                        onRegenerateMessage = { index -> actualViewModel.regenerateSingleAiMessage(index) },
+                        onSwitchMessageVariant = { index, targetVariantIndex ->
+                            actualViewModel.switchMessageVariant(index, targetVariantIndex)
+                        },
                         onSpeakMessage = { content -> actualViewModel.speakMessage(content) }, // 添加朗读回调
                         onReplyToMessage = { message -> actualViewModel.setReplyToMessage(message) }, // 添加回复回调
                         onCreateBranch = { timestamp -> actualViewModel.createBranch(timestamp) }, // 添加创建分支回调

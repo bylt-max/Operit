@@ -43,6 +43,7 @@ import com.ai.assistance.operit.data.repository.ChatHistoryManager
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.common.displays.FpsCounter
 import com.ai.assistance.operit.ui.main.NavigationTransitionSource
+import com.ai.assistance.operit.ui.main.TopBarTitleContent
 import com.ai.assistance.operit.ui.main.screens.Screen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -60,6 +61,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.zIndex
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -110,7 +112,8 @@ fun AppContent(
         canGoBack: Boolean,
         onGoBack: () -> Unit,
         isNavigatingBack: Boolean = false,
-        actions: @Composable RowScope.() -> Unit = {}
+        actions: @Composable RowScope.() -> Unit = {},
+        titleContent: TopBarTitleContent? = null
 ) {
     // Get background image state
     val context = LocalContext.current
@@ -181,6 +184,7 @@ fun AppContent(
             }
     // 屏幕缓存 Map - 保存已访问过的屏幕，使其状态得以保留
     val screenCache = remember { mutableStateMapOf<String, @Composable () -> Unit>() }
+    val screenStateHolder = rememberSaveableStateHolder()
     // 使用 Screen 对象的 toString() 作为 key，这对于 data class 和 data object 都能生成一个唯一的、
     // 包含其内部状态的字符串，从而实现通用且可靠的状态缓存。
     val currentScreenKey = currentScreen.toString()
@@ -198,37 +202,41 @@ fun AppContent(
                 TopAppBar(
                     windowInsets = WindowInsets.statusBars,
                     title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // 使用Screen的标题或导航项的标题
-                            Text(
-                                text =
-                                when {
-                                    // 如果是AI对话界面且有自定义标题，则优先显示
-                                    currentScreen is Screen.AiChat && !customChatTitle.isNullOrEmpty() ->
-                                        customChatTitle!!
-                                    // 优先使用Screen的标题
-                                    currentScreen.getTitle().isNotBlank() ->
-                                        currentScreen.getTitle()
-                                    // 回退到导航项的标题资源
-                                    selectedItem.titleResId != 0 ->
-                                        stringResource(id = selectedItem.titleResId)
-                                    // 最后的默认值
-                                    else -> ""
-                                },
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp,
-                                color = appBarContentColor
-                            )
-
-                            // 显示当前聊天标题（仅在AI对话页面)
-                            if (currentScreen is Screen.AiChat && currentChatTitle.isNotBlank()) {
+                        if (titleContent != null) {
+                            titleContent.content()
+                        } else {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // 使用Screen的标题或导航项的标题
                                 Text(
-                                    text = "- $currentChatTitle",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = appBarContentColor.copy(alpha = 0.8f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    text =
+                                    when {
+                                        // 如果是AI对话界面且有自定义标题，则优先显示
+                                        currentScreen is Screen.AiChat && !customChatTitle.isNullOrEmpty() ->
+                                            customChatTitle!!
+                                        // 优先使用Screen的标题
+                                        currentScreen.getTitle().isNotBlank() ->
+                                            currentScreen.getTitle()
+                                        // 回退到导航项的标题资源
+                                        selectedItem.titleResId != 0 ->
+                                            stringResource(id = selectedItem.titleResId)
+                                        // 最后的默认值
+                                        else -> ""
+                                    },
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    color = appBarContentColor
                                 )
+
+                                // 显示当前聊天标题（仅在AI对话页面)
+                                if (currentScreen is Screen.AiChat && currentChatTitle.isNotBlank()) {
+                                    Text(
+                                        text = "- $currentChatTitle",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = appBarContentColor.copy(alpha = 0.8f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     },
@@ -392,6 +400,7 @@ fun AppContent(
                             if (!canCrossfade) {
                                 if (removalKey != null && removalKey != currentScreenKey) {
                                     screenCache.remove(removalKey)
+                                    screenStateHolder.removeState(removalKey)
                                 }
                                 pendingRemovalKey = null
                                 return@LaunchedEffect
@@ -415,6 +424,7 @@ fun AppContent(
                             pendingRemovalKey?.let { keyToRemove ->
                                 if (keyToRemove != currentScreenKey) {
                                     screenCache.remove(keyToRemove)
+                                    screenStateHolder.removeState(keyToRemove)
                                 }
                             }
                             pendingRemovalKey = null
@@ -562,8 +572,10 @@ fun AppContent(
                                             }
                                 ) {
                                     Box(modifier = Modifier.fillMaxSize()) {
-                                        CompositionLocalProvider(LocalIsCurrentScreen provides isCurrentScreen) {
-                                            screenContent()
+                                        screenStateHolder.SaveableStateProvider(screenKey) {
+                                            CompositionLocalProvider(LocalIsCurrentScreen provides isCurrentScreen) {
+                                                screenContent()
+                                            }
                                         }
                                     }
                                 }

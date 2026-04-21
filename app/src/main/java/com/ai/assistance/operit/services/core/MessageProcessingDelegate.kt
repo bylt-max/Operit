@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.ai.assistance.operit.core.tools.ToolProgressBus
@@ -1133,6 +1134,244 @@ class MessageProcessingDelegate(
             }
         }
         chatRuntime.sendJob = sendJob
+    }
+
+    suspend fun regenerateAiMessageVariant(
+        chatId: String,
+        targetMessageTimestamp: Long,
+        requestMessageContent: String,
+        requestHistory: List<ChatMessage>,
+        workspacePath: String?,
+        promptFunctionType: PromptFunctionType,
+        roleCardId: String,
+        currentRoleName: String,
+        enableThinking: Boolean,
+        thinkingGuidance: Boolean,
+        enableMemoryQuery: Boolean,
+        maxTokens: Int,
+        tokenUsageThreshold: Double,
+        chatModelConfigIdOverride: String?,
+        chatModelIndexOverride: Int?,
+        onVariantPreviewStarted: suspend (ChatMessage) -> Unit,
+        onVariantReady: suspend (ChatMessage) -> Unit,
+    ) {
+        val chatRuntime = runtimeFor(chatId)
+        if (chatRuntime.isLoading.value) {
+            throw IllegalStateException(context.getString(R.string.chat_regenerate_busy))
+        }
+
+        val currentJob = coroutineContext[Job] ?: throw IllegalStateException("Missing coroutine job")
+        var serviceForTerminalCleanup: EnhancedAIService? = null
+        var shouldResetInputStateToIdle = false
+        chatRuntime.sendJob = currentJob
+        resetCurrentTurnToolInvocationCount(chatId)
+        chatRuntime.isLoading.value = true
+        updateGlobalLoadingState()
+        setChatInputProcessingState(
+            chatId,
+            EnhancedInputProcessingState.Processing(context.getString(R.string.message_processing)),
+        )
+        var terminalState: EnhancedInputProcessingState? = null
+
+        try {
+            val service =
+                EnhancedAIService.getChatInstance(context, chatId)
+                    ?: getEnhancedAiService()
+                    ?: throw IllegalStateException(context.getString(R.string.message_ai_service_not_initialized))
+            serviceForTerminalCleanup = service
+            service.setInputProcessingState(
+                EnhancedInputProcessingState.Processing(context.getString(R.string.message_processing))
+            )
+
+            chatRuntime.stateCollectionJob?.cancel()
+            chatRuntime.stateCollectionJob =
+                coroutineScope.launch {
+                    var lastErrorMessage: String? = null
+                    service.inputProcessingState.collect { state ->
+                        setChatInputProcessingState(chatId, state)
+
+                        if (state is EnhancedInputProcessingState.Error) {
+                            val msg = state.message
+                            if (msg != lastErrorMessage) {
+                                lastErrorMessage = msg
+                                withContext(Dispatchers.Main) {
+                                    showErrorMessage(msg)
+                                }
+                            }
+                        } else {
+                            lastErrorMessage = null
+                        }
+                    }
+                }
+
+            val (provider, modelName) =
+                service.getProviderAndModelForFunction(
+                    functionType = FunctionType.CHAT,
+                    chatModelConfigIdOverride = chatModelConfigIdOverride,
+                    chatModelIndexOverride = chatModelIndexOverride,
+                )
+
+            var firstResponseElapsed: Long? = null
+            val requestSentAt = System.currentTimeMillis()
+            val requestStartElapsed = messageTimingNow()
+
+            val responseStream =
+                AIMessageManager.sendMessage(
+                    enhancedAiService = service,
+                    chatId = chatId,
+                    messageContent = requestMessageContent,
+                    chatHistory = requestHistory,
+                    workspacePath = workspacePath,
+                    promptFunctionType = promptFunctionType,
+                    enableThinking = enableThinking,
+                    thinkingGuidance = thinkingGuidance,
+                    enableMemoryQuery = enableMemoryQuery,
+                    maxTokens = maxTokens,
+                    tokenUsageThreshold = tokenUsageThreshold,
+                    onNonFatalError = { error -> _nonFatalErrorEvent.emit(error) },
+                    characterName = currentRoleName,
+                    roleCardId = roleCardId,
+                    currentRoleName = currentRoleName,
+                    splitHistoryByRole = true,
+                    onToolInvocation = { incrementCurrentTurnToolInvocationCount(chatId) },
+                    chatModelConfigIdOverride = chatModelConfigIdOverride,
+                    chatModelIndexOverride = chatModelIndexOverride,
+                )
+
+            val sharedResponseStream =
+                responseStream.shareRevisable(
+                    scope = coroutineScope,
+                    replay = Int.MAX_VALUE,
+                    onComplete = {
+                        chatRuntime.responseStream = null
+                    },
+                )
+            chatRuntime.responseStream = sharedResponseStream
+
+            val aiMessage =
+                ChatMessage(
+                    sender = "ai",
+                    contentStream = sharedResponseStream,
+                    timestamp = targetMessageTimestamp,
+                    roleName = currentRoleName,
+                    provider = provider,
+                    modelName = modelName,
+                    sentAt = requestSentAt,
+                )
+            onVariantPreviewStarted(aiMessage)
+
+            coroutineScope {
+                val revisableStream = sharedResponseStream as? TextStreamEventCarrier
+                val revisionTracker = TextStreamRevisionTracker()
+                val revisionMutex = Mutex()
+
+                val revisionJob =
+                    revisableStream?.let { carrier ->
+                        launch {
+                            carrier.eventChannel.collect { event ->
+                                when (event.eventType) {
+                                    TextStreamEventType.SAVEPOINT -> {
+                                        revisionMutex.withLock {
+                                            revisionTracker.savepoint(event.id)
+                                        }
+                                    }
+
+                                    TextStreamEventType.ROLLBACK -> {
+                                        val snapshot =
+                                            revisionMutex.withLock {
+                                                revisionTracker.rollback(event.id)
+                                            } ?: return@collect
+                                        aiMessage.content = snapshot
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                sharedResponseStream.collect { chunk ->
+                    if (firstResponseElapsed == null) {
+                        firstResponseElapsed = messageTimingNow()
+                    }
+                    aiMessage.content =
+                        revisionMutex.withLock {
+                            revisionTracker.append(chunk)
+                        }
+                }
+
+                revisionJob?.cancelAndJoin()
+            }
+
+            val finalContent = resolveFinalContent(aiMessage)
+            var turnInputTokens = 0
+            var turnOutputTokens = 0
+            var turnCachedInputTokens = 0
+            runCatching {
+                turnInputTokens = service.getCurrentInputTokenCount()
+                turnOutputTokens = service.getCurrentOutputTokenCount()
+                turnCachedInputTokens = service.getCurrentCachedInputTokenCount()
+            }.onFailure {
+                AppLogger.w(TAG, "读取重新生成 token 统计失败", it)
+            }
+
+            val waitDurationMs =
+                if (firstResponseElapsed != null) {
+                    (firstResponseElapsed!! - requestStartElapsed).coerceAtLeast(0L)
+                } else {
+                    0L
+                }
+            val outputDurationMs =
+                if (firstResponseElapsed != null) {
+                    (messageTimingNow() - firstResponseElapsed!!).coerceAtLeast(0L)
+                } else {
+                    0L
+                }
+
+            onVariantReady(
+                aiMessage.withTurnMetrics(
+                    inputTokens = turnInputTokens,
+                    outputTokens = turnOutputTokens,
+                    cachedInputTokens = turnCachedInputTokens,
+                    sentAt = requestSentAt,
+                    outputDurationMs = outputDurationMs,
+                    waitDurationMs = waitDurationMs,
+                ).copy(
+                    content = finalContent,
+                    contentStream = null,
+                )
+            )
+            terminalState = EnhancedInputProcessingState.Completed
+            shouldResetInputStateToIdle = true
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) {
+                terminalState = EnhancedInputProcessingState.Idle
+                throw e
+            }
+            AppLogger.e(TAG, "单条重新生成失败", e)
+            setChatInputProcessingState(
+                chatId,
+                EnhancedInputProcessingState.Error(
+                    context.getString(R.string.chat_regenerate_single_failed, e.message ?: "")
+                ),
+            )
+            throw e
+        } finally {
+            clearCurrentTurnToolInvocationCount(chatId)
+            if (chatRuntime.sendJob === currentJob) {
+                chatRuntime.sendJob = null
+            }
+            chatRuntime.stateCollectionJob?.cancel()
+            chatRuntime.stateCollectionJob = null
+            chatRuntime.responseStream = null
+            chatRuntime.isLoading.value = false
+            updateGlobalLoadingState()
+            terminalState?.let { state ->
+                setChatInputProcessingState(chatId, state)
+            }
+            if (shouldResetInputStateToIdle) {
+                serviceForTerminalCleanup?.setInputProcessingState(EnhancedInputProcessingState.Idle)
+                setChatInputProcessingState(chatId, EnhancedInputProcessingState.Idle)
+            }
+        }
     }
 
     private suspend fun notifyTurnComplete(

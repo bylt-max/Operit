@@ -16,6 +16,7 @@ import com.ai.assistance.operit.core.chat.hooks.toPromptTurns
 import com.ai.assistance.operit.core.config.FunctionalPrompts
 import com.ai.assistance.operit.util.LocaleUtils
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
@@ -84,7 +85,9 @@ object MemoryLibrary {
             toolHandler: AIToolHandler,
             conversationHistory: List<Pair<String, String>>,
             content: String,
-            aiService: AIService
+            aiService: AIService,
+            onSuccess: (suspend () -> Unit)? = null,
+            onError: (suspend (Exception) -> Unit)? = null
     ) {
         ensureInitialized(context)
 
@@ -97,8 +100,12 @@ object MemoryLibrary {
                     content,
                     aiService
                 )
+                onSuccess?.invoke()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 AppLogger.e(TAG, "保存记忆失败", e)
+                onError?.invoke(e)
             }
         }
     }

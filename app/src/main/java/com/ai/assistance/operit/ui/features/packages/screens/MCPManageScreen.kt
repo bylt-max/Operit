@@ -29,6 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.api.GitHubIssue
 import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
+import com.ai.assistance.operit.ui.features.github.GitHubLoginWebViewDialog
 import com.ai.assistance.operit.ui.features.packages.components.MarketManageDangerActionButton
 import com.ai.assistance.operit.ui.features.packages.components.MarketManageDeleteDialog
 import com.ai.assistance.operit.ui.features.packages.components.MarketManageGitHubLabelChip
@@ -60,6 +61,7 @@ fun MCPManageScreen(
     val isLoggedIn by githubAuth.isLoggedInFlow.collectAsState(initial = false)
 
     var showDeleteDialog by remember { mutableStateOf<GitHubIssue?>(null) }
+    var showGitHubLogin by remember { mutableStateOf(false) }
 
     LaunchedEffect(isLoggedIn) {
         if (isLoggedIn) {
@@ -72,7 +74,7 @@ fun MCPManageScreen(
         isLoading = isLoading,
         errorMessage = errorMessage,
         isEmpty = userPublishedPlugins.isEmpty(),
-        onLogin = { viewModel.initiateGitHubLogin(context) },
+        onLogin = { showGitHubLogin = true },
         onPublish = onNavigateToPublish,
         publishContentDescription = stringResource(R.string.publish_new_plugin),
         loginDescription = stringResource(R.string.need_login_github_manage_plugins),
@@ -154,6 +156,12 @@ fun MCPManageScreen(
                 showDeleteDialog = null
             },
             onDismiss = { showDeleteDialog = null }
+        )
+    }
+
+    if (showGitHubLogin) {
+        GitHubLoginWebViewDialog(
+            onDismissRequest = { showGitHubLogin = false }
         )
     }
 }

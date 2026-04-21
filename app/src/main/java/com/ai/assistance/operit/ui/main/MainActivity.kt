@@ -36,7 +36,6 @@ import androidx.lifecycle.lifecycleScope
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.AIForegroundService
 import com.ai.assistance.operit.core.tools.AIToolHandler
-import com.ai.assistance.operit.data.migration.ChatHistoryMigrationManager
 import com.ai.assistance.operit.data.preferences.AgreementPreferences
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.preferences.androidPermissionPreferences
@@ -44,7 +43,6 @@ import com.ai.assistance.operit.data.updates.UpdateManager
 import com.ai.assistance.operit.data.updates.UpdateStatus
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.features.agreement.screens.AgreementScreen
-import com.ai.assistance.operit.ui.features.migration.screens.MigrationScreen
 import com.ai.assistance.operit.ui.features.permission.screens.PermissionGuideScreen
 import com.ai.assistance.operit.ui.features.startup.screens.PluginLoadingScreenWithState
 import com.ai.assistance.operit.ui.features.startup.screens.PluginLoadingState
@@ -58,8 +56,6 @@ import java.util.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.ai.assistance.operit.data.mcp.MCPRepository
-import com.ai.assistance.operit.data.api.GitHubApiService
-import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.runtime.remember
@@ -91,10 +87,6 @@ class MainActivity : ComponentActivity() {
     // ======== MCP插件状态 ========
     private val pluginLoadingState = PluginLoadingState()
 
-    // ======== 数据迁移状态 ========
-    private lateinit var migrationManager: ChatHistoryMigrationManager
-    private var showMigrationScreen by mutableStateOf(false)
-
     // ======== 双击返回退出相关变量 ========
     private var backPressedTime: Long = 0
     private val backPressedInterval: Long = 2000 // 两次点击的时间间隔，单位为毫秒
@@ -106,7 +98,7 @@ class MainActivity : ComponentActivity() {
     // 是否显示权限引导界面
     private var showPermissionGuide by mutableStateOf(false)
 
-    // 是否已完成权限和迁移检查
+    // 是否已完成初始检查
     private var initialChecksDone = false
 
     // 存储待处理的分享文件URIs
@@ -153,61 +145,6 @@ class MainActivity : ComponentActivity() {
                     Toast.LENGTH_LONG
                 ).show()
                 pendingSharedLinks = null
-            }
-        }
-    }
-
-    private fun handleGitHubOAuthCode(code: String) {
-        lifecycleScope.launch {
-            try {
-                val githubApiService = GitHubApiService(this@MainActivity)
-                val githubAuth = GitHubAuthPreferences.getInstance(this@MainActivity)
-
-                val tokenResult = githubApiService.getAccessToken(code)
-                tokenResult.fold(
-                    onSuccess = { tokenResponse ->
-                        githubAuth.updateAccessToken(tokenResponse.access_token, tokenResponse.token_type)
-
-                        val userResult = githubApiService.getCurrentUser()
-                        userResult.fold(
-                            onSuccess = { user ->
-                                githubAuth.saveAuthInfo(
-                                    accessToken = tokenResponse.access_token,
-                                    tokenType = tokenResponse.token_type,
-                                    userInfo = user
-                                )
-                                Toast.makeText(
-                                    this@MainActivity,
-                                    getString(R.string.main_github_login_success, user.login),
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            },
-                            onFailure = { error ->
-                                AppLogger.e(TAG, "Failed to get user info", error)
-                                Toast.makeText(
-                                    this@MainActivity,
-                                    getString(R.string.main_github_get_user_failed, error.message ?: ""),
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
-                        )
-                    },
-                    onFailure = { error ->
-                        AppLogger.e(TAG, "Failed to get access token", error)
-                        Toast.makeText(
-                            this@MainActivity,
-                            getString(R.string.main_github_login_failed, error.message ?: ""),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                )
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Exception during GitHub callback handling", e)
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.main_github_login_error, e.message ?: ""),
-                    Toast.LENGTH_LONG
-                ).show()
             }
         }
     }
@@ -306,14 +243,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent) // 重要：更新当前Intent
         AppLogger.d(TAG, "onNewIntent: Received intent with action: ${intent?.action}")
         restoreRuntimeTaskViewVisibilityIfNeeded()
-        val isGitHubOAuthCallback = intent?.data?.let { uri ->
-            uri.scheme == "operit" && uri.host == "github-oauth-callback"
-        } == true
         val handledShortcutIntent = handleIntent(intent)
-
-        if (isGitHubOAuthCallback) {
-            return
-        }
 
         if (handledShortcutIntent) {
             setAppContent()
@@ -336,19 +266,6 @@ class MainActivity : ComponentActivity() {
             pendingShortcutRequestId = System.currentTimeMillis()
             AppLogger.d(TAG, "Shortcut requested opening settings")
             return true
-        }
-
-        val uri = intent?.data
-        if (uri != null && uri.scheme == "operit" && uri.host == "github-oauth-callback") {
-            val code = uri.getQueryParameter("code")
-            if (code != null) {
-                AppLogger.d(TAG, "GitHub OAuth code received from onCreate: $code")
-                handleGitHubOAuthCode(code)
-            } else {
-                val error = uri.getQueryParameter("error")
-                AppLogger.e(TAG, "GitHub OAuth error from onCreate: $error")
-            }
-            return false
         }
         
         // Handle opened and shared files
@@ -433,23 +350,9 @@ class MainActivity : ComponentActivity() {
             // 2. 检查权限级别设置
             checkPermissionLevelSet()
 
-            // 3. 检查是否需要数据迁移
+            // 3. 在协议已接受且无需权限引导时，启动插件加载
             if (!showPermissionGuide && agreementPreferences.isAgreementAccepted()) {
-                try {
-                    val needsMigration = migrationManager.needsMigration()
-                    AppLogger.d(TAG, "数据迁移检查: 需要迁移=$needsMigration")
-
-                    showMigrationScreen = needsMigration
-
-                    // 如果不需要迁移，直接启动插件加载
-                    if (!needsMigration) {
-                        startPluginLoading()
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "数据迁移检查失败", e)
-                    // 检查失败，跳过迁移直接加载插件
-                    startPluginLoading()
-                }
+                startPluginLoading()
             }
 
             // 标记完成初始检查
@@ -457,29 +360,6 @@ class MainActivity : ComponentActivity() {
 
             // 设置应用内容
             setAppContent()
-        }
-    }
-
-    // ======== 检查数据迁移 ========
-    private fun checkMigrationNeeded() {
-        lifecycleScope.launch {
-            try {
-                // 检查是否需要迁移数据
-                val needsMigration = migrationManager.needsMigration()
-                AppLogger.d(TAG, "数据迁移检查: 需要迁移=$needsMigration")
-
-                if (needsMigration) {
-                    showMigrationScreen = true
-                    setAppContent()
-                } else {
-                    // 不需要迁移，显示插件加载界面
-                    startPluginLoading()
-                }
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "数据迁移检查失败", e)
-                // 检查失败，跳过迁移直接加载插件
-                startPluginLoading()
-            }
         }
     }
 
@@ -618,8 +498,6 @@ class MainActivity : ComponentActivity() {
         // 初始化协议偏好管理器
         agreementPreferences = AgreementPreferences(this)
 
-        // 初始化数据迁移管理器
-        migrationManager = ChatHistoryMigrationManager(this)
     }
 
     // ======== 检查通知权限 ========
@@ -740,22 +618,12 @@ class MainActivity : ComponentActivity() {
                                             // 确保使用非阻塞方式更新UI
                                             delay(300) // 短暂延迟确保UI状态更新
                                             checkPermissionLevelSet()
+                                            if (!showPermissionGuide) {
+                                                startPluginLoading()
+                                            }
                                             // 重新设置应用内容
                                             setAppContent()
                                         }
-                                    }
-                            )
-                        }
-                        // 检查是否需要显示数据迁移界面
-                        else if (showMigrationScreen) {
-                            MigrationScreen(
-                                    migrationManager = migrationManager,
-                                    onComplete = {
-                                        showMigrationScreen = false
-                                        // 迁移完成后，启动插件加载
-                                        startPluginLoading()
-                                        // 重新设置应用内容
-                                        setAppContent()
                                     }
                             )
                         }
@@ -764,7 +632,8 @@ class MainActivity : ComponentActivity() {
                             PermissionGuideScreen(
                                     onComplete = {
                                         showPermissionGuide = false
-                                        // 权限设置完成后，重新设置应用内容
+                                        // 权限设置完成后，启动插件加载并更新内容
+                                        startPluginLoading()
                                         setAppContent()
                                     }
                             )

@@ -116,10 +116,6 @@ class ApiConfigDelegate(
     val disableUserPreferenceDescription: StateFlow<Boolean> =
             _disableUserPreferenceDescription.asStateFlow()
 
-    private val _disableLatexDescription =
-            MutableStateFlow(ApiPreferences.DEFAULT_DISABLE_LATEX_DESCRIPTION)
-    val disableLatexDescription: StateFlow<Boolean> = _disableLatexDescription.asStateFlow()
-
     private val _disableStatusTags = MutableStateFlow(ApiPreferences.DEFAULT_DISABLE_STATUS_TAGS)
     val disableStatusTags: StateFlow<Boolean> = _disableStatusTags.asStateFlow()
 
@@ -288,13 +284,6 @@ class ApiConfigDelegate(
             }
         }
 
-        // Collect disable LaTeX description setting
-        coroutineScope.launch {
-            apiPreferences.disableLatexDescriptionFlow.collect { disabled ->
-                _disableLatexDescription.value = disabled
-            }
-        }
-
         // Collect disable status tags setting
         coroutineScope.launch {
             apiPreferences.disableStatusTagsFlow.collect { disabled ->
@@ -450,15 +439,6 @@ class ApiConfigDelegate(
             val newValue = !_disableUserPreferenceDescription.value
             apiPreferences.saveDisableUserPreferenceDescription(newValue)
             _disableUserPreferenceDescription.value = newValue
-        }
-    }
-
-    /** 切换禁用 LaTeX 描述 */
-    fun toggleDisableLatexDescription() {
-        coroutineScope.launch {
-            val newValue = !_disableLatexDescription.value
-            apiPreferences.saveDisableLatexDescription(newValue)
-            _disableLatexDescription.value = newValue
         }
     }
 

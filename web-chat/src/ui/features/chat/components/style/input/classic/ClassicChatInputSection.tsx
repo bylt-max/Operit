@@ -4,7 +4,6 @@ import { AttachmentChip } from '../../../AttachmentChip';
 import { AttachmentSelector } from '../../../AttachmentSelector';
 import { FullscreenInputDialog } from '../../../FullscreenInputDialog';
 import { SimpleLinearProgressIndicator } from '../../../SimpleLinearProgressIndicator';
-import { GlassSurface } from '../../../part/GlassSurface';
 import {
   FullscreenIcon,
   MicIcon,
@@ -53,8 +52,7 @@ export function ClassicChatInputSection({
   modelSelector,
   modelSelectorLoading,
   onSelectModelConfig,
-  contextPercent,
-  theme
+  contextPercent
 }: {
   messageInput: string;
   onMessageInputChange: (value: string) => void;
@@ -94,7 +92,6 @@ export function ClassicChatInputSection({
   const showProcessingStatus = showInputProcessingStatus && inputProcessingStage !== 'idle';
   const processingProgress =
     inputProcessingStage === 'streaming' ? 0.76 : inputProcessingStage === 'uploading' ? 0.52 : 0.38;
-  const glassVariant = theme?.input.water_glass ? 'water' : theme?.input.liquid_glass ? 'liquid' : undefined;
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -120,14 +117,7 @@ export function ClassicChatInputSection({
   }
 
   return (
-    <GlassSurface
-      baseColor={theme?.palette?.surface_color}
-      borderColor={theme?.palette?.outline_color}
-      className="classic-chat-input-section"
-      radius={22}
-      themeMode={theme?.theme_mode}
-      variant={glassVariant}
-    >
+    <div className="classic-chat-input-section">
       <PendingMessageQueuePanel
         expanded={isPendingQueueExpanded}
         onDeleteMessage={onDeletePendingQueueMessage}
@@ -235,6 +225,6 @@ export function ClassicChatInputSection({
           value={messageInput}
         />
       ) : null}
-    </GlassSurface>
+    </div>
   );
 }

@@ -26,6 +26,7 @@ data class MessageEntity(
         val timestamp: Long = System.currentTimeMillis(),
         val orderIndex: Int, // 保持消息顺序
         val roleName: String = "", // 角色名字段
+        val selectedVariantIndex: Int = 0,
         val provider: String = "", // 供应商
         val modelName: String = "", // 模型名称
         val inputTokens: Int = 0,
@@ -42,6 +43,7 @@ data class MessageEntity(
             content = content, 
             timestamp = timestamp,
             roleName = roleName,
+            selectedVariantIndex = selectedVariantIndex,
             provider = provider,
             modelName = modelName,
             inputTokens = inputTokens,
@@ -69,6 +71,7 @@ data class MessageEntity(
                     timestamp = message.timestamp,
                     orderIndex = orderIndex,
                     roleName = message.roleName,
+                    selectedVariantIndex = message.selectedVariantIndex,
                     provider = message.provider,
                     modelName = message.modelName,
                     inputTokens = message.inputTokens,

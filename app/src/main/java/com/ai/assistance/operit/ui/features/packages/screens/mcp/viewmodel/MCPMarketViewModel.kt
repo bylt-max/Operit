@@ -2,7 +2,6 @@ package com.ai.assistance.operit.ui.features.packages.screens.mcp.viewmodel
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -11,21 +10,23 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.api.GitHubApiService
 import com.ai.assistance.operit.data.api.GitHubIssue
 import com.ai.assistance.operit.data.api.GitHubComment
+import com.ai.assistance.operit.data.api.MarketStatsApiService
 
 import com.ai.assistance.operit.data.mcp.MCPRepository
 import com.ai.assistance.operit.data.mcp.MCPLocalServer
 import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import com.ai.assistance.operit.util.AppLogger
 import android.content.SharedPreferences
+import android.net.Uri
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -36,6 +37,18 @@ import com.ai.assistance.operit.ui.features.packages.market.GitHubIssueMarketDef
 import com.ai.assistance.operit.ui.features.packages.market.GitHubIssueMarketService
 import com.ai.assistance.operit.ui.features.packages.market.IssueInteractionController
 import com.ai.assistance.operit.ui.features.packages.market.IssueInteractionMessages
+import com.ai.assistance.operit.ui.features.packages.market.McpMarketBrowseItem
+import com.ai.assistance.operit.ui.features.packages.market.MarketEntryStats
+import com.ai.assistance.operit.ui.features.packages.market.MarketSortOption
+import com.ai.assistance.operit.ui.features.packages.market.MarketStatsType
+import com.ai.assistance.operit.ui.features.packages.market.buildMarketDisplayState
+import com.ai.assistance.operit.ui.features.packages.market.loadMarketStatsMap
+import com.ai.assistance.operit.ui.features.packages.market.resolveMarketDownloadTarget
+import com.ai.assistance.operit.ui.features.packages.market.resolveMcpMarketEntryId
+import com.ai.assistance.operit.ui.features.packages.market.toMarketEntryStats
+import com.ai.assistance.operit.ui.features.packages.market.toMcpMarketBrowseItem
+import com.ai.assistance.operit.ui.features.packages.market.toRankMetric
+import com.ai.assistance.operit.ui.features.packages.market.updateMarketEntryStats
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNames
 import java.time.LocalDateTime
@@ -68,6 +81,7 @@ class MCPMarketViewModel(
     )
 
     private val githubApiService = GitHubApiService(context)
+    private val marketStatsApiService = MarketStatsApiService()
     private val marketService = GitHubIssueMarketService(githubApiService, MARKET_DEFINITION)
     val githubAuth = GitHubAuthPreferences.getInstance(context)
 
@@ -82,6 +96,7 @@ class MCPMarketViewModel(
     val hasMore: StateFlow<Boolean> = _hasMore.asStateFlow()
 
     private var currentPage: Int = 1
+    private var totalPages: Int = 1
     private var searchJob: Job? = null
 
     private val _errorMessage = MutableStateFlow<String?>(null)
@@ -103,24 +118,31 @@ class MCPMarketViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
     // MCP市场数据
-    private val _mcpIssues = MutableStateFlow<List<GitHubIssue>>(emptyList())
-    private val _searchResultIssues = MutableStateFlow<List<GitHubIssue>>(emptyList())
+    private val _mcpItems = MutableStateFlow<List<McpMarketBrowseItem>>(emptyList())
+    private val _searchResultItems = MutableStateFlow<List<McpMarketBrowseItem>>(emptyList())
 
     // 搜索查询
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    val mcpIssues: StateFlow<List<GitHubIssue>> =
-        combine(_mcpIssues, _searchQuery, _searchResultIssues) { issues, query, searchIssues ->
-            if (query.isBlank()) {
-                issues
-            } else {
-                searchIssues
-            }
-        }.stateIn(
+    private val _sortOption = MutableStateFlow(MarketSortOption.UPDATED)
+    val sortOption: StateFlow<MarketSortOption> = _sortOption.asStateFlow()
+
+    private val _marketStats = MutableStateFlow<Map<String, MarketEntryStats>>(emptyMap())
+    val marketStats: StateFlow<Map<String, MarketEntryStats>> = _marketStats.asStateFlow()
+
+    val mcpItems: StateFlow<List<McpMarketBrowseItem>> =
+        buildMarketDisplayState(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
+            baseItems = _mcpItems,
+            searchQuery = _searchQuery,
+            searchResults = _searchResultItems,
+            sortOption = _sortOption,
+            stats = _marketStats,
+            idSelector = { it.entryId },
+            updatedAtSelector = { it.issue.updated_at },
+            titleSelector = { it.title },
+            likesSelector = { it.issue.reactions?.thumbs_up ?: 0 }
         )
 
     // 用户已发布的插件
@@ -215,7 +237,7 @@ class MCPMarketViewModel(
         val trimmedQuery = query.trim()
         if (trimmedQuery.isBlank()) {
             _isLoading.value = false
-            _searchResultIssues.value = emptyList()
+            _searchResultItems.value = emptyList()
             _errorMessage.value = null
             _isRateLimitError.value = false
             return
@@ -224,6 +246,24 @@ class MCPMarketViewModel(
         searchJob = viewModelScope.launch {
             delay(350)
             searchMCPMarketIssues(trimmedQuery)
+        }
+    }
+
+    fun onSortOptionChanged(option: MarketSortOption) {
+        _sortOption.value = option
+        loadMCPMarketData()
+    }
+
+    fun ensureMarketStatsLoaded(entryId: String? = null) {
+        if (entryId != null && _marketStats.value.containsKey(entryId)) {
+            return
+        }
+        if (entryId == null && _marketStats.value.isNotEmpty()) {
+            return
+        }
+
+        viewModelScope.launch {
+            refreshMarketStats()
         }
     }
 
@@ -245,7 +285,7 @@ class MCPMarketViewModel(
 
             result.fold(
                 onSuccess = { issues ->
-                    _searchResultIssues.value = issues
+                    _searchResultItems.value = issues.map { it.toMcpMarketBrowseItem() }
                 },
                 onFailure = { error ->
                     val errorMessage = error.message ?: ""
@@ -255,14 +295,16 @@ class MCPMarketViewModel(
                     } else {
                         _errorMessage.value = context.getString(R.string.mcp_market_load_failed_with_error, errorMessage)
                     }
-                    _searchResultIssues.value = emptyList()
+                    _searchResultItems.value = emptyList()
                     AppLogger.e(TAG, "Failed to search MCP market data", error)
                 }
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (rawQuery == _searchQuery.value.trim()) {
                 _errorMessage.value = context.getString(R.string.mcp_market_network_error_with_error, e.message ?: "")
-                _searchResultIssues.value = emptyList()
+                _searchResultItems.value = emptyList()
                 AppLogger.e(TAG, "Network error while searching MCP market data", e)
             }
         } finally {
@@ -282,11 +324,18 @@ class MCPMarketViewModel(
             _errorMessage.value = null
             _isRateLimitError.value = false // 重置状态
             issueInteractionController.clearReactionsCache() // 刷新时清除旧的Reactions缓存
-            _hasMore.value = true
+            _hasMore.value = false
             currentPage = 1
+            totalPages = 1
 
             try {
-                val result = marketService.getOpenIssues(page = 1)
+                refreshMarketStats()
+                val result =
+                    marketStatsApiService.getRankPage(
+                        type = MarketStatsType.MCP.wireValue,
+                        metric = _sortOption.value.toRankMetric(),
+                        page = 1
+                    )
 
                 val isLoggedIn = try {
                     githubAuth.isLoggedIn()
@@ -295,9 +344,16 @@ class MCPMarketViewModel(
                 }
 
                 result.fold(
-                    onSuccess = { issues ->
-                        _mcpIssues.value = issues
-                        _hasMore.value = issues.size >= MARKET_DEFINITION.pageSize
+                    onSuccess = { rankPage ->
+                        currentPage = rankPage.page
+                        totalPages = rankPage.totalPages.coerceAtLeast(1)
+                        rankPage.items.forEach { entry ->
+                            _marketStats.updateMarketEntryStats(entry.id) {
+                                entry.toMarketEntryStats()
+                            }
+                        }
+                        _mcpItems.value = rankPage.items.map { it.toMcpMarketBrowseItem() }
+                        _hasMore.value = currentPage < totalPages
                     },
                     onFailure = { error ->
                         val errorMessage = error.message ?: ""
@@ -322,34 +378,39 @@ class MCPMarketViewModel(
     }
 
     fun loadMoreMCPMarketData() {
+        if (_searchQuery.value.isNotBlank() || _isLoading.value || _isLoadingMore.value || !_hasMore.value) {
+            return
+        }
+
         viewModelScope.launch {
-            if (_isLoading.value || _isLoadingMore.value || !_hasMore.value) return@launch
-
             _isLoadingMore.value = true
-            _errorMessage.value = null
-            _isRateLimitError.value = false
-
-            val isLoggedIn = try {
-                githubAuth.isLoggedIn()
-            } catch (_: Exception) {
-                false
-            }
-
-            val nextPage = currentPage + 1
-
             try {
-                val result = marketService.getOpenIssues(page = nextPage)
+                val isLoggedIn = try {
+                    githubAuth.isLoggedIn()
+                } catch (_: Exception) {
+                    false
+                }
+
+                val result =
+                    marketStatsApiService.getRankPage(
+                        type = MarketStatsType.MCP.wireValue,
+                        metric = _sortOption.value.toRankMetric(),
+                        page = currentPage + 1
+                    )
 
                 result.fold(
-                    onSuccess = { issues ->
-                        if (issues.isEmpty()) {
-                            _hasMore.value = false
-                            return@fold
+                    onSuccess = { rankPage ->
+                        currentPage = rankPage.page
+                        totalPages = rankPage.totalPages.coerceAtLeast(1)
+                        rankPage.items.forEach { entry ->
+                            _marketStats.updateMarketEntryStats(entry.id) {
+                                entry.toMarketEntryStats()
+                            }
                         }
-
-                        currentPage = nextPage
-                        _mcpIssues.value = (_mcpIssues.value + issues).distinctBy { it.id }
-                        _hasMore.value = issues.size >= MARKET_DEFINITION.pageSize
+                        _mcpItems.value =
+                            (_mcpItems.value + rankPage.items.map { it.toMcpMarketBrowseItem() })
+                                .distinctBy { it.issue.id }
+                        _hasMore.value = currentPage < totalPages
                     },
                     onFailure = { error ->
                         val errorMessage = error.message ?: ""
@@ -357,14 +418,15 @@ class MCPMarketViewModel(
                             _errorMessage.value = context.getString(R.string.mcp_market_api_rate_limited_login_required)
                             _isRateLimitError.value = true
                         } else {
-                            _errorMessage.value = context.getString(R.string.mcp_market_load_more_failed_with_error, errorMessage)
+                            _errorMessage.value = context.getString(R.string.mcp_market_load_failed_with_error, errorMessage)
                         }
-
+                        _hasMore.value = false
                         AppLogger.e(TAG, "Failed to load more MCP market data", error)
                     }
                 )
             } catch (e: Exception) {
                 _errorMessage.value = context.getString(R.string.mcp_market_network_error_with_error, e.message ?: "")
+                _hasMore.value = false
                 AppLogger.e(TAG, "Network error while loading more MCP market data", e)
             } finally {
                 _isLoadingMore.value = false
@@ -384,10 +446,14 @@ class MCPMarketViewModel(
 
                 if (installInfo != null) {
                     val pluginInfo = MCPPluginParser.parsePluginInfo(issue)
+                    val statsId = resolveMcpMarketEntryId(issue)
+                    val downloadTarget =
+                        resolveMarketDownloadTarget(pluginInfo.repositoryUrl, issue.html_url)
                     val pluginId = generateMCPId(issue)
 
                     // 标记插件开始安装
                     _installingPlugins.value = _installingPlugins.value + pluginId
+                    trackMcpDownload(statsId, downloadTarget)
 
                     // 如果提供了安装配置，检查是否需要物理安装
                     if (installInfo.installConfig != null && installInfo.installConfig.isNotBlank()) {
@@ -485,6 +551,34 @@ class MCPMarketViewModel(
         }
     }
 
+    fun installMcp(item: McpMarketBrowseItem) {
+        installMCPFromIssue(item.issue)
+    }
+
+    private suspend fun refreshMarketStats() {
+        _marketStats.value =
+            loadMarketStatsMap(
+                marketStatsApiService = marketStatsApiService,
+                type = MarketStatsType.MCP,
+                logTag = TAG,
+                errorLabel = "mcp"
+            )
+    }
+
+    private suspend fun trackMcpDownload(statsId: String, targetUrl: String) {
+        marketStatsApiService.trackDownload(
+            type = MarketStatsType.MCP.wireValue,
+            id = statsId,
+            targetUrl = targetUrl
+        ).onSuccess {
+            _marketStats.updateMarketEntryStats(statsId) { current ->
+                current.copy(downloads = current.downloads + 1)
+            }
+        }.onFailure { error ->
+            AppLogger.w(TAG, "Failed to track MCP download for $statsId: ${error.message}")
+        }
+    }
+
     /**
      * 发布MCP到市场
      */
@@ -552,7 +646,10 @@ class MCPMarketViewModel(
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
         } catch (e: Exception) {
-            _errorMessage.value = context.getString(R.string.mcp_market_github_login_start_failed, e.message ?: "")
+            _errorMessage.value = context.getString(
+                R.string.mcp_market_github_login_start_failed,
+                e.message ?: ""
+            )
             AppLogger.e(TAG, "Failed to initiate GitHub login", e)
         }
     }
@@ -566,9 +663,7 @@ class MCPMarketViewModel(
                 _isLoading.value = true
                 AppLogger.d(TAG, "Handling GitHub callback with code: $code")
 
-                // 获取访问令牌
                 val tokenResult = githubApiService.getAccessToken(code)
-
                 val tokenResponse = tokenResult.getOrElse { error ->
                     AppLogger.e(TAG, "Failed to get access token", error)
                     _errorMessage.value = context.getString(R.string.main_github_login_failed, error.message ?: "")

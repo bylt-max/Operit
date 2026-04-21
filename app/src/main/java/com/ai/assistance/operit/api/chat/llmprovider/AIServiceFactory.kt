@@ -347,6 +347,19 @@ object AIServiceFactory {
                     supportsVideo = supportsVideo,
                     enableToolCall = enableToolCall
                 )
+            ApiProviderType.NOUS_PORTAL ->
+                NousPortalProvider(
+                    apiEndpoint = config.apiEndpoint,
+                    apiKeyProvider = apiKeyProvider,
+                    modelName = config.modelName,
+                    client = httpClient,
+                    customHeaders = customHeaders,
+                    providerType = config.apiProviderType,
+                    supportsVision = supportsVision,
+                    supportsAudio = supportsAudio,
+                    supportsVideo = supportsVideo,
+                    enableToolCall = enableToolCall
+                )
             ApiProviderType.INFINIAI ->
                 OpenAIProvider(
                     apiEndpoint = config.apiEndpoint,

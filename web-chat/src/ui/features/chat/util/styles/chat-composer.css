@@ -1,4 +1,9 @@
 .chat-composer-host {
+  --chat-composer-glass-bg: color-mix(in srgb, var(--chat-composer-bg-strong) 68%, transparent);
+  --chat-composer-glass-border: color-mix(in srgb, rgba(255, 255, 255, 0.42) 34%, var(--chat-field-border-strong));
+  --chat-composer-glass-filter: blur(20px) saturate(165%);
+  --chat-composer-glass-highlight: rgba(255, 255, 255, 0.14);
+  --chat-composer-glass-shadow: 0 -12px 30px color-mix(in srgb, var(--chat-shadow) 92%, transparent);
   position: sticky;
   bottom: 0;
   z-index: 7;
@@ -11,6 +16,25 @@
 .chat-composer-host.is-floating {
   padding-left: 8px;
   padding-right: 8px;
+}
+
+.chat-composer-host.is-water-glass {
+  --chat-composer-glass-bg: color-mix(in srgb, var(--chat-composer-bg-strong) 72%, transparent);
+  --chat-composer-glass-border: color-mix(in srgb, rgba(255, 255, 255, 0.5) 38%, var(--chat-field-border-strong));
+  --chat-composer-glass-filter: blur(18px) saturate(150%);
+  --chat-composer-glass-shadow: 0 -10px 26px color-mix(in srgb, var(--chat-shadow) 90%, transparent);
+}
+
+.chat-composer-host.is-liquid-glass {
+  --chat-composer-glass-bg: color-mix(in srgb, var(--chat-composer-bg-strong) 62%, transparent);
+  --chat-composer-glass-border: color-mix(in srgb, rgba(255, 255, 255, 0.4) 32%, var(--chat-field-border-strong));
+  --chat-composer-glass-filter: blur(22px) saturate(178%);
+  --chat-composer-glass-shadow: 0 -14px 34px color-mix(in srgb, var(--chat-shadow) 94%, transparent);
+}
+
+.chat-composer-host.is-floating.is-water-glass,
+.chat-composer-host.is-floating.is-liquid-glass {
+  --chat-composer-glass-shadow: 0 16px 32px color-mix(in srgb, var(--chat-shadow) 92%, transparent);
 }
 
 .chat-inline-error {
@@ -42,7 +66,8 @@
 }
 
 .agent-chat-input-section {
-  padding: 6px 8px 10px;
+  gap: 0;
+  padding: 0;
   border-top: 0;
   background: transparent;
   box-shadow: none;
@@ -62,25 +87,46 @@
 }
 
 .chat-composer-host.is-water-glass .classic-chat-input-section {
-  background: transparent;
-  padding: 0;
-  border: 0;
-  box-shadow: none;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--chat-composer-glass-border);
+  background: var(--chat-composer-glass-bg);
+  background-clip: padding-box;
+  backdrop-filter: var(--chat-composer-glass-filter);
+  -webkit-backdrop-filter: var(--chat-composer-glass-filter);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--chat-composer-glass-highlight) 80%, transparent),
+    var(--chat-composer-glass-shadow);
 }
 
 .chat-composer-host.is-liquid-glass .classic-chat-input-section {
-  background: transparent;
-  padding: 0;
-  border: 0;
-  box-shadow: none;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--chat-composer-glass-border);
+  background: var(--chat-composer-glass-bg);
+  background-clip: padding-box;
+  backdrop-filter: var(--chat-composer-glass-filter);
+  -webkit-backdrop-filter: var(--chat-composer-glass-filter);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--chat-composer-glass-highlight) 76%, transparent),
+    var(--chat-composer-glass-shadow);
 }
 
-.chat-composer-host.is-water-glass .classic-chat-input-section .glass-surface-content,
-.chat-composer-host.is-liquid-glass .classic-chat-input-section .glass-surface-content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px 12px 12px;
+.chat-composer-host.is-water-glass .classic-chat-input-section::before,
+.chat-composer-host.is-liquid-glass .classic-chat-input-section::before,
+.chat-composer-host.is-water-glass .agent-input-card::before,
+.chat-composer-host.is-liquid-glass .agent-input-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--chat-composer-glass-highlight) 100%, transparent) 0%,
+    color-mix(in srgb, var(--chat-composer-glass-highlight) 38%, transparent) 14%,
+    transparent 34%
+  );
 }
 
 .pending-message-queue-panel {
@@ -145,7 +191,7 @@
 }
 
 .input-processing-status.is-agent {
-  padding: 0 12px;
+  padding: 4px 12px 0;
 }
 
 .input-processing-status-message,
@@ -198,7 +244,7 @@
 }
 
 .composer-attachment-strip.is-agent {
-  padding: 0 12px;
+  padding: 4px 12px;
 }
 
 .agent-input-card {
@@ -206,8 +252,9 @@
   flex-direction: column;
   gap: 10px;
   position: relative;
+  margin-top: 4px;
   padding: 8px 12px 8px;
-  border: 1px solid var(--chat-field-border);
+  border: 0;
   border-radius: 20px 20px 0 0;
   background: var(--chat-composer-bg);
   box-shadow: 0 -10px 22px var(--chat-shadow);
@@ -222,7 +269,7 @@
 }
 
 .chat-composer-host.is-floating .agent-input-card {
-  margin: 0 8px 6px;
+  margin: 2px 0 0;
   border-radius: 22px;
   box-shadow: 0 16px 32px var(--chat-shadow);
 }
@@ -234,25 +281,36 @@
 }
 
 .chat-composer-host.is-water-glass .agent-input-card {
-  background: transparent;
-  padding: 0;
-  border: 0;
-  box-shadow: none;
+  overflow: hidden;
+  border: 1px solid var(--chat-composer-glass-border);
+  background: var(--chat-composer-glass-bg);
+  background-clip: padding-box;
+  backdrop-filter: var(--chat-composer-glass-filter);
+  -webkit-backdrop-filter: var(--chat-composer-glass-filter);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--chat-composer-glass-highlight) 80%, transparent),
+    var(--chat-composer-glass-shadow);
 }
 
 .chat-composer-host.is-liquid-glass .agent-input-card {
-  background: transparent;
-  padding: 0;
-  border: 0;
-  box-shadow: none;
+  overflow: hidden;
+  border: 1px solid var(--chat-composer-glass-border);
+  background: var(--chat-composer-glass-bg);
+  background-clip: padding-box;
+  backdrop-filter: var(--chat-composer-glass-filter);
+  -webkit-backdrop-filter: var(--chat-composer-glass-filter);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--chat-composer-glass-highlight) 76%, transparent),
+    var(--chat-composer-glass-shadow);
 }
 
-.chat-composer-host.is-water-glass .agent-input-card .glass-surface-content,
-.chat-composer-host.is-liquid-glass .agent-input-card .glass-surface-content {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 8px 12px 8px;
+.chat-composer-host.is-agent.is-floating {
+  padding-top: 6px;
+  padding-bottom: calc(var(--chat-safe-bottom) + 6px);
+}
+
+.agent-chat-input-section > .pending-message-queue-panel {
+  margin: 4px 12px;
 }
 
 .classic-input-field textarea,

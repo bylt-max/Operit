@@ -1,13 +1,16 @@
 package com.ai.assistance.operit.ui.features.packages.market
 
 import com.ai.assistance.operit.data.api.GitHubIssue
+import com.ai.assistance.operit.data.api.MarketRankIssueEntryResponse
 import com.ai.assistance.operit.ui.features.packages.utils.IssueBodyMetadataParser
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
 
 const val OPERIT_MARKET_OWNER = "AAswordman"
 const val OPERIT_FORGE_REPO_NAME = "OperitForge"
@@ -17,6 +20,11 @@ private const val ARTIFACT_MARKET_PARSER_VERSION = "forge-v2"
 private const val SCRIPT_MARKET_LABEL = "script-artifact"
 private const val PACKAGE_MARKET_LABEL = "package-artifact"
 private val APP_VERSION_REGEX = Regex("""^(\d+)\.(\d+)\.(\d+)(?:\+(\d+))?$""")
+private val MARKET_ARTIFACT_JSON =
+    Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+    }
 
 private data class AppVersion(
     val major: Int,
@@ -198,6 +206,22 @@ fun toArtifactMarketItem(issue: GitHubIssue): ArtifactMarketItem? {
     val body = issue.body ?: return null
     val metadata = parseArtifactMarketMetadata(body) ?: return null
     return ArtifactMarketItem(issue = issue, metadata = metadata)
+}
+
+fun toArtifactMarketItem(entry: MarketRankIssueEntryResponse): ArtifactMarketItem? {
+    val metadata =
+        decodeArtifactMarketMetadata(entry.metadata)
+            ?: entry.issue.body?.let(::parseArtifactMarketMetadata)
+            ?: return null
+    return ArtifactMarketItem(issue = entry.issue, metadata = metadata)
+}
+
+private fun decodeArtifactMarketMetadata(metadata: JsonElement?): ArtifactMarketMetadata? {
+    return metadata?.let {
+        runCatching {
+            MARKET_ARTIFACT_JSON.decodeFromJsonElement<ArtifactMarketMetadata>(it)
+        }.getOrNull()
+    }
 }
 
 fun buildPublishArtifactDescriptor(

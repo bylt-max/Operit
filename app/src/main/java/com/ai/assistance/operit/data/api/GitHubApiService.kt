@@ -3,6 +3,7 @@ package com.ai.assistance.operit.data.api
 import android.content.Context
 import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
 import com.ai.assistance.operit.data.preferences.GitHubUser
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -445,6 +446,8 @@ class GitHubApiService(private val context: Context) {
                 val errorBody = response.body?.string()
                 Result.failure(Exception("HTTP ${response.code}: ${response.message}\n$errorBody"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }

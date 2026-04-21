@@ -262,7 +262,8 @@ fun ModelApiSettingsSection(
         if (selectedApiProvider == ApiProviderType.OPENAI || selectedApiProvider == ApiProviderType.OPENAI_RESPONSES || selectedApiProvider == ApiProviderType.OPENAI_RESPONSES_GENERIC || selectedApiProvider == ApiProviderType.OPENAI_GENERIC || selectedApiProvider == ApiProviderType.GOOGLE
             || selectedApiProvider == ApiProviderType.GEMINI_GENERIC
             || selectedApiProvider == ApiProviderType.ANTHROPIC || selectedApiProvider == ApiProviderType.ANTHROPIC_GENERIC || selectedApiProvider == ApiProviderType.MISTRAL
-            || selectedApiProvider == ApiProviderType.NVIDIA) {
+            || selectedApiProvider == ApiProviderType.NVIDIA
+            || selectedApiProvider == ApiProviderType.NOUS_PORTAL) {
             val inChina = LocationUtils.isDeviceInMainlandChina(context)
             showRegionWarning = inChina
             if (inChina) {
@@ -1027,6 +1028,7 @@ private fun getProviderDisplayName(provider: ApiProviderType, context: android.c
         ApiProviderType.SILICONFLOW -> context.getString(R.string.provider_siliconflow)
         ApiProviderType.IFLOW -> context.getString(R.string.provider_iflow)
         ApiProviderType.OPENROUTER -> context.getString(R.string.provider_openrouter)
+        ApiProviderType.NOUS_PORTAL -> context.getString(R.string.provider_nous_portal)
         ApiProviderType.INFINIAI -> context.getString(R.string.provider_infiniai)
         ApiProviderType.ALIPAY_BAILING -> context.getString(R.string.provider_alipay_bailing)
         ApiProviderType.DOUBAO -> context.getString(R.string.provider_doubao)
@@ -1639,6 +1641,7 @@ private fun getProviderColor(provider: ApiProviderType): androidx.compose.ui.gra
         ApiProviderType.SILICONFLOW -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.6f)
         ApiProviderType.IFLOW -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.55f)
         ApiProviderType.OPENROUTER -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.6f)
+        ApiProviderType.NOUS_PORTAL -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.52f)
         ApiProviderType.INFINIAI -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
         ApiProviderType.ALIPAY_BAILING -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.45f)
         ApiProviderType.DOUBAO -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)

@@ -8,13 +8,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ai.assistance.operit.data.dao.ChatDao
 import com.ai.assistance.operit.data.dao.MessageDao
+import com.ai.assistance.operit.data.dao.MessageVariantDao
 import com.ai.assistance.operit.data.model.ChatEntity
 import com.ai.assistance.operit.data.model.MessageEntity
+import com.ai.assistance.operit.data.model.MessageVariantEntity
 
 /** 应用数据库，包含聊天表和消息表 */
 @Database(
-    entities = [ChatEntity::class, MessageEntity::class],
-    version = 14,
+    entities = [ChatEntity::class, MessageEntity::class, MessageVariantEntity::class],
+    version = 15,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,6 +26,8 @@ abstract class AppDatabase : RoomDatabase() {
 
     /** 获取消息DAO */
     abstract fun messageDao(): MessageDao
+
+    abstract fun messageVariantDao(): MessageVariantDao
 
     companion object {
         @Volatile
@@ -129,6 +133,42 @@ abstract class AppDatabase : RoomDatabase() {
             object : Migration(13, 14) {
                 override fun migrate(db: SupportSQLiteDatabase) {
                     db.execSQL("DROP TABLE IF EXISTS `problem_records`")
+                }
+            }
+
+        private val MIGRATION_14_15 =
+            object : Migration(14, 15) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "ALTER TABLE messages ADD COLUMN `selectedVariantIndex` INTEGER NOT NULL DEFAULT 0"
+                    )
+                    db.execSQL(
+                        """
+                            CREATE TABLE IF NOT EXISTS `message_variants` (
+                                `variantId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                                `chatId` TEXT NOT NULL,
+                                `messageTimestamp` INTEGER NOT NULL,
+                                `variantIndex` INTEGER NOT NULL,
+                                `content` TEXT NOT NULL,
+                                `roleName` TEXT NOT NULL DEFAULT '',
+                                `provider` TEXT NOT NULL DEFAULT '',
+                                `modelName` TEXT NOT NULL DEFAULT '',
+                                `inputTokens` INTEGER NOT NULL DEFAULT 0,
+                                `outputTokens` INTEGER NOT NULL DEFAULT 0,
+                                `cachedInputTokens` INTEGER NOT NULL DEFAULT 0,
+                                `sentAt` INTEGER NOT NULL DEFAULT 0,
+                                `outputDurationMs` INTEGER NOT NULL DEFAULT 0,
+                                `waitDurationMs` INTEGER NOT NULL DEFAULT 0,
+                                FOREIGN KEY(`chatId`) REFERENCES `chats`(`id`) ON DELETE CASCADE
+                            )
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_message_variants_chatId_messageTimestamp` ON `message_variants` (`chatId`, `messageTimestamp`)"
+                    )
+                    db.execSQL(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS `index_message_variants_chatId_messageTimestamp_variantIndex` ON `message_variants` (`chatId`, `messageTimestamp`, `variantIndex`)"
+                    )
                 }
             }
 
@@ -242,7 +282,8 @@ abstract class AppDatabase : RoomDatabase() {
                                 MIGRATION_10_11,
                                 MIGRATION_11_12,
                                 MIGRATION_12_13,
-                                MIGRATION_13_14
+                                MIGRATION_13_14,
+                                MIGRATION_14_15
                             ) // 添加新的迁移
                             .build()
                     INSTANCE = instance

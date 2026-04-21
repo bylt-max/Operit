@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.api.GitHubIssue
+import com.ai.assistance.operit.ui.features.github.GitHubLoginWebViewDialog
 import com.ai.assistance.operit.ui.features.packages.components.MarketManageDangerActionButton
 import com.ai.assistance.operit.ui.features.packages.components.MarketManageDeleteDialog
 import com.ai.assistance.operit.ui.features.packages.components.MarketManageItemCard
@@ -65,6 +66,7 @@ fun ArtifactManageScreen(
     val userPublishedArtifacts by viewModel.userPublishedArtifacts.collectAsState()
 
     var showDeleteDialog by remember { mutableStateOf<GitHubIssue?>(null) }
+    var showGitHubLogin by remember { mutableStateOf(false) }
 
     LaunchedEffect(isLoggedIn) {
         if (isLoggedIn) {
@@ -77,7 +79,7 @@ fun ArtifactManageScreen(
         isLoading = isLoading,
         errorMessage = errorMessage,
         isEmpty = userPublishedArtifacts.isEmpty(),
-        onLogin = { viewModel.initiateGitHubLogin(context) },
+        onLogin = { showGitHubLogin = true },
         onPublish = onNavigateToPublish,
         publishContentDescription = stringResource(R.string.publish_new_artifact),
         loginDescription = stringResource(R.string.need_login_github_manage_artifacts),
@@ -142,6 +144,12 @@ fun ArtifactManageScreen(
                 showDeleteDialog = null
             },
             onDismiss = { showDeleteDialog = null }
+        )
+    }
+
+    if (showGitHubLogin) {
+        GitHubLoginWebViewDialog(
+            onDismissRequest = { showGitHubLogin = false }
         )
     }
 }

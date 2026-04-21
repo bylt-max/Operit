@@ -3,51 +3,21 @@ package com.ai.assistance.operit.ui.features.packages.screens
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.AddComment
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Update
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -58,51 +28,62 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.rememberAsyncImagePainter
 import com.ai.assistance.operit.R
-import com.ai.assistance.operit.data.api.GitHubComment
 import com.ai.assistance.operit.data.api.GitHubIssue
-import com.ai.assistance.operit.data.api.GitHubReaction
-import com.ai.assistance.operit.data.preferences.GitHubUser
-import com.ai.assistance.operit.ui.components.CustomScaffold
 import com.ai.assistance.operit.ui.features.packages.market.ArtifactMarketItem
 import com.ai.assistance.operit.ui.features.packages.market.ArtifactMarketScope
 import com.ai.assistance.operit.ui.features.packages.market.PublishArtifactType
+import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailAction
+import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailBanner
+import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailCommentDialog
+import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailCommentsState
+import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailHeader
+import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailInfoRow
+import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailMetric
+import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailParticipant
+import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailReactionOption
+import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailReactionsState
+import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailScreen
+import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailSection
+import com.ai.assistance.operit.ui.features.packages.market.formatMarketDetailCompactDate
+import com.ai.assistance.operit.ui.features.packages.market.formatMarketDetailDate
+import com.ai.assistance.operit.ui.features.packages.market.marketDetailInitial
+import com.ai.assistance.operit.ui.features.packages.market.resolveArtifactMarketEntryId
 import com.ai.assistance.operit.ui.features.packages.screens.artifact.viewmodel.ArtifactMarketViewModel
 import com.ai.assistance.operit.ui.features.packages.utils.ArtifactIssueParser
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.TimeZone
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ArtifactDetailScreen(issue: GitHubIssue, onNavigateBack: () -> Unit = {}) {
+fun ArtifactDetailScreen(
+    issue: GitHubIssue,
+    onNavigateBack: () -> Unit = {}
+) {
     val info = remember(issue) { ArtifactIssueParser.parseArtifactInfo(issue) }
     val artifactType = info.type
     if (artifactType == null) {
         InvalidArtifactMetadataScreen()
         return
     }
+
     val context = LocalContext.current
     val viewModel: ArtifactMarketViewModel =
         viewModel(
             key = "artifact-detail-${artifactType.wireValue}",
-            factory = ArtifactMarketViewModel.Factory(
-                context.applicationContext,
-                if (artifactType == PublishArtifactType.PACKAGE) ArtifactMarketScope.PACKAGE_ONLY else ArtifactMarketScope.SCRIPT_ONLY
-            )
+            factory =
+                ArtifactMarketViewModel.Factory(
+                    context.applicationContext,
+                    if (artifactType == PublishArtifactType.PACKAGE) {
+                        ArtifactMarketScope.PACKAGE_ONLY
+                    } else {
+                        ArtifactMarketScope.SCRIPT_ONLY
+                    }
+                )
         )
 
-    val isLoggedIn by viewModel.isLoggedIn.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val comments by viewModel.issueComments.collectAsState()
     val isLoadingComments by viewModel.isLoadingComments.collectAsState()
@@ -110,18 +91,38 @@ fun ArtifactDetailScreen(issue: GitHubIssue, onNavigateBack: () -> Unit = {}) {
     val issueReactions by viewModel.issueReactions.collectAsState()
     val isLoadingReactions by viewModel.isLoadingReactions.collectAsState()
     val isReacting by viewModel.isReacting.collectAsState()
+    val userAvatarCache by viewModel.userAvatarCache.collectAsState()
     val installedIds by viewModel.installedArtifactIds.collectAsState()
     val installingIds by viewModel.installingIds.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val marketStats by viewModel.marketStats.collectAsState()
+
+    val entryId = remember(info.metadata) { info.metadata?.let(::resolveArtifactMarketEntryId).orEmpty() }
+    val currentComments = comments[issue.number].orEmpty()
+    val currentReactions = issueReactions[issue.number].orEmpty()
+    val downloads = marketStats[entryId]?.downloads ?: 0
+    val likes = if (currentReactions.isNotEmpty()) currentReactions.count { it.content == "+1" } else issue.reactions?.thumbs_up ?: 0
+    val favorites = if (currentReactions.isNotEmpty()) currentReactions.count { it.content == "heart" } else issue.reactions?.heart ?: 0
+    val currentUserLogin = currentUser?.login
+    val hasThumbsUp = currentUserLogin != null && currentReactions.any { it.content == "+1" && it.user.login == currentUserLogin }
+    val hasHeart = currentUserLogin != null && currentReactions.any { it.content == "heart" && it.user.login == currentUserLogin }
+    val isInstalled = installedIds.contains(info.normalizedId)
+    val isInstalling = installingIds.contains(info.normalizedId)
+    val isCompatible = info.metadata?.let(viewModel::isCompatible) ?: true
+    val publisherAvatarUrl = userAvatarCache[info.publisherLogin]
 
     var commentText by remember { mutableStateOf("") }
     var showCommentDialog by remember { mutableStateOf(false) }
     var showCompatibilityDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(issue.number) {
+    LaunchedEffect(issue.number, entryId) {
         viewModel.loadIssueComments(issue.number, artifactType)
         viewModel.loadIssueReactions(issue.number, artifactType)
         viewModel.refreshInstalledArtifacts()
+        viewModel.ensureMarketStatsLoaded(entryId)
+        if (info.publisherLogin.isNotBlank()) {
+            viewModel.fetchUserAvatar(info.publisherLogin)
+        }
     }
 
     errorMessage?.let { error ->
@@ -131,108 +132,242 @@ fun ArtifactDetailScreen(issue: GitHubIssue, onNavigateBack: () -> Unit = {}) {
         }
     }
 
-    CustomScaffold(
-        floatingActionButton = {
-            if (isLoggedIn) {
-                FloatingActionButton(onClick = { showCommentDialog = true }) {
-                    Icon(Icons.Default.AddComment, contentDescription = stringResource(R.string.mcp_plugin_add_comment))
+    val primaryActionLabel =
+        when {
+            isInstalled -> stringResource(R.string.downloaded_already)
+            isInstalling -> stringResource(R.string.downloading)
+            artifactType == PublishArtifactType.SCRIPT -> stringResource(R.string.download_script)
+            else -> stringResource(R.string.download_package)
+        }
+
+    val header =
+        UnifiedMarketDetailHeader(
+            title = info.title,
+            fallbackAvatarText = marketDetailInitial(info.title),
+            participants =
+                listOf(
+                    UnifiedMarketDetailParticipant(
+                        roleLabel = stringResource(R.string.market_detail_publisher_role),
+                        name = info.publisherLogin.ifBlank { "-" },
+                        avatarUrl = publisherAvatarUrl,
+                        fallbackAvatarText = marketDetailInitial(info.publisherLogin)
+                    ),
+                    UnifiedMarketDetailParticipant(
+                        roleLabel = stringResource(R.string.market_detail_sharer_role),
+                        name = issue.user.login,
+                        avatarUrl = issue.user.avatarUrl,
+                        fallbackAvatarText = marketDetailInitial(issue.user.login)
+                    )
+                ),
+            badges =
+                buildArtifactBadges(
+                    info = info,
+                    artifactType = artifactType,
+                    supportedVersionLabel = info.metadata?.let(viewModel::supportedVersionLabel)
+                ),
+            metrics =
+                listOf(
+                    UnifiedMarketDetailMetric(
+                        value = downloads.toString(),
+                        label = stringResource(R.string.market_sort_downloads)
+                    ),
+                    UnifiedMarketDetailMetric(
+                        value = likes.toString(),
+                        label = stringResource(R.string.market_sort_likes)
+                    ),
+                    UnifiedMarketDetailMetric(
+                        value = formatMarketDetailCompactDate(issue.created_at),
+                        label = stringResource(R.string.market_detail_published_label)
+                    )
+                ),
+            statusLabel =
+                if (issue.state == "open") {
+                    stringResource(R.string.market_detail_status_available)
+                } else {
+                    stringResource(R.string.market_detail_status_closed)
                 }
+        )
+
+    val sections =
+        buildList {
+            if (info.description.isNotBlank()) {
+                add(
+                    UnifiedMarketDetailSection(
+                        title = stringResource(R.string.market_detail_about_title),
+                        body = info.description,
+                        icon = Icons.Default.Info,
+                        showTitle = false
+                    )
+                )
             }
         }
-    ) { paddingValues ->
-        val currentComments = comments[issue.number] ?: emptyList()
-        val isInstalled = installedIds.contains(info.normalizedId)
-        val isInstalling = installingIds.contains(info.normalizedId)
-        val isCompatible = info.metadata?.let(viewModel::isCompatible) ?: true
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(paddingValues),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            item { ArtifactHeader(issue = issue, info = info, viewModel = viewModel) }
-            item {
-                ArtifactActions(
-                    artifactType = artifactType,
-                    info = info,
-                    issue = issue,
-                    isInstalled = isInstalled,
-                    isInstalling = isInstalling,
-                    onInstall = {
-                        val metadata = info.metadata
-                        if (metadata != null) {
-                            if (viewModel.isCompatible(metadata)) {
-                                viewModel.installArtifact(ArtifactMarketItem(issue = issue, metadata = metadata))
-                            } else {
-                                showCompatibilityDialog = true
+    val metadataRows =
+        buildList {
+            add(
+                UnifiedMarketDetailInfoRow(
+                    label = stringResource(R.string.type_label),
+                    value =
+                        when (artifactType) {
+                            PublishArtifactType.PACKAGE -> stringResource(R.string.artifact_type_package)
+                            PublishArtifactType.SCRIPT -> stringResource(R.string.artifact_type_script)
+                        },
+                    icon = Icons.Default.Tag
+                )
+            )
+            add(
+                UnifiedMarketDetailInfoRow(
+                    label = stringResource(R.string.version_label),
+                    value = info.version.ifBlank { "-" },
+                    icon = Icons.Default.Update
+                )
+            )
+            add(
+                UnifiedMarketDetailInfoRow(
+                    label = stringResource(R.string.supported_app_versions),
+                    value = info.metadata?.let(viewModel::supportedVersionLabel) ?: "-",
+                    icon = Icons.Default.Info
+                )
+            )
+            add(
+                UnifiedMarketDetailInfoRow(
+                    label = stringResource(R.string.current_app_version_label),
+                    value = viewModel.currentAppVersion,
+                    icon = Icons.Default.Info
+                )
+            )
+            addIfNotBlank(stringResource(R.string.asset_file_label), info.assetName, Icons.Default.Info)
+            addIfNotBlank(stringResource(R.string.forge_repo_label), info.forgeRepo, Icons.Default.Info)
+            addIfNotBlank(stringResource(R.string.release_tag_label), info.releaseTag, Icons.Default.Tag)
+            addIfNotBlank(stringResource(R.string.sha256_label), info.sha256, Icons.Default.Info)
+            addIfNotBlank(stringResource(R.string.source_file_label), info.sourceFileName, Icons.Default.Info)
+            add(
+                UnifiedMarketDetailInfoRow(
+                    label = stringResource(R.string.market_detail_published_label),
+                    value = formatMarketDetailDate(issue.created_at),
+                    icon = Icons.Default.CalendarToday
+                )
+            )
+            add(
+                UnifiedMarketDetailInfoRow(
+                    label = stringResource(R.string.updated_at_label),
+                    value = formatMarketDetailDate(issue.updated_at),
+                    icon = Icons.Default.Update
+                )
+            )
+        }
+
+    val reactionsState =
+        UnifiedMarketDetailReactionsState(
+            title = stringResource(R.string.mcp_plugin_community_feedback),
+            helperText = if (currentUser == null) stringResource(R.string.mcp_plugin_login_required) else null,
+            isLoading = issue.number in isLoadingReactions,
+            isMutating = issue.number in isReacting,
+            options =
+                listOf(
+                    UnifiedMarketDetailReactionOption(
+                        label = stringResource(R.string.market_detail_like_action),
+                        count = likes,
+                        icon = Icons.Default.ThumbUp,
+                        tint = MaterialTheme.colorScheme.primary,
+                        isSelected = hasThumbsUp,
+                        enabled = currentUser != null,
+                        onClick = {
+                            if (!hasThumbsUp) {
+                                viewModel.addReactionToIssue(issue.number, artifactType, "+1")
                             }
                         }
-                    },
-                    onOpenAsset = {
-                        if (info.downloadUrl.isNotBlank()) {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl)))
+                    ),
+                    UnifiedMarketDetailReactionOption(
+                        label = stringResource(R.string.market_detail_favorite_action),
+                        count = favorites,
+                        icon = Icons.Default.Favorite,
+                        tint = Color(0xFFE91E63),
+                        isSelected = hasHeart,
+                        enabled = currentUser != null,
+                        onClick = {
+                            if (!hasHeart) {
+                                viewModel.addReactionToIssue(issue.number, artifactType, "heart")
+                            }
+                        }
+                    )
+                )
+        )
+
+    val commentsState =
+        UnifiedMarketDetailCommentsState(
+            title = stringResource(R.string.comments_with_count, currentComments.size),
+            comments = currentComments,
+            isLoading = issue.number in isLoadingComments,
+            isPosting = issue.number in isPostingComment,
+            canPost = currentUser != null,
+            postHint = if (currentUser == null) stringResource(R.string.mcp_plugin_login_required) else null,
+            onRefresh = { viewModel.loadIssueComments(issue.number, artifactType) },
+            onRequestPost = { showCommentDialog = true }
+        )
+
+    UnifiedMarketDetailScreen(
+        onNavigateBack = onNavigateBack,
+        header = header,
+        primaryAction =
+            UnifiedMarketDetailAction(
+                label = primaryActionLabel,
+                onClick = {
+                    val metadata = info.metadata
+                    if (metadata != null) {
+                        if (viewModel.isCompatible(metadata)) {
+                            viewModel.installArtifact(ArtifactMarketItem(issue = issue, metadata = metadata))
+                        } else {
+                            showCompatibilityDialog = true
                         }
                     }
-                )
-            }
-            if (!isCompatible) {
-                item {
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
-                        Text(
-                            text = stringResource(
-                                R.string.unsupported_artifact_version_message,
-                                info.title,
-                                viewModel.currentAppVersion,
-                                info.metadata?.let(viewModel::supportedVersionLabel).orEmpty()
-                            ),
-                            modifier = Modifier.padding(16.dp),
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
+                },
+                enabled = issue.state == "open" && !isInstalled && !isInstalling,
+                isLoading = isInstalling,
+                icon =
+                    when {
+                        isInstalling -> null
+                        isInstalled -> Icons.Default.Check
+                        else -> Icons.Default.Download
                     }
-                }
-            }
-            if (info.description.isNotBlank()) {
-                item {
-                    Card {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(stringResource(R.string.description_label), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(info.description, style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
-            }
-            item { ArtifactMetadataCard(issue = issue, info = info, viewModel = viewModel) }
-            item {
-                ArtifactReactions(
-                    issue = issue,
-                    currentUser = currentUser,
-                    issueReactions = issueReactions[issue.number] ?: emptyList(),
-                    isLoading = isLoadingReactions.contains(issue.number),
-                    isReacting = isReacting.contains(issue.number),
-                    onReact = { reaction -> viewModel.addReactionToIssue(issue.number, artifactType, reaction) }
+            ),
+        secondaryAction =
+            if (info.downloadUrl.isNotBlank()) {
+                UnifiedMarketDetailAction(
+                    label = stringResource(R.string.open_asset),
+                    onClick = { openExternalUrl(context, info.downloadUrl) },
+                    icon = Icons.Default.Info
                 )
-            }
-            item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
-            item {
-                CommentsHeader(
-                    commentCount = currentComments.size,
-                    isLoading = isLoadingComments.contains(issue.number),
-                    onRefresh = { viewModel.loadIssueComments(issue.number, artifactType) }
-                )
-            }
-            if (currentComments.isEmpty() && !isLoadingComments.contains(issue.number)) {
-                item { EmptyCommentsCard() }
             } else {
-                items(currentComments, key = { it.id }) { comment ->
-                    CommentCard(comment)
-                }
-            }
-        }
-    }
+                null
+            },
+        banner =
+            if (!isCompatible && info.metadata != null) {
+                UnifiedMarketDetailBanner(
+                    title = stringResource(R.string.unsupported_artifact_version_title),
+                    message =
+                        stringResource(
+                            R.string.unsupported_artifact_version_message,
+                            info.title,
+                            viewModel.currentAppVersion,
+                            viewModel.supportedVersionLabel(info.metadata)
+                        ),
+                    icon = Icons.Default.Warning,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+            } else {
+                null
+            },
+        sections = sections,
+        metadataTitle = stringResource(R.string.metadata_title),
+        metadataRows = metadataRows,
+        reactions = reactionsState,
+        comments = commentsState
+    )
 
     if (showCommentDialog) {
-        CommentInputDialog(
+        UnifiedMarketDetailCommentDialog(
             commentText = commentText,
             onCommentTextChange = { commentText = it },
             onDismiss = {
@@ -246,7 +381,7 @@ fun ArtifactDetailScreen(issue: GitHubIssue, onNavigateBack: () -> Unit = {}) {
                     commentText = ""
                 }
             },
-            isPosting = isPostingComment.contains(issue.number)
+            isPosting = issue.number in isPostingComment
         )
     }
 
@@ -265,10 +400,12 @@ fun ArtifactDetailScreen(issue: GitHubIssue, onNavigateBack: () -> Unit = {}) {
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    viewModel.installArtifact(ArtifactMarketItem(issue = issue, metadata = info.metadata))
-                    showCompatibilityDialog = false
-                }) {
+                TextButton(
+                    onClick = {
+                        viewModel.installArtifact(ArtifactMarketItem(issue = issue, metadata = info.metadata))
+                        showCompatibilityDialog = false
+                    }
+                ) {
                     Text(stringResource(R.string.continue_download_anyway))
                 }
             },
@@ -282,326 +419,57 @@ fun ArtifactDetailScreen(issue: GitHubIssue, onNavigateBack: () -> Unit = {}) {
 }
 
 @Composable
-private fun ArtifactHeader(
-    issue: GitHubIssue,
-    info: ArtifactIssueParser.ParsedArtifactInfo,
-    viewModel: ArtifactMarketViewModel
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(info.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val avatarUrl by viewModel.userAvatarCache.collectAsState()
-            LaunchedEffect(info.publisherLogin) {
-                if (info.publisherLogin.isNotBlank()) {
-                    viewModel.fetchUserAvatar(info.publisherLogin)
-                }
-            }
-            val publisherAvatar = avatarUrl[info.publisherLogin]
-            if (publisherAvatar != null) {
-                Image(painter = rememberAsyncImagePainter(publisherAvatar), contentDescription = null, modifier = Modifier.size(24.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-            } else {
-                Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(24.dp))
-            }
-            Text(stringResource(R.string.publisher_colon, info.publisherLogin.ifBlank { "-" }), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Image(painter = rememberAsyncImagePainter(issue.user.avatarUrl), contentDescription = null, modifier = Modifier.size(20.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-            Text(stringResource(R.string.market_registrar_colon, issue.user.login), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun ArtifactActions(
-    artifactType: PublishArtifactType,
-    info: ArtifactIssueParser.ParsedArtifactInfo,
-    issue: GitHubIssue,
-    isInstalled: Boolean,
-    isInstalling: Boolean,
-    onInstall: () -> Unit,
-    onOpenAsset: () -> Unit
-) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        val installText = when {
-            isInstalled -> stringResource(R.string.downloaded_already)
-            isInstalling -> stringResource(R.string.downloading)
-            artifactType == PublishArtifactType.SCRIPT -> stringResource(R.string.download_script)
-            else -> stringResource(R.string.download_package)
-        }
-        Button(onClick = onInstall, modifier = Modifier.weight(1f), enabled = issue.state == "open" && !isInstalled && !isInstalling) {
-            when {
-                isInstalling -> CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                isInstalled -> Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                else -> Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(installText)
-        }
-        OutlinedButton(onClick = onOpenAsset, modifier = Modifier.weight(1f), enabled = info.downloadUrl.isNotBlank()) {
-            Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(stringResource(R.string.open_asset))
-        }
-    }
-}
-
-@Composable
-private fun ArtifactMetadataCard(
-    issue: GitHubIssue,
-    info: ArtifactIssueParser.ParsedArtifactInfo,
-    viewModel: ArtifactMarketViewModel
-) {
-    Card {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.metadata_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            MetadataRow(
-                Icons.Default.Tag,
-                stringResource(R.string.type_label),
-                when (info.type) {
-                    PublishArtifactType.PACKAGE -> stringResource(R.string.artifact_type_package)
-                    PublishArtifactType.SCRIPT -> stringResource(R.string.artifact_type_script)
-                    null -> info.metadata?.type ?: "-"
-                }
-            )
-            MetadataRow(Icons.Default.Update, stringResource(R.string.version_label), info.version.ifBlank { "-" })
-            MetadataRow(Icons.Default.Info, stringResource(R.string.supported_app_versions), info.metadata?.let(viewModel::supportedVersionLabel) ?: "-")
-            MetadataRow(Icons.Default.Info, stringResource(R.string.current_app_version_label), viewModel.currentAppVersion)
-            MetadataRow(Icons.Default.Info, stringResource(R.string.asset_file_label), info.assetName.ifBlank { "-" })
-            MetadataRow(Icons.Default.Info, stringResource(R.string.forge_repo_label), info.forgeRepo.ifBlank { "-" })
-            MetadataRow(Icons.Default.Info, stringResource(R.string.release_tag_label), info.releaseTag.ifBlank { "-" })
-            MetadataRow(Icons.Default.Info, stringResource(R.string.sha256_label), info.sha256.ifBlank { "-" })
-            MetadataRow(Icons.Default.CalendarToday, stringResource(R.string.updated_at_label), formatDisplayDate(issue.updated_at))
-            MetadataRow(Icons.Default.Info, stringResource(R.string.source_file_label), info.sourceFileName.ifBlank { "-" })
-        }
-    }
-}
-
-@Composable
-private fun MetadataRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-        Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-        Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun ArtifactReactions(
-    issue: GitHubIssue,
-    currentUser: GitHubUser?,
-    issueReactions: List<GitHubReaction>,
-    isLoading: Boolean,
-    isReacting: Boolean,
-    onReact: (String) -> Unit
-) {
-    val thumbsUpCount = remember(issueReactions) { issueReactions.count { it.content == "+1" } }
-    val heartCount = remember(issueReactions) { issueReactions.count { it.content == "heart" } }
-
-    var hasThumbsUp by remember { mutableStateOf(false) }
-    var hasHeart by remember { mutableStateOf(false) }
-
-    LaunchedEffect(issueReactions, currentUser) {
-        currentUser?.let { user ->
-            hasThumbsUp = issueReactions.any { it.content == "+1" && it.user.login == user.login }
-            hasHeart = issueReactions.any { it.content == "heart" && it.user.login == user.login }
-        } ?: run {
-            hasThumbsUp = false
-            hasHeart = false
-        }
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = stringResource(R.string.reactions_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-            }
-        }
-
-        if (currentUser == null) {
-            Text(
-                text = stringResource(R.string.mcp_plugin_login_required),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            ArtifactReactionButton(
-                icon = Icons.Default.ThumbUp,
-                count = thumbsUpCount,
-                isReacted = hasThumbsUp,
-                enabled = currentUser != null && !isReacting,
-                onClick = {
-                    if (!hasThumbsUp) {
-                        onReact("+1")
-                    }
-                },
-                reactedColor = MaterialTheme.colorScheme.primary
-            )
-            ArtifactReactionButton(
-                icon = Icons.Default.Favorite,
-                count = heartCount,
-                isReacted = hasHeart,
-                enabled = currentUser != null && !isReacting,
-                onClick = {
-                    if (!hasHeart) {
-                        onReact("heart")
-                    }
-                },
-                reactedColor = Color(0xFFE91E63)
-            )
-        }
-    }
-}
-
-@Composable
-private fun ArtifactReactionButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    count: Int,
-    isReacted: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    reactedColor: Color
-) {
-    val buttonColors =
-        if (isReacted) {
-            ButtonDefaults.filledTonalButtonColors(
-                containerColor = reactedColor.copy(alpha = 0.12f),
-                contentColor = reactedColor
-            )
-        } else {
-            ButtonDefaults.filledTonalButtonColors()
-        }
-
-    FilledTonalButton(
-        onClick = onClick,
-        enabled = enabled && !isReacted,
-        colors = buttonColors,
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = count.toString(),
-                fontWeight = FontWeight.Medium
-            )
-        }
-    }
-}
-
-@Composable
-private fun CommentsHeader(commentCount: Int, isLoading: Boolean, onRefresh: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(stringResource(R.string.comments_with_count, commentCount), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-        IconButton(onClick = onRefresh, enabled = !isLoading) {
-            if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-            } else {
-                Icon(Icons.Default.Refresh, contentDescription = null)
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyCommentsCard() {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(stringResource(R.string.no_comments_yet), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(stringResource(R.string.be_first_comment_here), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun CommentCard(comment: GitHubComment) {
-    Card {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Image(painter = rememberAsyncImagePainter(comment.user.avatarUrl), contentDescription = null, modifier = Modifier.size(28.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-                Column {
-                    Text(comment.user.login, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    Text(formatDisplayDate(comment.updated_at), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            Text(comment.body, style = MaterialTheme.typography.bodyMedium)
-        }
-    }
-}
-
-@Composable
-private fun CommentInputDialog(
-    commentText: String,
-    onCommentTextChange: (String) -> Unit,
-    onDismiss: () -> Unit,
-    onPost: () -> Unit,
-    isPosting: Boolean
-) {
-    AlertDialog(
-        onDismissRequest = { if (!isPosting) onDismiss() },
-        title = { Text(stringResource(R.string.mcp_plugin_add_comment)) },
-        text = {
-            OutlinedTextField(
-                value = commentText,
-                onValueChange = onCommentTextChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.comment_label)) },
-                minLines = 4
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onPost, enabled = commentText.isNotBlank() && !isPosting) {
-                if (isPosting) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    Text(stringResource(R.string.publish_action))
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isPosting) {
-                Text(stringResource(R.string.cancel))
-            }
-        }
-    )
-}
-
-@Composable
 private fun InvalidArtifactMetadataScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(
+        modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
         Text(
             text = stringResource(R.string.invalid_artifact_metadata),
-            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
 
-private fun formatDisplayDate(raw: String): String {
-    return try {
-        val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
-        parser.timeZone = TimeZone.getTimeZone("UTC")
-        val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        formatter.format(parser.parse(raw) ?: return raw)
-    } catch (_: Exception) {
-        raw.take(10)
+private fun buildArtifactBadges(
+    info: ArtifactIssueParser.ParsedArtifactInfo,
+    artifactType: PublishArtifactType,
+    supportedVersionLabel: String?
+): List<String> {
+    return buildList {
+        add(
+            when (artifactType) {
+                PublishArtifactType.PACKAGE -> "toolpkg"
+                PublishArtifactType.SCRIPT -> "js"
+            }
+        )
+        supportedVersionLabel
+            ?.takeIf { it.isNotBlank() && !it.equals("Any", ignoreCase = true) }
+            ?.let { add("适配 $it") }
+        if (info.version.isNotBlank()) {
+            add("版本 ${normalizeDetailVersionBadge(info.version)}")
+        }
     }
+}
+
+private fun normalizeDetailVersionBadge(value: String): String {
+    val trimmed = value.trim()
+    return trimmed.removePrefix("v").removePrefix("V").ifBlank { trimmed }
+}
+
+private fun MutableList<UnifiedMarketDetailInfoRow>.addIfNotBlank(
+    label: String,
+    value: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    if (value.isNotBlank()) {
+        add(UnifiedMarketDetailInfoRow(label = label, value = value, icon = icon))
+    }
+}
+
+private fun openExternalUrl(
+    context: android.content.Context,
+    url: String
+) {
+    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 }

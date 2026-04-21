@@ -31,7 +31,6 @@ import androidx.compose.material.icons.rounded.TipsAndUpdates
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.material.icons.automirrored.outlined.VolumeOff
-import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -121,8 +120,6 @@ fun ClassicChatSettingsBar(
     onToggleDisableStreamOutput: () -> Unit,
     disableUserPreferenceDescription: Boolean,
     onToggleDisableUserPreferenceDescription: () -> Unit,
-    disableLatexDescription: Boolean,
-    onToggleDisableLatexDescription: () -> Unit,
     disableStatusTags: Boolean,
     onToggleDisableStatusTags: () -> Unit,
     onManualMemoryUpdate: () -> Unit,
@@ -388,8 +385,6 @@ fun ClassicChatSettingsBar(
                                 disableUserPreferenceDescription = disableUserPreferenceDescription,
                                 onToggleDisableUserPreferenceDescription =
                                         onToggleDisableUserPreferenceDescription,
-                                disableLatexDescription = disableLatexDescription,
-                                onToggleDisableLatexDescription = onToggleDisableLatexDescription,
                                 disableStatusTags = disableStatusTags,
                                 onToggleDisableStatusTags = onToggleDisableStatusTags,
                                 expanded = showDisableSettingsDropdown,
@@ -412,11 +407,6 @@ fun ClassicChatSettingsBar(
                                 onDisableUserPreferenceDescriptionInfoClick = {
                                     infoPopupContent =
                                         context.getString(R.string.disable_user_preference_description) to context.getString(R.string.disable_user_preference_description_desc)
-                                    showMenu = false
-                                },
-                                onDisableLatexDescriptionInfoClick = {
-                                    infoPopupContent =
-                                        context.getString(R.string.disable_latex_description) to context.getString(R.string.disable_latex_description_desc)
                                     showMenu = false
                                 },
                                 onDisableStatusTagsInfoClick = {
@@ -910,8 +900,6 @@ private fun DisableSettingsGroupItem(
     onToggleTools: () -> Unit,
     disableUserPreferenceDescription: Boolean,
     onToggleDisableUserPreferenceDescription: () -> Unit,
-    disableLatexDescription: Boolean,
-    onToggleDisableLatexDescription: () -> Unit,
     disableStatusTags: Boolean,
     onToggleDisableStatusTags: () -> Unit,
     expanded: Boolean,
@@ -920,7 +908,6 @@ private fun DisableSettingsGroupItem(
     onDisableStreamOutputInfoClick: () -> Unit,
     onDisableToolsInfoClick: () -> Unit,
     onDisableUserPreferenceDescriptionInfoClick: () -> Unit,
-    onDisableLatexDescriptionInfoClick: () -> Unit,
     onDisableStatusTagsInfoClick: () -> Unit,
     onManageToolsClick: () -> Unit
 ) {
@@ -929,7 +916,6 @@ private fun DisableSettingsGroupItem(
                             disableStreamOutput,
                             !enableTools,
                             disableUserPreferenceDescription,
-                            disableLatexDescription,
                             disableStatusTags
                     )
     val disabledCount = disabledStates.count { it }
@@ -1033,19 +1019,6 @@ private fun DisableSettingsGroupItem(
                     isChecked = disableUserPreferenceDescription,
                     onToggle = onToggleDisableUserPreferenceDescription,
                     onInfoClick = onDisableUserPreferenceDescriptionInfoClick
-                )
-
-                SettingItem(
-                    title = stringResource(R.string.disable_latex_description),
-                        icon =
-                                if (disableLatexDescription) Icons.Outlined.Block
-                                else Icons.AutoMirrored.Outlined.Message,
-                        iconTint =
-                                if (disableLatexDescription) MaterialTheme.colorScheme.error
-                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    isChecked = disableLatexDescription,
-                    onToggle = onToggleDisableLatexDescription,
-                    onInfoClick = onDisableLatexDescriptionInfoClick
                 )
 
                 SettingItem(

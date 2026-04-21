@@ -69,7 +69,10 @@ export function BubbleAiMessageComposable({
         {showWideHeader ? (
           <div className="bubble-message-header">
             {showAvatar ? (
-              <BubbleAvatar name={headerName || 'AI'} url={theme?.avatars.assistant_avatar_url} />
+              <BubbleAvatar
+                name={headerName || 'AI'}
+                url={message.avatar_url ?? theme?.avatars.assistant_avatar_url}
+              />
             ) : null}
             <div className="bubble-message-header-copy">
               {headerName ? <strong>{headerName}</strong> : null}
@@ -121,7 +124,7 @@ export function BubbleAiMessageComposable({
           <BubbleAvatar
             className="bubble-avatar bubble-avatar-large"
             name={headerName || 'AI'}
-            url={theme?.avatars.assistant_avatar_url}
+            url={message.avatar_url ?? theme?.avatars.assistant_avatar_url}
           />
         ) : null}
         <div className={`bubble-inline-stack ai ${showAvatar ? 'has-avatar' : 'no-avatar'}`}>

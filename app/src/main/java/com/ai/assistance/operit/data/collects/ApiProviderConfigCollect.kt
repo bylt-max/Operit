@@ -146,6 +146,11 @@ object ApiProviderConfigs {
             defaultApiEndpoint = "https://openrouter.ai/api/v1/chat/completions"
         ),
         ProviderApiConfig(
+            providerType = ApiProviderType.NOUS_PORTAL,
+            defaultModelName = "",
+            defaultApiEndpoint = "https://inference-api.nousresearch.com/v1/chat/completions"
+        ),
+        ProviderApiConfig(
             providerType = ApiProviderType.INFINIAI,
             defaultModelName = "infini-mini",
             defaultApiEndpoint = "https://cloud.infini-ai.com/maas/v1/chat/completions"

@@ -45,12 +45,14 @@ object MCPPluginParser {
 
         // 尝试解析 JSON 元数据
         val metadata = parseMCPMetadata(body)
-        val extractedDescription = IssueBodyDescriptionExtractor.extractHumanDescriptionFromBody(body)
+        val extractedDescription =
+            sanitizeMcpDescription(IssueBodyDescriptionExtractor.extractHumanDescriptionFromBody(body))
 
         return if (metadata != null) {
             ParsedPluginInfo(
                 title = issue.title,
-                description = metadata.description.ifBlank { extractedDescription.ifBlank { "无描述信息" } },
+                description = sanitizeMcpDescription(metadata.description)
+                    .ifBlank { extractedDescription.ifBlank { "无描述信息" } },
                 repositoryUrl = metadata.repositoryUrl,
                 installConfig = metadata.installConfig,
                 category = metadata.category,
@@ -88,7 +90,21 @@ object MCPPluginParser {
         
         val githubPattern = Regex("""github\.com/([^/]+)/([^/]+)""")
         val match = githubPattern.find(repositoryUrl)
-        
+
         return match?.groupValues?.get(1) ?: ""
+    }
+
+    private fun sanitizeMcpDescription(raw: String): String {
+        return raw
+            .trim()
+            .replace(Regex("""^(?:[-*+]\s*)?(?:\*\*\s*)?描述\s*[:：]\s*(?:\*\*)?\s*"""), "")
+            .replace(
+                Regex(
+                    """^(?:[-*+]\s*)?(?:\*\*\s*)?(description|desc|summary|introduction)\s*[:：]\s*(?:\*\*)?\s*""",
+                    RegexOption.IGNORE_CASE
+                ),
+                ""
+            )
+            .trim()
     }
 } 

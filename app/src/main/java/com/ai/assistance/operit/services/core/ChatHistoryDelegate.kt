@@ -628,6 +628,35 @@ class ChatHistoryDelegate(
             }
     }
 
+    suspend fun selectMessageVariant(timestamp: Long, selectedVariantIndex: Int) {
+        val chatId = _currentChatId.value ?: throw IllegalStateException("No active chat")
+        val shouldReloadCurrentChat = historyUpdateMutex.withLock {
+            chatHistoryManager.selectMessageVariant(chatId, timestamp, selectedVariantIndex)
+            chatId == _currentChatId.value
+        }
+        if (shouldReloadCurrentChat && chatId == _currentChatId.value) {
+            loadChatMessages(chatId)
+        }
+    }
+
+    suspend fun addMessageVariant(
+        timestamp: Long,
+        message: ChatMessage,
+        chatIdOverride: String? = null,
+    ): Int {
+        val chatId = chatIdOverride ?: _currentChatId.value ?: throw IllegalStateException("No active chat")
+        val isCurrentChat = chatId == _currentChatId.value
+        val selectedVariantIndex = historyUpdateMutex.withLock {
+            val selectedVariantIndex =
+                chatHistoryManager.addMessageVariant(chatId, timestamp, message)
+            selectedVariantIndex
+        }
+        if (isCurrentChat && chatId == _currentChatId.value) {
+            loadChatMessages(chatId)
+        }
+        return selectedVariantIndex
+    }
+
     /** 清空当前聊天 */
     fun clearCurrentChat(onResult: (Boolean) -> Unit = {}) {
         coroutineScope.launch {
@@ -813,11 +842,40 @@ class ChatHistoryDelegate(
      *   - 已存在同时间戳消息：更新内存与数据库（保持UI与持久层一致）。
      *   - 不存在：追加到内存，并持久化。
      */
+    private fun replaceOrAppendCurrentChatMessageInMemory(message: ChatMessage) {
+        val currentMessages = _chatHistory.value
+        val existingIndex = currentMessages.indexOfFirst { it.timestamp == message.timestamp }
+
+        if (existingIndex >= 0) {
+            if (message.contentStream == null || currentMessages[existingIndex].contentStream == null) {
+                AppLogger.d(TAG, "更新当前会话内存消息, ts: ${message.timestamp}")
+                _chatHistory.value =
+                    currentMessages.mapIndexed { index, existingMessage ->
+                        if (index == existingIndex) {
+                            message
+                        } else {
+                            existingMessage
+                        }
+                    }
+            }
+        } else {
+            AppLogger.d(TAG, "向当前会话内存追加消息, ts: ${message.timestamp}")
+            _chatHistory.value = currentMessages + message
+        }
+    }
+
     suspend fun addMessageToChat(message: ChatMessage, chatIdOverride: String? = null) {
         historyUpdateMutex.withLock {
             val targetChatId = chatIdOverride ?: _currentChatId.value ?: return@withLock
 
             val isCurrentChat = (targetChatId == _currentChatId.value)
+
+            if (message.isVariantPreview) {
+                if (isCurrentChat) {
+                    replaceOrAppendCurrentChatMessageInMemory(message)
+                }
+                return@withLock
+            }
 
             // 仅在切换当前会话时阻止写入，后台会话仍允许写入
             if (isCurrentChat && !allowAddMessage.get()) {

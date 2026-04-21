@@ -24,6 +24,7 @@ enum class ApiProviderType {
         SILICONFLOW, // 硅基流动
         IFLOW, // iFlow
         OPENROUTER, // OpenRouter (多模型聚合)
+        NOUS_PORTAL, // Nous Portal / Inference API
         INFINIAI, // 无问芯穹
         ALIPAY_BAILING, // 支付宝百灵大模型
         DOUBAO, // 豆包（火山模型）

@@ -1214,6 +1214,26 @@ class WebChatHttpBridge(
         return registerAsset(resolvedSource, guessMimeType(resolvedSource))
     }
 
+    private suspend fun resolveMessageAvatarUrl(
+        normalizedSender: String,
+        roleName: String?,
+        proxyDisplayName: String?
+    ): String? {
+        if (normalizedSender == "assistant") {
+            val assistantRoleName = roleName?.trim()?.takeIf { it.isNotBlank() } ?: return null
+            val matchedCard = characterCardManager.findCharacterCardByName(assistantRoleName) ?: return null
+            return resolveCharacterCardAvatarUrl(matchedCard.id)
+        }
+
+        if (normalizedSender == "user") {
+            val proxyName = proxyDisplayName?.trim()?.takeIf { it.isNotBlank() } ?: return null
+            val matchedCard = characterCardManager.findCharacterCardByName(proxyName) ?: return null
+            return resolveCharacterCardAvatarUrl(matchedCard.id)
+        }
+
+        return null
+    }
+
     private suspend fun buildWebMessage(
         chatId: String,
         message: ChatMessage,
@@ -1227,6 +1247,7 @@ class WebChatHttpBridge(
         } else {
             null
         }
+        val proxyAvatarName = userRenderResult?.displayName.takeIf { userRenderResult?.displayNameIsProxy == true }
         return WebChatMessage(
             id = "$chatId:${message.timestamp}",
             sender = normalizedSender,
@@ -1238,6 +1259,11 @@ class WebChatHttpBridge(
             displayContent = userRenderResult?.displayContent,
             displayName = userRenderResult?.displayName,
             displayNameIsProxy = userRenderResult?.displayNameIsProxy == true,
+            avatarUrl = resolveMessageAvatarUrl(
+                normalizedSender = normalizedSender,
+                roleName = message.roleName,
+                proxyDisplayName = proxyAvatarName
+            ),
             replyPreview = userRenderResult?.replyPreview,
             imageLinks = userRenderResult?.imageLinks ?: emptyList(),
             contentBlocks =

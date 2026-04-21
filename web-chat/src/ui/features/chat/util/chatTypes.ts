@@ -82,6 +82,7 @@ export interface WebChatMessage {
   display_content?: string | null;
   display_name?: string | null;
   display_name_is_proxy?: boolean;
+  avatar_url?: string | null;
   reply_preview?: WebReplyPreview | null;
   image_links?: WebMessageImageLink[];
   content_blocks?: WebMessageContentBlock[] | null;

@@ -30,19 +30,18 @@ import com.ai.assistance.operit.ui.features.chat.screens.AIChatScreen
 import com.ai.assistance.operit.ui.features.demo.screens.ShizukuDemoScreen
 import com.ai.assistance.operit.ui.features.help.screens.HelpScreen
 import com.ai.assistance.operit.ui.features.memory.screens.MemoryScreen
+import com.ai.assistance.operit.ui.features.packages.screens.MarketHomeTab
 import com.ai.assistance.operit.ui.features.packages.screens.PackageManagerScreen
-import com.ai.assistance.operit.ui.features.packages.screens.MCPMarketScreen
 import com.ai.assistance.operit.ui.features.packages.screens.MCPManageScreen
 import com.ai.assistance.operit.ui.features.packages.screens.MCPPublishScreen
 import com.ai.assistance.operit.ui.features.packages.screens.MCPPluginDetailScreen
 import com.ai.assistance.operit.ui.features.packages.screens.ArtifactDetailScreen
 import com.ai.assistance.operit.ui.features.packages.screens.ArtifactManageScreen
-import com.ai.assistance.operit.ui.features.packages.screens.ArtifactMarketScreen
 import com.ai.assistance.operit.ui.features.packages.screens.ArtifactPublishScreen
 import com.ai.assistance.operit.ui.features.packages.screens.SkillDetailScreen
-import com.ai.assistance.operit.ui.features.packages.screens.SkillMarketScreen
 import com.ai.assistance.operit.ui.features.packages.screens.SkillManageScreen
 import com.ai.assistance.operit.ui.features.packages.screens.SkillPublishScreen
+import com.ai.assistance.operit.ui.features.packages.screens.UnifiedMarketScreen
 import com.ai.assistance.operit.ui.features.settings.screens.ChatBackupSettingsScreen
 import com.ai.assistance.operit.ui.features.settings.screens.ChatHistorySettingsScreen
 import com.ai.assistance.operit.ui.features.settings.screens.ContextSummarySettingsScreen
@@ -87,10 +86,6 @@ import com.ai.assistance.operit.ui.features.toolbox.screens.autoglm.AutoGlmToolS
 import com.ai.assistance.operit.ui.features.update.screens.UpdateScreen
 import com.ai.assistance.operit.ui.features.workflow.screens.WorkflowListScreen
 import com.ai.assistance.operit.ui.features.workflow.screens.WorkflowDetailScreen
-import androidx.compose.ui.platform.LocalContext
-import android.content.Intent
-import android.net.Uri
-import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
 
 // 路由配置类
 typealias ScreenNavigationHandler = (Screen) -> Unit
@@ -187,9 +182,9 @@ sealed class Screen(
                 onGestureConsumed: (Boolean) -> Unit
         ) {
             PackageManagerScreen(
-                onNavigateToMCPMarket = { navigateTo(MCPMarket) },
-                onNavigateToSkillMarket = { navigateTo(SkillMarket) },
-                onNavigateToArtifactMarket = { navigateTo(ArtifactMarket) },
+                onNavigateToMCPMarket = { navigateTo(Market(MarketHomeTab.MCP)) },
+                onNavigateToSkillMarket = { navigateTo(Market(MarketHomeTab.SKILL)) },
+                onNavigateToArtifactMarket = { navigateTo(Market(MarketHomeTab.ARTIFACT)) },
                 onOpenToolPkgPluginConfig = { containerPackageName, uiModuleId, title ->
                     navigateTo(
                         ToolPkgPluginConfig(
@@ -203,7 +198,8 @@ sealed class Screen(
         }
     }
 
-    data object SkillMarket : Screen(parentScreen = Packages, navItem = NavItem.Packages, titleRes = R.string.screen_title_skill_market) {
+    data class Market(val initialTab: MarketHomeTab = MarketHomeTab.ARTIFACT) :
+            Screen(parentScreen = Packages, navItem = NavItem.Packages, titleRes = R.string.screen_title_market) {
         @Composable
         override fun Content(
                 navController: NavController,
@@ -215,41 +211,28 @@ sealed class Screen(
                 onError: (String) -> Unit,
                 onGestureConsumed: (Boolean) -> Unit
         ) {
-            SkillMarketScreen(
-                onNavigateBack = onGoBack,
-                onNavigateToPublish = { navigateTo(SkillPublish) },
-                onNavigateToManage = { navigateTo(SkillManage) },
-                onNavigateToDetail = { issue ->
-                    navigateTo(SkillDetail(issue))
-                }
-            )
-        }
-    }
-
-    data object ArtifactMarket : Screen(parentScreen = Packages, navItem = NavItem.Packages, titleRes = R.string.screen_title_artifact_market) {
-        @Composable
-        override fun Content(
-                navController: NavController,
-                navigateTo: ScreenNavigationHandler,
-                updateNavItem: NavItemChangeHandler,
-                onGoBack: () -> Unit,
-                hasBackgroundImage: Boolean,
-                onLoading: (Boolean) -> Unit,
-                onError: (String) -> Unit,
-                onGestureConsumed: (Boolean) -> Unit
-        ) {
-            ArtifactMarketScreen(
-                onNavigateBack = onGoBack,
-                onNavigateToPublish = { navigateTo(ArtifactPublish) },
-                onNavigateToManage = { navigateTo(ArtifactManage) },
-                onNavigateToDetail = { issue ->
+            UnifiedMarketScreen(
+                initialTab = initialTab,
+                onNavigateToArtifactPublish = { navigateTo(ArtifactPublish) },
+                onNavigateToArtifactManage = { navigateTo(ArtifactManage) },
+                onNavigateToArtifactDetail = { issue ->
                     navigateTo(ArtifactDetail(issue))
+                },
+                onNavigateToSkillPublish = { navigateTo(SkillPublish) },
+                onNavigateToSkillManage = { navigateTo(SkillManage) },
+                onNavigateToSkillDetail = { issue ->
+                    navigateTo(SkillDetail(issue))
+                },
+                onNavigateToMcpPublish = { navigateTo(MCPPublish) },
+                onNavigateToMcpManage = { navigateTo(MCPManage) },
+                onNavigateToMcpDetail = { issue ->
+                    navigateTo(MCPPluginDetail(issue))
                 }
             )
         }
     }
 
-    data object ArtifactManage : Screen(parentScreen = ArtifactMarket, navItem = NavItem.Packages, titleRes = R.string.screen_title_artifact_manage) {
+    data object ArtifactManage : Screen(parentScreen = Market(MarketHomeTab.ARTIFACT), navItem = NavItem.Packages, titleRes = R.string.screen_title_artifact_manage) {
         @Composable
         override fun Content(
                 navController: NavController,
@@ -274,7 +257,7 @@ sealed class Screen(
         }
     }
 
-    data object ArtifactPublish : Screen(parentScreen = ArtifactMarket, navItem = NavItem.Packages, titleRes = R.string.screen_title_artifact_publish) {
+    data object ArtifactPublish : Screen(parentScreen = Market(MarketHomeTab.ARTIFACT), navItem = NavItem.Packages, titleRes = R.string.screen_title_artifact_publish) {
         @Composable
         override fun Content(
                 navController: NavController,
@@ -291,7 +274,7 @@ sealed class Screen(
     }
 
     data class ArtifactEdit(val editingIssue: com.ai.assistance.operit.data.api.GitHubIssue) :
-            Screen(parentScreen = ArtifactMarket, navItem = NavItem.Packages, titleRes = R.string.screen_title_artifact_publish) {
+            Screen(parentScreen = ArtifactManage, navItem = NavItem.Packages, titleRes = R.string.screen_title_artifact_publish) {
         @Composable
         override fun Content(
                 navController: NavController,
@@ -311,7 +294,7 @@ sealed class Screen(
     }
 
     data class ArtifactDetail(val issue: com.ai.assistance.operit.data.api.GitHubIssue) :
-            Screen(parentScreen = ArtifactMarket, navItem = NavItem.Packages) {
+            Screen(parentScreen = Market(MarketHomeTab.ARTIFACT), navItem = NavItem.Packages) {
         @Composable
         override fun Content(
                 navController: NavController,
@@ -330,7 +313,7 @@ sealed class Screen(
         }
     }
 
-    data object SkillManage : Screen(parentScreen = SkillMarket, navItem = NavItem.Packages, titleRes = R.string.screen_title_skill_manage) {
+    data object SkillManage : Screen(parentScreen = Market(MarketHomeTab.SKILL), navItem = NavItem.Packages, titleRes = R.string.screen_title_skill_manage) {
         @Composable
         override fun Content(
                 navController: NavController,
@@ -355,7 +338,7 @@ sealed class Screen(
         }
     }
 
-    data object SkillPublish : Screen(parentScreen = SkillMarket, navItem = NavItem.Packages, titleRes = R.string.screen_title_skill_publish) {
+    data object SkillPublish : Screen(parentScreen = Market(MarketHomeTab.SKILL), navItem = NavItem.Packages, titleRes = R.string.screen_title_skill_publish) {
         @Composable
         override fun Content(
                 navController: NavController,
@@ -372,7 +355,7 @@ sealed class Screen(
     }
 
     data class SkillEdit(val editingIssue: com.ai.assistance.operit.data.api.GitHubIssue) :
-            Screen(parentScreen = SkillMarket, navItem = NavItem.Packages, titleRes = R.string.screen_title_skill_publish) {
+            Screen(parentScreen = SkillManage, navItem = NavItem.Packages, titleRes = R.string.screen_title_skill_publish) {
         @Composable
         override fun Content(
                 navController: NavController,
@@ -392,7 +375,7 @@ sealed class Screen(
     }
 
     data class SkillDetail(val issue: com.ai.assistance.operit.data.api.GitHubIssue) :
-            Screen(parentScreen = SkillMarket, navItem = NavItem.Packages) {
+            Screen(parentScreen = Market(MarketHomeTab.SKILL), navItem = NavItem.Packages) {
         @Composable
         override fun Content(
                 navController: NavController,
@@ -411,30 +394,7 @@ sealed class Screen(
         }
     }
 
-    data object MCPMarket : Screen(parentScreen = Packages, navItem = NavItem.Packages, titleRes = R.string.screen_title_mcp_market) {
-        @Composable
-        override fun Content(
-                navController: NavController,
-                navigateTo: ScreenNavigationHandler,
-                updateNavItem: NavItemChangeHandler,
-                onGoBack: () -> Unit,
-                hasBackgroundImage: Boolean,
-                onLoading: (Boolean) -> Unit,
-                onError: (String) -> Unit,
-                onGestureConsumed: (Boolean) -> Unit
-        ) {
-            MCPMarketScreen(
-                onNavigateBack = onGoBack,
-                onNavigateToPublish = { navigateTo(MCPPublish) },
-                onNavigateToManage = { navigateTo(MCPManage) },
-                onNavigateToDetail = { issue ->
-                    navigateTo(MCPPluginDetail(issue))
-                }
-            )
-        }
-    }
-
-    data object MCPPublish : Screen(parentScreen = MCPMarket, navItem = NavItem.Packages, titleRes = R.string.screen_title_mcp_publish) {
+    data object MCPPublish : Screen(parentScreen = Market(MarketHomeTab.MCP), navItem = NavItem.Packages, titleRes = R.string.screen_title_mcp_publish) {
         @Composable
         override fun Content(
                 navController: NavController,
@@ -450,7 +410,7 @@ sealed class Screen(
         }
     }
 
-    data object MCPManage : Screen(parentScreen = MCPMarket, navItem = NavItem.Packages, titleRes = R.string.screen_title_mcp_manage) {
+    data object MCPManage : Screen(parentScreen = Market(MarketHomeTab.MCP), navItem = NavItem.Packages, titleRes = R.string.screen_title_mcp_manage) {
         @Composable
         override fun Content(
                 navController: NavController,
@@ -600,19 +560,7 @@ sealed class Screen(
             onError: (String) -> Unit,
             onGestureConsumed: (Boolean) -> Unit
         ) {
-            val context = LocalContext.current
-            val githubAuth = GitHubAuthPreferences.getInstance(context)
-
-            fun initiateGitHubLogin() {
-                val authUrl = githubAuth.getAuthorizationUrl()
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
-            }
-
-            GitHubAccountScreen(
-                onLogin = ::initiateGitHubLogin
-            )
+            GitHubAccountScreen()
         }
     }
 
@@ -670,7 +618,12 @@ sealed class Screen(
         }
     }
 
-    data object UpdateHistory : Screen(navItem = NavItem.UpdateHistory) {
+    data object UpdateHistory :
+            Screen(
+                    parentScreen = About,
+                    navItem = NavItem.About,
+                    titleRes = R.string.update_history
+            ) {
         @Composable
         override fun Content(
             navController: NavController,
@@ -1551,7 +1504,7 @@ sealed class Screen(
 
     // MCP 插件详情页面
     data class MCPPluginDetail(val issue: com.ai.assistance.operit.data.api.GitHubIssue) :
-            Screen(parentScreen = Packages, navItem = NavItem.Packages) {
+            Screen(parentScreen = Market(MarketHomeTab.MCP), navItem = NavItem.Packages) {
         @Composable
         override fun Content(
                 navController: NavController,
@@ -1601,7 +1554,6 @@ object OperitRouter {
             NavItem.UserPreferencesGuide -> Screen.UserPreferencesGuide()
             NavItem.AssistantConfig -> Screen.AssistantConfig
             NavItem.Agreement -> Screen.Agreement
-            NavItem.UpdateHistory -> Screen.UpdateHistory
             NavItem.Workflow -> Screen.Workflow
             else -> Screen.AiChat
         }

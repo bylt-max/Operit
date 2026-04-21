@@ -184,7 +184,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     val disableUserPreferenceDescription: StateFlow<Boolean> by lazy {
         apiConfigDelegate.disableUserPreferenceDescription
     }
-    val disableLatexDescription: StateFlow<Boolean> by lazy { apiConfigDelegate.disableLatexDescription }
     val disableStatusTags: StateFlow<Boolean> by lazy { apiConfigDelegate.disableStatusTags }
 
     val summaryTokenThreshold: StateFlow<Float> by lazy { apiConfigDelegate.summaryTokenThreshold }
@@ -653,10 +652,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         apiConfigDelegate.toggleDisableUserPreferenceDescription()
     }
 
-    fun toggleDisableLatexDescription() {
-        apiConfigDelegate.toggleDisableLatexDescription()
-    }
-
     fun toggleDisableStatusTags() {
         apiConfigDelegate.toggleDisableStatusTags()
     }
@@ -1038,6 +1033,45 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             } catch (e: Exception) {
                 AppLogger.e(TAG, "更新消息失败", e)
                 uiStateDelegate.showErrorMessage(context.getString(R.string.chat_update_message_failed, e.message ?: ""))
+            }
+        }
+    }
+
+    fun regenerateSingleAiMessage(index: Int) {
+        viewModelScope.launch {
+            try {
+                messageCoordinationDelegate.regenerateSingleAiMessage(index)
+            } catch (e: CancellationException) {
+                AppLogger.d(TAG, "单条重新生成已取消")
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "单条重新生成失败", e)
+                uiStateDelegate.showErrorMessage(
+                    context.getString(R.string.chat_regenerate_single_failed, e.message ?: ""),
+                )
+            }
+        }
+    }
+
+    fun switchMessageVariant(index: Int, targetVariantIndex: Int) {
+        viewModelScope.launch {
+            try {
+                val currentHistory = chatHistoryDelegate.chatHistory.value
+                val targetMessage = currentHistory.getOrNull(index)
+                if (targetMessage == null) {
+                    uiStateDelegate.showErrorMessage(context.getString(R.string.chat_invalid_message_index))
+                    return@launch
+                }
+                if (targetMessage.sender != "ai") {
+                    uiStateDelegate.showErrorMessage(context.getString(R.string.chat_only_ai_message_allowed))
+                    return@launch
+                }
+                chatHistoryDelegate.selectMessageVariant(targetMessage.timestamp, targetVariantIndex)
+                messageCoordinationDelegate.refreshStableContextWindow(chatId = currentChatId.value)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "切换回答版本失败", e)
+                uiStateDelegate.showErrorMessage(
+                    context.getString(R.string.chat_switch_variant_failed, e.message ?: ""),
+                )
             }
         }
     }

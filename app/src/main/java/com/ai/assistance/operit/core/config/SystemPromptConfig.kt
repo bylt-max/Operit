@@ -208,8 +208,6 @@ $BEHAVIOR_GUIDELINES_EN
 
 WORKSPACE_GUIDELINES_SECTION
 
-FORMULA FORMATTING: For mathematical formulas, use $ $ for inline LaTeX and $$ $$ for block/display LaTeX equations.
-
 TOOL_USAGE_GUIDELINES_SECTION
 
 PACKAGE_SYSTEM_GUIDELINES_SECTION
@@ -243,8 +241,6 @@ THINKING_GUIDANCE_SECTION
 $BEHAVIOR_GUIDELINES_CN
 
 WORKSPACE_GUIDELINES_SECTION
-
-公式格式化：对于数学公式，使用 $ $ 包裹行内LaTeX公式，使用 $$ $$ 包裹独立成行的LaTeX公式。
 
 TOOL_USAGE_GUIDELINES_SECTION
 
@@ -358,7 +354,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
           chatModelHasDirectAudio: Boolean = false,
           chatModelHasDirectVideo: Boolean = false,
           useToolCallApi: Boolean = false,
-          disableLatexDescription: Boolean = false,
           disableStatusTags: Boolean = false,
           toolVisibility: Map<String, Boolean> = emptyMap(),
           allowedPackageNames: Set<String>? = null,
@@ -591,12 +586,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
     }
 
 
-    if (disableLatexDescription) {
-        prompt = prompt
-                .replace(Regex("(?m)^\\s*FORMULA FORMATTING:.*(?:\\r?\\n)?"), "")
-                .replace(Regex("(?m)^\\s*公式格式化：.*(?:\\r?\\n)?"), "")
-    }
-
     // Clean up multiple consecutive blank lines (replace 3+ newlines with 2)
     prompt = prompt.replace(Regex("\n{3,}"), "\n\n")
 
@@ -725,7 +714,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
           chatModelHasDirectAudio: Boolean = false,
           chatModelHasDirectVideo: Boolean = false,
           useToolCallApi: Boolean = false,
-          disableLatexDescription: Boolean = false,
           disableStatusTags: Boolean = false,
           toolVisibility: Map<String, Boolean> = emptyMap(),
           allowedPackageNames: Set<String>? = null,
@@ -759,7 +747,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                         "chatModelHasDirectAudio" to chatModelHasDirectAudio,
                         "chatModelHasDirectVideo" to chatModelHasDirectVideo,
                         "useToolCallApi" to useToolCallApi,
-                        "disableLatexDescription" to disableLatexDescription,
                         "disableStatusTags" to disableStatusTags,
                         "toolVisibility" to toolVisibility,
                         "allowedPackageNames" to allowedPackageNames.orEmpty().toList(),
@@ -791,7 +778,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
             chatModelHasDirectAudio = chatModelHasDirectAudio,
             chatModelHasDirectVideo = chatModelHasDirectVideo,
             useToolCallApi = useToolCallApi,
-            disableLatexDescription = disableLatexDescription,
             disableStatusTags = disableStatusTags,
             toolVisibility = toolVisibility,
             allowedPackageNames = allowedPackageNames,
@@ -848,7 +834,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
         chatModelHasDirectAudio = false,
         chatModelHasDirectVideo = false,
         useToolCallApi = false,
-        disableLatexDescription = false,
         disableStatusTags = false
     )
   }

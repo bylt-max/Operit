@@ -200,15 +200,6 @@
             android:windowSoftInputMode="adjustPan"
             android:theme="@style/Theme.Operit"
             android:launchMode="singleTask">
-            <!-- GitHub OAuth Callback -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="operit"
-                    android:host="github-oauth-callback" />
-            </intent-filter>
             <!-- File open and share support -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

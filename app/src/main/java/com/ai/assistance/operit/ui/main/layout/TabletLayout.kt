@@ -18,6 +18,7 @@ import androidx.compose.ui.zIndex
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.NavGroup
 import com.ai.assistance.operit.ui.main.NavigationTransitionSource
+import com.ai.assistance.operit.ui.main.TopBarTitleContent
 import com.ai.assistance.operit.ui.main.components.AppContent
 import com.ai.assistance.operit.ui.main.components.CollapsedDrawerContent
 import com.ai.assistance.operit.ui.main.components.DrawerContent
@@ -54,7 +55,8 @@ fun TabletLayout(
         canGoBack: Boolean,
         onGoBack: () -> Unit,
         isNavigatingBack: Boolean = false,
-        topBarActions: @Composable RowScope.() -> Unit = {}
+        topBarActions: @Composable RowScope.() -> Unit = {},
+        topBarTitleContent: TopBarTitleContent? = null
 ) {
         val drawerAppearance = rememberNavigationDrawerAppearance()
 
@@ -162,7 +164,8 @@ fun TabletLayout(
                                 canGoBack = canGoBack,
                                 onGoBack = onGoBack,
                                 isNavigatingBack = isNavigatingBack,
-                                actions = topBarActions
+                                actions = topBarActions,
+                                titleContent = topBarTitleContent
                         )
                 }
         }

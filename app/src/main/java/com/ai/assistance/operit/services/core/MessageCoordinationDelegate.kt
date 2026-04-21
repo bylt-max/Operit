@@ -70,6 +70,8 @@ class MessageCoordinationDelegate(
     private val _isSummarizing = MutableStateFlow(false)
     val isSummarizing: StateFlow<Boolean> = _isSummarizing.asStateFlow()
 
+    private val _isUpdatingMemory = MutableStateFlow(false)
+
     private val _summarizingChatId = MutableStateFlow<String?>(null)
     val summarizingChatId: StateFlow<String?> = _summarizingChatId.asStateFlow()
 
@@ -177,6 +179,21 @@ class MessageCoordinationDelegate(
         return roleCardId
             ?: resolveBoundRoleCardId(chatId)
             ?: runCatching { activePromptManager.resolveActiveCardIdForSend() }.getOrNull()
+    }
+
+    private suspend fun resolveRegenerationRoleCardId(
+        chatId: String,
+        message: ChatMessage,
+    ): String {
+        val roleName = message.roleName.trim()
+        if (roleName.isNotEmpty()) {
+            val card = characterCardManager.findCharacterCardByName(roleName)
+            if (card != null) {
+                return card.id
+            }
+        }
+        return resolveWindowEstimateRoleCardId(chatId, null)
+            ?: CharacterCardManager.DEFAULT_CHARACTER_CARD_ID
     }
 
     private fun isGroupChatSession(chatId: String?): Boolean {
@@ -310,6 +327,107 @@ class MessageCoordinationDelegate(
                 chatModelConfigIdOverride = chatModelConfigIdOverride,
                 chatModelIndexOverride = chatModelIndexOverride
             )
+        }
+    }
+
+    suspend fun regenerateSingleAiMessage(index: Int) {
+        val chatId =
+            chatHistoryDelegate.currentChatId.value
+                ?: throw IllegalStateException(context.getString(R.string.chat_no_active_conversation))
+        if (messageProcessingDelegate.isChatLoading(chatId)) {
+            throw IllegalStateException(context.getString(R.string.chat_regenerate_busy))
+        }
+
+        val currentHistory = chatHistoryDelegate.chatHistory.value
+        val targetMessage =
+            currentHistory.getOrNull(index)
+                ?: throw IndexOutOfBoundsException(context.getString(R.string.chat_invalid_message_index))
+        if (targetMessage.sender != "ai") {
+            throw IllegalArgumentException(context.getString(R.string.chat_only_ai_message_allowed))
+        }
+        if (ChatMarkupRegex.containsAnyToolLikeTag(targetMessage.content)) {
+            throw IllegalStateException(
+                context.getString(R.string.chat_regenerate_single_tool_unsupported)
+            )
+        }
+
+        val prefixHistory = currentHistory.subList(0, index).toList()
+        val (requestHistory, requestMessageContent) =
+            if (prefixHistory.lastOrNull()?.sender == "user") {
+                prefixHistory.dropLast(1) to prefixHistory.last().content
+            } else {
+                prefixHistory to ""
+            }
+
+        val currentChat = chatHistoryDelegate.chatHistories.value.firstOrNull { it.id == chatId }
+        val workspacePath = currentChat?.workspace
+        val roleCardId = resolveRegenerationRoleCardId(chatId, targetMessage)
+        val currentRoleName =
+            runCatching { characterCardManager.getCharacterCardFlow(roleCardId).first().name }
+                .getOrDefault(targetMessage.roleName)
+                .ifBlank { targetMessage.roleName }
+
+        val (resolvedChatModelConfigIdOverride, resolvedChatModelIndexOverride) =
+            resolveRoleCardChatModelOverrides(roleCardId)
+
+        try {
+            messageProcessingDelegate.regenerateAiMessageVariant(
+                chatId = chatId,
+                targetMessageTimestamp = targetMessage.timestamp,
+                requestMessageContent = requestMessageContent,
+                requestHistory = requestHistory,
+                workspacePath = workspacePath,
+                promptFunctionType = currentPromptFunctionType,
+                roleCardId = roleCardId,
+                currentRoleName = currentRoleName,
+                enableThinking =
+                    apiConfigDelegate.enableThinkingMode.value &&
+                        !apiConfigDelegate.enableThinkingGuidance.value,
+                thinkingGuidance = apiConfigDelegate.enableThinkingGuidance.value,
+                enableMemoryQuery = apiConfigDelegate.enableMemoryQuery.value,
+                maxTokens = (apiConfigDelegate.contextLength.value * 1024).toInt(),
+                tokenUsageThreshold = apiConfigDelegate.summaryTokenThreshold.value.toDouble(),
+                chatModelConfigIdOverride = resolvedChatModelConfigIdOverride,
+                chatModelIndexOverride = resolvedChatModelIndexOverride,
+                onVariantPreviewStarted = { previewMessage ->
+                    chatHistoryDelegate.addMessageToChat(
+                        previewMessage.copy(
+                            content = "",
+                            selectedVariantIndex = targetMessage.variantCount,
+                            variantCount = targetMessage.variantCount + 1,
+                            isVariantPreview = true,
+                        ),
+                        chatIdOverride = chatId,
+                    )
+                },
+                onVariantReady = { variantMessage ->
+                    chatHistoryDelegate.addMessageVariant(
+                        timestamp = targetMessage.timestamp,
+                        message = variantMessage,
+                        chatIdOverride = chatId,
+                    )
+                    runCatching {
+                        refreshStableContextWindow(chatId = chatId)
+                    }.onFailure {
+                        AppLogger.w(TAG, "单条重新生成后刷新上下文窗口失败", it)
+                    }
+                },
+            )
+        } catch (e: Exception) {
+            if (chatHistoryDelegate.currentChatId.value == chatId) {
+                runCatching {
+                    chatHistoryDelegate.addMessageToChat(
+                        targetMessage.copy(
+                            contentStream = null,
+                            isVariantPreview = true,
+                        ),
+                        chatIdOverride = chatId,
+                    )
+                }.onFailure {
+                    AppLogger.w(TAG, "单条重新生成失败后恢复聊天显示失败", it)
+                }
+            }
+            throw e
         }
     }
 
@@ -1153,6 +1271,10 @@ class MessageCoordinationDelegate(
      * 手动更新记忆
      */
     fun manuallyUpdateMemory() {
+        if (_isUpdatingMemory.value) {
+            uiStateDelegate.showToast(context.getString(R.string.chat_summarizing_memory))
+            return
+        }
         coroutineScope.launch {
             val enhancedAiService = getEnhancedAiService()
             if (enhancedAiService == null) {
@@ -1164,6 +1286,9 @@ class MessageCoordinationDelegate(
                 return@launch
             }
 
+            _isUpdatingMemory.value = true
+            uiStateDelegate.showToast(context.getString(R.string.chat_summarizing_memory))
+
             try {
                 // Convert ChatMessage list to List<Pair<String, String>>
                 val history = chatHistoryDelegate.chatHistory.value.map { it.sender to it.content }
@@ -1171,14 +1296,31 @@ class MessageCoordinationDelegate(
                 val lastMessageContent =
                     chatHistoryDelegate.chatHistory.value.lastOrNull()?.content ?: ""
 
-                enhancedAiService.saveConversationToMemory(
-                    history,
-                    lastMessageContent
+                enhancedAiService.saveConversationToMemoryAsync(
+                    conversationHistory = history,
+                    lastContent = lastMessageContent,
+                    onSuccess = {
+                        uiStateDelegate.showToast(context.getString(R.string.chat_memory_manually_updated))
+                        _isUpdatingMemory.value = false
+                    },
+                    onError = { e ->
+                        AppLogger.e(TAG, "手动更新记忆失败", e)
+                        uiStateDelegate.showToast(
+                            context.getString(
+                                R.string.chat_manual_update_memory_failed,
+                                e.message ?: ""
+                            )
+                        )
+                        _isUpdatingMemory.value = false
+                    }
                 )
-                uiStateDelegate.showToast(context.getString(R.string.chat_memory_manually_updated))
+            } catch (e: CancellationException) {
+                _isUpdatingMemory.value = false
+                throw e
             } catch (e: Exception) {
+                _isUpdatingMemory.value = false
                 AppLogger.e(TAG, "手动更新记忆失败", e)
-                uiStateDelegate.showErrorMessage(
+                uiStateDelegate.showToast(
                     context.getString(
                         R.string.chat_manual_update_memory_failed,
                         e.message ?: ""

@@ -356,7 +356,6 @@ class ConversationService(
                 val enableTools = apiPreferences.enableToolsFlow.first()
                 val disableUserPreferenceDescription =
                         apiPreferences.disableUserPreferenceDescriptionFlow.first()
-                val disableLatexDescription = apiPreferences.disableLatexDescriptionFlow.first()
                 val disableStatusTags = apiPreferences.disableStatusTagsFlow.first()
                 val toolPromptVisibility = runCatching {
                     apiPreferences.toolPromptVisibilityFlow.first()
@@ -394,7 +393,6 @@ class ConversationService(
                     chatModelHasDirectAudio = chatModelHasDirectAudio,
                     chatModelHasDirectVideo = chatModelHasDirectVideo,
                     useToolCallApi = useToolCallApi,
-                    disableLatexDescription = disableLatexDescription,
                     disableStatusTags = disableStatusTags,
                     toolVisibility = roleCardToolAccess.effectiveBuiltinToolVisibility,
                     allowedPackageNames = roleCardToolAccess.allowedPackageNames,

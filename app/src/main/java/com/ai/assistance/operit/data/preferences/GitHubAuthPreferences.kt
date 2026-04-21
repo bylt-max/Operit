@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.data.preferences
 
 import android.content.Context
+import android.net.Uri
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -44,7 +45,9 @@ class GitHubAuthPreferences(private val context: Context) {
         val GITHUB_CLIENT_ID = BuildConfig.GITHUB_CLIENT_ID
         val GITHUB_CLIENT_SECRET = BuildConfig.GITHUB_CLIENT_SECRET
         const val GITHUB_SCOPE = "public_repo,user:email,read:user"
-        const val GITHUB_REDIRECT_URI = "operit://github-oauth-callback"
+        private const val GITHUB_REDIRECT_SCHEME = "operit"
+        private const val GITHUB_REDIRECT_HOST = "github-oauth-callback"
+        const val GITHUB_REDIRECT_URI = "$GITHUB_REDIRECT_SCHEME://$GITHUB_REDIRECT_HOST"
         
         // 认证相关键
         private val IS_LOGGED_IN = booleanPreferencesKey("is_logged_in")
@@ -62,6 +65,17 @@ class GitHubAuthPreferences(private val context: Context) {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: GitHubAuthPreferences(context.applicationContext).also { INSTANCE = it }
             }
+        }
+
+        fun createOAuthState(): String {
+            val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+            return (1..32)
+                .map { chars.random() }
+                .joinToString("")
+        }
+
+        fun isOAuthRedirectUri(uri: Uri?): Boolean {
+            return uri?.scheme == GITHUB_REDIRECT_SCHEME && uri.host == GITHUB_REDIRECT_HOST
         }
     }
 
@@ -207,23 +221,15 @@ class GitHubAuthPreferences(private val context: Context) {
     /**
      * 生成GitHub OAuth授权URL
      */
-    fun getAuthorizationUrl(): String {
-        val state = generateRandomState()
-        return "https://github.com/login/oauth/authorize?" +
-                "client_id=$GITHUB_CLIENT_ID&" +
-                "redirect_uri=$GITHUB_REDIRECT_URI&" +
-                "scope=$GITHUB_SCOPE&" +
-                "state=$state"
-    }
-
-    /**
-     * 生成随机状态字符串
-     */
-    private fun generateRandomState(): String {
-        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-        return (1..32)
-            .map { chars.random() }
-            .joinToString("")
+    fun getAuthorizationUrl(state: String = createOAuthState()): String {
+        return Uri.parse("https://github.com/login/oauth/authorize")
+            .buildUpon()
+            .appendQueryParameter("client_id", GITHUB_CLIENT_ID)
+            .appendQueryParameter("redirect_uri", GITHUB_REDIRECT_URI)
+            .appendQueryParameter("scope", GITHUB_SCOPE)
+            .appendQueryParameter("state", state)
+            .build()
+            .toString()
     }
 
     /**

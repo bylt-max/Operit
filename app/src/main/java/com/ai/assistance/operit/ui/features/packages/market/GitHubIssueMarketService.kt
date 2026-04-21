@@ -55,17 +55,6 @@ class GitHubIssueMarketService(
         )
     }
 
-    suspend fun getOpenIssues(page: Int = 1): Result<List<GitHubIssue>> {
-        return githubApiService.getRepositoryIssues(
-            owner = definition.owner,
-            repo = definition.repo,
-            state = "open",
-            labels = definition.label.takeIf { it.isNotBlank() },
-            page = page,
-            perPage = definition.pageSize
-        )
-    }
-
     suspend fun createIssue(
         title: String,
         body: String,

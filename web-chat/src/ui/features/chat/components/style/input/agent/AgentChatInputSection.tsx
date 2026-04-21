@@ -3,7 +3,6 @@ import { uploadedAttachmentToMessageAttachment } from '../../../../attachments/A
 import { AttachmentChip } from '../../../AttachmentChip';
 import { AttachmentSelector } from '../../../AttachmentSelector';
 import { FullscreenInputDialog } from '../../../FullscreenInputDialog';
-import { GlassSurface } from '../../../part/GlassSurface';
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -58,8 +57,7 @@ export function AgentChatInputSection({
   modelSelector,
   modelSelectorLoading,
   onSelectModelConfig,
-  contextPercent,
-  theme
+  contextPercent
 }: {
   messageInput: string;
   onMessageInputChange: (value: string) => void;
@@ -110,7 +108,6 @@ export function AgentChatInputSection({
   const progressRadius = 18;
   const circumference = 2 * Math.PI * progressRadius;
   const dashOffset = circumference - processingProgress * circumference;
-  const glassVariant = theme?.input.water_glass ? 'water' : theme?.input.liquid_glass ? 'liquid' : undefined;
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -167,14 +164,7 @@ export function AgentChatInputSection({
         </div>
       ) : null}
 
-      <GlassSurface
-        baseColor={theme?.palette?.surface_color}
-        borderColor={theme?.palette?.outline_color}
-        className="agent-input-card"
-        radius={22}
-        themeMode={theme?.theme_mode}
-        variant={glassVariant}
-      >
+      <div className="agent-input-card">
         <label className="agent-input-field">
           <textarea
             onChange={(event) => onMessageInputChange(event.target.value)}
@@ -273,7 +263,7 @@ export function AgentChatInputSection({
           </div>
         </div>
 
-      </GlassSurface>
+      </div>
 
       {showModelSelector ? (
         <InputOverlayPopup onDismiss={() => setShowModelSelector(false)} panelClassName="agent-popup-card">

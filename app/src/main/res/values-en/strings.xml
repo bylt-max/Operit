@@ -724,8 +724,6 @@
     <string name="manage_packages">Manage Packages</string>
     <string name="disable_user_preference_description">Disable User Preference Description</string>
     <string name="disable_user_preference_description_desc">When disabled, the system prompt no longer appends the "User preference description" section</string>
-    <string name="disable_latex_description">Disable LaTeX Description</string>
-    <string name="disable_latex_description_desc">When disabled, the system prompt no longer includes LaTeX formula formatting guidance</string>
     <string name="disable_status_tags">Disable Status Tags</string>
     <string name="disable_status_tags_desc">When disabled, the system prompt no longer appends rules that require replies to end with Task Complete / Wait for User status tags</string>
     <string name="stop_reading">Stop Reading</string>
@@ -3110,6 +3108,16 @@
     <string name="chat_message_updated">Message updated</string>
     <string name="chat_update_message_failed">Failed to update message: %1$s</string>
     <string name="chat_only_user_message_allowed">This action can only be performed on user messages</string>
+    <string name="chat_only_ai_message_allowed">This action can only be performed on AI messages</string>
+    <string name="chat_regenerate_single">Regenerate This Reply</string>
+    <string name="chat_regenerating_single">Regenerating this reply...</string>
+    <string name="chat_regenerate_single_failed">Failed to regenerate reply: %1$s</string>
+    <string name="chat_regenerate_busy">Another message is still being processed. Please try again later</string>
+    <string name="chat_regenerate_single_tool_unsupported">Replies containing tool calls cannot be regenerated individually yet</string>
+    <string name="chat_switch_variant_failed">Failed to switch reply: %1$s</string>
+    <string name="chat_message_variant_counter">%1$d/%2$d</string>
+    <string name="chat_previous_variant">Previous reply</string>
+    <string name="chat_next_variant">Next reply</string>
     <string name="chat_rewind_failed">Failed to rewind: %1$s</string>
     <string name="chat_preparing_resend">Preparing to resend message</string>
     <string name="chat_rolled_back_message_in_input">Rolled back. Message content has been placed into the input box.</string>
@@ -3786,6 +3794,7 @@
     <string name="provider_siliconflow">SiliconFlow</string>
     <string name="provider_iflow">iFlow</string>
     <string name="provider_openrouter">OpenRouter (Multi-model Hub)</string>
+    <string name="provider_nous_portal">Nous Portal</string>
     <string name="provider_infiniai">InfiniAI</string>
     <string name="provider_alipay_bailing">Alipay Bailing Model</string>
     <string name="provider_lmstudio">LM Studio</string>
@@ -4391,6 +4400,10 @@
     
     <!-- MCP Plugin Detail Screen -->
     <string name="mcp_plugin_detail_title">Plugin Details</string>
+    <string name="market_detail_published_label">Published</string>
+    <string name="market_detail_author_role">Author</string>
+    <string name="market_detail_publisher_role">Publisher</string>
+    <string name="market_detail_sharer_role">Sharer</string>
     <string name="mcp_plugin_author">Author: %1$s</string>
     <string name="mcp_plugin_shared_by">Shared by: %1$s</string>
     <string name="mcp_plugin_repository">View Repository</string>
@@ -4628,43 +4641,6 @@
     <string name="dialog_button_confirm">Reload</string>
     <string name="dialog_button_dismiss">Cancel</string>
 
-    <string name="migration_import_failed">Import failed</string>
-    <string name="migration_import_error">Import error: %1$s</string>
-    <string name="migration_open_file_failed">Cannot open file: %1$s</string>
-    <string name="migration_info_cd">Migration info</string>
-    <string name="migration_found_old_chat_title">Old chat history found</string>
-    <string name="migration_found_old_chat_desc">We found chat history data from a previous version. You can import it into this version.</string>
-    <string name="migration_error_during_migration">An error occurred during migration</string>
-    <string name="migration_start">Start migration</string>
-    <string name="migration_skip">Skip</string>
-    <string name="migration_advanced_options">Advanced options</string>
-    <string name="migration_manual_backup_desc">You can also back up or import chat history manually:</string>
-    <string name="migration_export_cd">Export</string>
-    <string name="migration_export_backup">Export backup</string>
-    <string name="migration_import_cd">Import</string>
-    <string name="migration_import_backup">Import backup</string>
-    <string name="migration_in_progress_title">Migrating data...</string>
-    <string name="migration_in_progress_desc">Please wait. Do not close the app during migration.</string>
-    <string name="migration_completed_cd">Migration completed</string>
-    <string name="migration_completed_title">Migration completed</string>
-    <string name="migration_completed_desc">Successfully migrated %1$d chat records</string>
-    <string name="migration_continue">Continue</string>
-    <string name="migration_failed_cd">Migration failed</string>
-    <string name="migration_failed_title">Migration failed</string>
-    <string name="migration_retry">Retry</string>
-    <string name="migration_exporting_title">Exporting backup...</string>
-    <string name="migration_export_failed">Export failed</string>
-    <string name="migration_exported_cd">Export completed</string>
-    <string name="migration_exported_title">Export completed</string>
-    <string name="migration_exported_desc">Backup file saved to:\n%1$s</string>
-    <string name="migration_back">Back</string>
-    <string name="migration_importing_title">Importing backup...</string>
-    <string name="migration_imported_cd">Import completed</string>
-    <string name="migration_imported_title">Import completed</string>
-    <string name="migration_imported_desc">Successfully imported %1$d chat records</string>
-    <string name="migration_back_to_screen">Back to migration screen</string>
-
-
     <string name="settings_context_card_title">Setup Instructions:</string>
     <string name="settings_context_card_content">· Context Length: Recommended to set to your daily maximum usage value.\n· Max Context Length: Recommended to set to the maximum value supported by the model API.\nThe software will automatically compress the context when the threshold is reached to prevent exceeding the limit. Note that a larger context is not always better; user cooperation with the software is required.</string>
 
@@ -4889,6 +4865,12 @@
     <string name="show_role_name_description">Display current character card name in AI messages</string>
     <string name="show_user_name">Show User Name</string>
     <string name="show_user_name_description">Display user name in user messages</string>
+    <string name="show_message_token_stats">Show Message Token Summary</string>
+    <string name="show_message_token_stats_description">Show compact token upload, output, and cache info below AI messages</string>
+    <string name="show_message_timing_stats">Show Message Timing Summary</string>
+    <string name="show_message_timing_stats_description">Show first-token and generation timing below AI messages</string>
+    <string name="chat_message_token_stats_compact">token: %1$d(cache: %2$d) ↑ %3$d ↓ %4$d</string>
+    <string name="chat_message_timing_stats_compact">time: %1$s (first %2$s out %3$s)</string>
     <string name="global_user_name">Global User Name</string>
     <string name="system_display_settings">System Display Settings</string>
     <string name="show_fps_counter_description">Display frame rate performance metrics on screen</string>
@@ -5082,7 +5064,7 @@
     <string name="backup_select_export_format">Select Export Format</string>
     <string name="backup_select_format_hint">Please select the chat history format to export:</string>
     <string name="backup_format_json">JSON (Recommended)</string>
-    <string name="backup_format_json_desc">Operit native format, preserves all data completely</string>
+    <string name="backup_format_json_desc">Operit native format, preserves variants and all other data</string>
     <string name="backup_format_markdown">Markdown</string>
     <string name="backup_format_markdown_desc">Lightweight markup format, easy to read and edit</string>
     <string name="backup_format_html">HTML</string>
@@ -5094,7 +5076,7 @@
     <string name="backup_select_import_format">Select Import Format</string>
     <string name="backup_import_format_hint">Please select the chat history format to import:</string>
     <string name="backup_format_operit">Operit JSON (Recommended)</string>
-    <string name="backup_format_operit_desc">Native format of this app, preserves all data completely</string>
+    <string name="backup_format_operit_desc">Native format of this app, preserves variants and all other data</string>
     <string name="backup_format_chatgpt">ChatGPT</string>
     <string name="backup_format_chatgpt_desc">OpenAI ChatGPT conversations.json export format</string>
     <string name="backup_format_chatbox">ChatBox</string>
@@ -5446,7 +5428,7 @@
     <string name="manage_my_skills">Manage My Skills</string>
     <string name="need_login_github_manage_skills">Need to login to GitHub to manage your published Skills</string>
     <string name="no_matching_skills_found">No matching Skills found</string>
-    <string name="skill_market_search_placeholder">Search Skill name, description, author...</string>
+    <string name="skill_market_search_placeholder">Search Skill or author</string>
     <string name="skill_repo_url_not_found">Repository URL not found</string>
     <string name="skill_repo_url_not_found_cannot_install">Repository URL not found, unable to install</string>
     <string name="no_published_skills_yet">No Skills published yet</string>
@@ -5763,7 +5745,7 @@
     <string name="pkg_no_tools">No tools available</string>
 
     <!-- MCP Market Screen -->
-    <string name="mcp_market_search_hint">Search plugin name, description, author...</string>
+    <string name="mcp_market_search_hint">Search plugin or author</string>
     <string name="mcp_market_search">Search</string>
     <string name="mcp_market_clear_search">Clear search</string>
     <string name="mcp_market_refresh">Refresh</string>
@@ -6652,6 +6634,7 @@
     <string name="chat_history_empty_no_update">Chat history is empty, no need to update memory</string>
     <string name="chat_memory_manually_updated">Memory has been manually updated</string>
     <string name="chat_manual_update_memory_failed">Manual memory update failed: %1$s</string>
+    <string name="chat_auto_update_memory_failed">Automatic memory update failed: %1$s</string>
     <string name="chat_summarizing_please_wait">Summarizing, please wait</string>
     <string name="chat_conversation_summary_generated">Conversation summary generated</string>
     <string name="chat_compressing_history">Compressing history records...</string>

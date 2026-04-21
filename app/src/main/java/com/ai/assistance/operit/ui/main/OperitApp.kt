@@ -50,6 +50,10 @@ import com.ai.assistance.operit.ui.features.update.screens.UpdateScreen
 // 它允许子组件（如AIChatScreen）向上提供它们的action Composable
 val LocalTopBarActions = compositionLocalOf<(@Composable (RowScope.() -> Unit)) -> Unit> { {} }
 
+class TopBarTitleContent(val content: @Composable () -> Unit)
+
+val LocalTopBarTitleContent = compositionLocalOf<(TopBarTitleContent?) -> Unit> { {} }
+
 data class NavGroup(@StringRes val titleResId: Int, val items: List<NavItem>)
 
 enum class NavigationTransitionSource {
@@ -87,6 +91,7 @@ fun OperitApp(
 
     // 用于存储由子屏幕提供的TopAppBar Actions
     var topBarActions by remember { mutableStateOf<@Composable RowScope.() -> Unit>({}) }
+    var topBarTitleContent by remember { mutableStateOf<TopBarTitleContent?>(null) }
     var lastHandledShortcutRequestId by remember { mutableStateOf(0L) }
 
     LaunchedEffect(shortcutNavRequestId, shortcutNavRequest) {
@@ -115,6 +120,7 @@ fun OperitApp(
         if (currentScreen !is Screen.AiChat && currentScreen !is Screen.TokenConfig) {
             topBarActions = {}
         }
+        topBarTitleContent = null
     }
 
     // Navigation functions
@@ -237,8 +243,7 @@ fun OperitApp(
             listOfNotNull(
                 NavItem.Settings,
                 NavItem.Help,
-                NavItem.About,
-                NavItem.UpdateHistory
+                NavItem.About
             )
         )
     )
@@ -293,9 +298,14 @@ fun OperitApp(
 
     // Main app container
     Box(modifier = Modifier.fillMaxSize().background(Color.Transparent)) {
-        CompositionLocalProvider(LocalTopBarActions provides { actions: @Composable RowScope.() -> Unit ->
-            topBarActions = actions
-        }) {
+        CompositionLocalProvider(
+            LocalTopBarActions provides { actions: @Composable RowScope.() -> Unit ->
+                topBarActions = actions
+            },
+            LocalTopBarTitleContent provides { titleContent ->
+                topBarTitleContent = titleContent
+            }
+        ) {
             if (useTabletLayout) {
                 // Tablet layout
                 TabletLayout(
@@ -329,7 +339,8 @@ fun OperitApp(
                     canGoBack = canGoBack,
                     onGoBack = ::goBack,
                     isNavigatingBack = isNavigatingBack,
-                    topBarActions = { topBarActions() }
+                    topBarActions = { topBarActions() },
+                    topBarTitleContent = topBarTitleContent
                 )
             } else {
                 // Phone layout
@@ -358,7 +369,8 @@ fun OperitApp(
                     canGoBack = canGoBack,
                     onGoBack = ::goBack,
                     isNavigatingBack = isNavigatingBack,
-                    topBarActions = { topBarActions() }
+                    topBarActions = { topBarActions() },
+                    topBarTitleContent = topBarTitleContent
                 )
             }
         }
