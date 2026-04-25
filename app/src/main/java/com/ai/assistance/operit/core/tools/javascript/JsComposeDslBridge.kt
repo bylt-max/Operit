@@ -26,6 +26,36 @@ internal fun buildComposeDslContextBridgeDefinition(): String {
                 return [children];
             }
 
+            function isComposeNodeLike(value) {
+                return !!(
+                    value &&
+                    typeof value === 'object' &&
+                    value.__composeNode === true &&
+                    typeof value.type === 'string'
+                );
+            }
+
+            function flattenComposeSlotValue(value, out) {
+                if (value == null) {
+                    return;
+                }
+                if (Array.isArray(value)) {
+                    for (var i = 0; i < value.length; i += 1) {
+                        flattenComposeSlotValue(value[i], out);
+                    }
+                    return;
+                }
+                if (isComposeNodeLike(value)) {
+                    out.push(value);
+                }
+            }
+
+            function normalizeSlotChildren(value) {
+                var out = [];
+                flattenComposeSlotValue(value, out);
+                return out;
+            }
+
             function invokeNative(methodName, args) {
                 try {
                     if (
@@ -192,15 +222,25 @@ internal fun buildComposeDslContextBridgeDefinition(): String {
                 function createNode(type, props, children) {
                     var rawProps = props && typeof props === 'object' ? props : {};
                     var normalizedProps = {};
+                    var normalizedSlots = {};
                     for (var key in rawProps) {
                         if (Object.prototype.hasOwnProperty.call(rawProps, key)) {
-                            normalizedProps[key] = normalizePropValue(rawProps[key]);
+                            var rawValue = rawProps[key];
+                            var slotChildren = normalizeSlotChildren(rawValue);
+                            if (slotChildren.length > 0) {
+                                normalizedSlots[key] = slotChildren;
+                                continue;
+                            }
+                            normalizedProps[key] = normalizePropValue(rawValue);
                         }
                     }
+                    var normalizedChildren = normalizeChildren(children);
                     return {
+                        __composeNode: true,
                         type: String(type || ''),
                         props: normalizedProps,
-                        children: normalizeChildren(children)
+                        children: normalizedChildren,
+                        slots: normalizedSlots
                     };
                 }
 

@@ -239,7 +239,7 @@ function Screen(ctx) {
                             .background(colors.primaryContainer)
                     }, [
                         UI.Icon({
-                            name: "extension",
+                            name: "book",
                             tint: colors.onPrimaryContainer,
                             size: 16
                         })
@@ -350,56 +350,27 @@ function Screen(ctx) {
             spacing: 12,
             fillMaxWidth: true
         }, [
-            UI.Card({
-                containerColor: colors.surfaceVariant,
-                shape: { cornerRadius: 18 },
+            UI.Row({
                 fillMaxWidth: true
             }, [
-                UI.Column({
-                    padding: 16,
-                    spacing: 12,
-                    fillMaxWidth: true
+                UI.OutlinedButton({
+                    onClick: () => setView("list"),
+                    shape: { cornerRadius: 12 }
                 }, [
                     UI.Row({
-                        fillMaxWidth: true,
-                        horizontalArrangement: "spaceBetween",
+                        spacing: 6,
                         verticalAlignment: "center"
                     }, [
-                        UI.Column({ spacing: 4, weight: 1 }, [
-                            UI.Text({
-                                text: isEdit ? "编辑世界书条目" : "新建世界书条目",
-                                style: "titleLarge",
-                                fontWeight: "bold",
-                                color: colors.onSurface
-                            }),
-                            UI.Text({
-                                text: isEdit
-                                    ? "修改关键词、启用状态和注入内容。"
-                                    : "创建一个新的注入规则，并决定它何时生效。",
-                                style: "bodySmall",
-                                color: colors.onSurfaceVariant
-                            })
-                        ]),
-                        UI.OutlinedButton({
-                            onClick: () => setView("list"),
-                            shape: { cornerRadius: 12 }
-                        }, [
-                            UI.Row({
-                                spacing: 6,
-                                verticalAlignment: "center"
-                            }, [
-                                UI.Icon({
-                                    name: "arrowBack",
-                                    size: 16,
-                                    tint: colors.onSurface
-                                }),
-                                UI.Text({
-                                    text: "返回",
-                                    color: colors.onSurface,
-                                    fontWeight: "bold"
-                                })
-                            ])
-                        ])
+                        UI.Icon({
+                            name: "arrowBack",
+                            size: 16,
+                            tint: colors.onSurface
+                        }),
+                        UI.Text({
+                            text: "返回",
+                            color: colors.onSurface,
+                            fontWeight: "bold"
+                        })
                     ])
                 ])
             ]),

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.sp
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslNode
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslParser
@@ -112,7 +114,27 @@ internal fun applyScopedCommonModifier(
     props: Map<String, Any?>,
     modifierResolver: ComposeDslModifierResolver
 ): Modifier {
-    return modifierResolver(base, props)
+    return applyComposeDslNodeDebugLayoutModifier(modifierResolver(base, props))
+}
+
+@Composable
+internal fun renderComposeDslNodes(
+    nodes: List<ToolPkgComposeDslNode>,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver = { base, props ->
+        defaultComposeDslModifierResolver(base, props)
+    }
+) {
+    nodes.forEachIndexed { index, child ->
+        val childPath = "$nodePath/$index"
+        renderComposeDslNode(
+            node = child,
+            onAction = onAction,
+            nodePath = childPath,
+            modifierResolver = modifierResolver
+        )
+    }
 }
 
 @Composable
@@ -124,15 +146,39 @@ internal fun renderNodeChildren(
         defaultComposeDslModifierResolver(base, props)
     }
 ) {
-    node.children.forEachIndexed { index, child ->
-        val childPath = "$nodePath/$index"
-        renderComposeDslNode(
-            node = child,
-            onAction = onAction,
-            nodePath = childPath,
-            modifierResolver = modifierResolver
-        )
+    renderComposeDslNodes(node.children, onAction, nodePath, modifierResolver)
+}
+
+private fun ToolPkgComposeDslNode.slotChildren(
+    slotName: String,
+    fallbackToChildren: Boolean = false
+): List<ToolPkgComposeDslNode> {
+    val normalizedSlotName = slotName.trim()
+    val slotNodes =
+        if (normalizedSlotName.isBlank()) {
+            emptyList()
+        } else {
+            slots[normalizedSlotName].orEmpty()
+        }
+    if (slotNodes.isNotEmpty()) {
+        return slotNodes
     }
+    return if (fallbackToChildren) children else emptyList()
+}
+
+@Composable
+internal fun renderSlotChildren(
+    node: ToolPkgComposeDslNode,
+    slotName: String,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver = { base, props ->
+        defaultComposeDslModifierResolver(base, props)
+    },
+    fallbackToChildren: Boolean = false
+) {
+    val slotNodes = node.slotChildren(slotName, fallbackToChildren)
+    renderComposeDslNodes(slotNodes, onAction, "$nodePath:$slotName", modifierResolver)
 }
 
 @Composable
@@ -186,6 +232,14 @@ private fun ToolPkgComposeDslNode.autoScrollSignature(): Int {
     children.forEach { child ->
         result = 31 * result + child.autoScrollSignature()
     }
+    result = 31 * result + slots.size
+    slots.toSortedMap().forEach { (slotName, slotChildren) ->
+        result = 31 * result + slotName.hashCode()
+        result = 31 * result + slotChildren.size
+        slotChildren.forEach { child ->
+            result = 31 * result + child.autoScrollSignature()
+        }
+    }
     return result
 }
 
@@ -198,13 +252,21 @@ internal fun renderColumnNode(
 ) {
     val props = node.props
     val spacing = props.dp("spacing")
-    Column(
+    androidx.compose.foundation.layout.Column(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        verticalArrangement = props.verticalArrangement("verticalArrangement", spacing),
         horizontalAlignment = props.horizontalAlignment("horizontalAlignment"),
-        verticalArrangement = props.verticalArrangement("verticalArrangement", spacing)
-    ) {
-        renderColumnScopeNodeChildren(node, onAction, nodePath)
-    }
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> columnComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -228,7 +290,14 @@ internal fun renderRowNode(
         horizontalArrangement = props.horizontalArrangement("horizontalArrangement", spacing),
         verticalAlignment = props.verticalAlignment("verticalAlignment")
     ) {
-        renderRowScopeNodeChildren(node, onAction, nodePath)
+        renderSlotChildren(
+            node = node,
+            slotName = "content",
+            onAction = onAction,
+            nodePath = nodePath,
+            modifierResolver = { base, slotProps -> rowComposeDslModifierResolver(base, slotProps) },
+            fallbackToChildren = true
+        )
     }
 }
 
@@ -240,12 +309,21 @@ internal fun renderBoxNode(
     modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
-    Box(
+    androidx.compose.foundation.layout.Box(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
-        contentAlignment = props.boxAlignment("contentAlignment")
-    ) {
-        renderBoxScopeNodeChildren(node, onAction, nodePath)
-    }
+        contentAlignment = props.boxAlignment("contentAlignment"),
+        propagateMinConstraints = props.bool("propagateMinConstraints", false),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> boxComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -276,16 +354,17 @@ internal fun renderLazyColumnNode(
     val reverseLayout = props.bool("reverseLayout", false)
     val autoScrollToEnd = props.bool("autoScrollToEnd", false)
     val listState = rememberLazyListState()
+    val contentNodes = node.slotChildren("content", fallbackToChildren = true)
     val autoScrollSignature =
         if (!autoScrollToEnd) {
             0
         } else {
-            node.children.fold(1) { acc, child -> 31 * acc + child.autoScrollSignature() }
+            contentNodes.fold(1) { acc, child -> 31 * acc + child.autoScrollSignature() }
         }
 
     LaunchedEffect(nodePath, autoScrollToEnd, reverseLayout, autoScrollSignature) {
-        if (autoScrollToEnd && node.children.isNotEmpty()) {
-            listState.scrollToItem(if (reverseLayout) 0 else node.children.lastIndex)
+        if (autoScrollToEnd && contentNodes.isNotEmpty()) {
+            listState.scrollToItem(if (reverseLayout) 0 else contentNodes.lastIndex)
         }
     }
 
@@ -297,7 +376,7 @@ internal fun renderLazyColumnNode(
         verticalArrangement = props.verticalArrangement("verticalArrangement", spacing),
         contentPadding = PaddingValues(0.dp)
     ) {
-        itemsIndexed(node.children) { index, child ->
+        itemsIndexed(contentNodes) { index, child ->
             renderComposeDslNode(
                 node = child,
                 onAction = onAction,
@@ -316,12 +395,13 @@ internal fun renderLazyRowNode(
 ) {
     val props = node.props
     val spacing = props.dp("spacing")
+    val contentNodes = node.slotChildren("content", fallbackToChildren = true)
     androidx.compose.foundation.lazy.LazyRow(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         horizontalArrangement = props.horizontalArrangement("horizontalArrangement", spacing),
         verticalAlignment = props.verticalAlignment("verticalAlignment")
     ) {
-        itemsIndexed(node.children) { index, child ->
+        itemsIndexed(contentNodes) { index, child ->
             renderComposeDslNode(
                 node = child,
                 onAction = onAction,
@@ -378,7 +458,14 @@ internal fun renderTextFieldNode(
     val placeholder = props.stringOrNull("placeholder")
     val externalValue = props.string("value")
     val isPassword = props.bool("isPassword", false)
-    val hasStyle = props["style"] != null
+    val styleMap = props["style"] as? Map<*, *>
+    val hasLabelSlot = node.slotChildren("label").isNotEmpty()
+    val hasPlaceholderSlot = node.slotChildren("placeholder").isNotEmpty()
+    val hasPrefixSlot = node.slotChildren("prefix").isNotEmpty()
+    val hasSuffixSlot = node.slotChildren("suffix").isNotEmpty()
+    val hasLeadingIconSlot = node.slotChildren("leadingIcon").isNotEmpty()
+    val hasTrailingIconSlot = node.slotChildren("trailingIcon").isNotEmpty()
+    val hasSupportingTextSlot = node.slotChildren("supportingText").isNotEmpty()
 
     var textFieldValue by remember(nodePath) {
         mutableStateOf(
@@ -399,75 +486,126 @@ internal fun renderTextFieldNode(
                 )
         }
     }
-
-    if (hasStyle) {
-        val styleMap = props["style"] as? Map<*, *>
-        val fontSize = (styleMap?.get("fontSize") as? Number)?.toFloat() ?: 14f
-        val fontWeight =
-            styleMap?.get("fontWeight")?.toString()?.let { token ->
-                mapOf<String, Any?>("fontWeight" to token).fontWeightOrNull("fontWeight")
-            } ?: FontWeight.SemiBold
-        val color = styleMap?.get("color")?.toString()?.let { resolveColorToken(it) }
-            ?: MaterialTheme.colorScheme.primary
-
-        androidx.compose.foundation.text.BasicTextField(
-            value = textFieldValue,
-            onValueChange = { nextValue ->
-                if (!actionId.isNullOrBlank()) {
-                    textFieldValue = nextValue
-                    onAction(actionId, nextValue.text)
-                }
-            },
-            singleLine = props.bool("singleLine", false),
-            visualTransformation = if (isPassword) {
-                androidx.compose.ui.text.input.PasswordVisualTransformation()
-            } else {
-                androidx.compose.ui.text.input.VisualTransformation.None
-            },
-            textStyle = androidx.compose.ui.text.TextStyle(
+    val textStyle =
+        styleMap?.let {
+            val fontSize = (it["fontSize"] as? Number)?.toFloat() ?: 14f
+            val fontWeight =
+                it["fontWeight"]?.toString()?.let { token ->
+                    mapOf<String, Any?>("fontWeight" to token).fontWeightOrNull("fontWeight")
+                } ?: FontWeight.SemiBold
+            val color = it["color"]?.toString()?.let { rawColor -> resolveColorToken(rawColor) }
+                ?: MaterialTheme.colorScheme.primary
+            androidx.compose.ui.text.TextStyle(
                 color = color,
                 fontSize = fontSize.sp,
                 fontWeight = fontWeight
-            ),
-            decorationBox = { innerTextField ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp)
-                ) {
-                    if (textFieldValue.text.isEmpty() && !placeholder.isNullOrBlank()) {
-                        Text(
-                            text = placeholder,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+    OutlinedTextField(
+        value = textFieldValue,
+        onValueChange = { nextValue ->
+            if (!actionId.isNullOrBlank()) {
+                textFieldValue = nextValue
+                onAction(actionId, nextValue.text)
+            }
+        },
+        label =
+            when {
+                hasLabelSlot -> {
+                    {
+                        renderSlotChildren(
+                            node = node,
+                            slotName = "label",
+                            onAction = onAction,
+                            nodePath = nodePath
                         )
                     }
-                    innerTextField()
                 }
+                else -> label?.let { labelText -> { Text(labelText) } }
             },
-            modifier = applyScopedCommonModifier(Modifier.fillMaxWidth(), props, modifierResolver)
-        )
-    } else {
-        OutlinedTextField(
-            value = textFieldValue,
-            onValueChange = { nextValue ->
-                if (!actionId.isNullOrBlank()) {
-                    textFieldValue = nextValue
-                    onAction(actionId, nextValue.text)
+        placeholder =
+            when {
+                hasPlaceholderSlot -> {
+                    {
+                        renderSlotChildren(
+                            node = node,
+                            slotName = "placeholder",
+                            onAction = onAction,
+                            nodePath = nodePath
+                        )
+                    }
                 }
+                else -> placeholder?.let { placeholderText -> { Text(placeholderText) } }
             },
-            label = label?.let { { Text(it) } },
-            placeholder = placeholder?.let { { Text(it) } },
-            singleLine = props.bool("singleLine", false),
-            minLines = props.int("minLines", 1),
-            visualTransformation = if (isPassword) {
-                androidx.compose.ui.text.input.PasswordVisualTransformation()
-            } else {
-                androidx.compose.ui.text.input.VisualTransformation.None
-            },
-            modifier = applyScopedCommonModifier(Modifier.fillMaxWidth(), props, modifierResolver)
-        )
-    }
+        prefix =
+            if (hasPrefixSlot) {
+                {
+                    renderSlotChildren(
+                        node = node,
+                        slotName = "prefix",
+                        onAction = onAction,
+                        nodePath = nodePath
+                    )
+                }
+            } else null,
+        suffix =
+            if (hasSuffixSlot) {
+                {
+                    renderSlotChildren(
+                        node = node,
+                        slotName = "suffix",
+                        onAction = onAction,
+                        nodePath = nodePath
+                    )
+                }
+            } else null,
+        leadingIcon =
+            if (hasLeadingIconSlot) {
+                {
+                    renderSlotChildren(
+                        node = node,
+                        slotName = "leadingIcon",
+                        onAction = onAction,
+                        nodePath = nodePath
+                    )
+                }
+            } else null,
+        trailingIcon =
+            if (hasTrailingIconSlot) {
+                {
+                    renderSlotChildren(
+                        node = node,
+                        slotName = "trailingIcon",
+                        onAction = onAction,
+                        nodePath = nodePath
+                    )
+                }
+            } else null,
+        supportingText =
+            if (hasSupportingTextSlot) {
+                {
+                    renderSlotChildren(
+                        node = node,
+                        slotName = "supportingText",
+                        onAction = onAction,
+                        nodePath = nodePath
+                    )
+                }
+            } else null,
+        singleLine = props.bool("singleLine", false),
+        minLines = props.int("minLines", 1),
+        maxLines = props.int("maxLines", if (props.bool("singleLine", false)) 1 else Int.MAX_VALUE),
+        readOnly = props.bool("readOnly", false),
+        isError = props.bool("isError", false),
+        textStyle = textStyle ?: androidx.compose.ui.text.TextStyle.Default,
+        visualTransformation = if (isPassword) {
+            androidx.compose.ui.text.input.PasswordVisualTransformation()
+        } else {
+            androidx.compose.ui.text.input.VisualTransformation.None
+        },
+        modifier = applyScopedCommonModifier(Modifier.fillMaxWidth(), props, modifierResolver)
+    )
 }
 
 @Composable
@@ -483,6 +621,7 @@ internal fun renderSwitchNode(
     val checkedTrackColor = props.colorOrNull("checkedTrackColor")
     val uncheckedThumbColor = props.colorOrNull("uncheckedThumbColor")
     val uncheckedTrackColor = props.colorOrNull("uncheckedTrackColor")
+    val hasThumbContentSlot = node.slotChildren("thumbContent").isNotEmpty()
     val switchColors =
         if (
             checkedThumbColor != null ||
@@ -508,6 +647,17 @@ internal fun renderSwitchNode(
         },
         enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        thumbContent =
+            if (hasThumbContentSlot) {
+                {
+                    renderSlotChildren(
+                        node = node,
+                        slotName = "thumbContent",
+                        onAction = onAction,
+                        nodePath = nodePath
+                    )
+                }
+            } else null,
         colors = switchColors
     )
 }
@@ -541,26 +691,31 @@ internal fun renderButtonNode(
     modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
-    val actionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
-    val hasChildren = node.children.isNotEmpty()
-    val contentPadding = props.paddingValuesOrNull("contentPadding")
-    Button(
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.Button(
         onClick = {
-            if (!actionId.isNullOrBlank()) {
-                onAction(actionId, null)
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
             }
         },
-        enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape,
-        contentPadding = contentPadding ?: androidx.compose.material3.ButtonDefaults.ContentPadding
-    ) {
-        if (hasChildren) {
-            renderRowScopeNodeChildren(node, onAction, nodePath)
-        } else {
-            Text(props.string("text", "Button"))
+        contentPadding = props.paddingValuesOrNull("contentPadding") ?: androidx.compose.material3.ButtonDefaults.ContentPadding,
+        content = {
+            val slotNodes = node.slotChildren("content", fallbackToChildren = true)
+            if (slotNodes.isNotEmpty()) {
+                renderComposeDslNodes(
+                    nodes = slotNodes,
+                    onAction = onAction,
+                    nodePath = "$nodePath:content",
+                    modifierResolver = { base, slotProps -> rowComposeDslModifierResolver(base, slotProps) }
+                )
+            } else {
+                Text(props.string("text", "Button"))
+            }
         }
-    }
+    )
 }
 
 @Composable
@@ -571,27 +726,33 @@ internal fun renderIconButtonNode(
     modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
-    val actionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
-    val hasChildren = node.children.isNotEmpty()
-    IconButton(
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.IconButton(
         onClick = {
-            if (!actionId.isNullOrBlank()) {
-                onAction(actionId, null)
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
             }
         },
-        enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
-        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver)
-    ) {
-        if (hasChildren) {
-            renderNodeChildren(node, onAction, nodePath)
-        } else {
-            val iconName = props.string("icon", props.string("name", "info"))
-            Icon(
-                imageVector = iconFromName(iconName),
-                contentDescription = null
-            )
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true),
+        content = {
+            val slotNodes = node.slotChildren("content", fallbackToChildren = true)
+            if (slotNodes.isNotEmpty()) {
+                renderComposeDslNodes(
+                    nodes = slotNodes,
+                    onAction = onAction,
+                    nodePath = "$nodePath:content",
+                    modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) }
+                )
+            } else {
+                val iconName = props.string("icon", props.string("name", "info"))
+                Icon(
+                    imageVector = iconFromName(iconName),
+                    contentDescription = null
+                )
+            }
         }
-    }
+    )
 }
 
 @Composable
@@ -637,7 +798,13 @@ internal fun renderCardNode(
         border = props.borderOrNull(),
         elevation = CardDefaults.cardElevation(defaultElevation = props.dp("elevation", 1.dp))
     ) {
-        renderNodeChildren(node, onAction, nodePath)
+        renderSlotChildren(
+            node = node,
+            slotName = "content",
+            onAction = onAction,
+            nodePath = nodePath,
+            fallbackToChildren = true
+        )
     }
 }
 
@@ -650,9 +817,17 @@ internal fun renderMaterialThemeNode(
 ) {
     val props = node.props
     androidx.compose.material3.MaterialTheme(
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -663,17 +838,24 @@ internal fun renderSurfaceNode(
     modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
-    val containerColor = props.colorOrNull("containerColor")
-    val contentColor = props.colorOrNull("contentColor")
-    val alpha = props.floatOrNull("alpha") ?: 1f
     androidx.compose.material3.Surface(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
-        color = containerColor?.copy(alpha = alpha) ?: Color.Transparent,
-        contentColor = contentColor ?: MaterialTheme.colorScheme.onSurface
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        color = (props.colorOrNull("color") ?: props.colorOrNull("containerColor")).let { baseColor -> baseColor?.let { color -> props.floatOrNull("alpha")?.let { color.copy(alpha = it) } ?: color } ?: Color.Transparent },
+        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
+        tonalElevation = props.dp("tonalElevation"),
+        shadowElevation = props.dp("shadowElevation"),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -748,6 +930,57 @@ internal fun renderSnackbarHostNode(
 }
 
 @Composable
+internal fun renderAssistChipNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.AssistChip(
+        onClick = {
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
+            }
+        },
+        label = {
+            renderSlotChildren(
+                node = node,
+                slotName = "label",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true),
+        leadingIcon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "leadingIcon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        trailingIcon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "trailingIcon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
+    )
+}
+
+@Composable
 internal fun renderBadgeNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
@@ -758,10 +991,51 @@ internal fun renderBadgeNode(
     androidx.compose.material3.Badge(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
-        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> rowComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderBadgedBoxNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    androidx.compose.material3.BadgedBox(
+        badge = {
+            renderSlotChildren(
+                node = node,
+                slotName = "badge",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> boxComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> boxComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -776,10 +1050,52 @@ internal fun renderDismissibleDrawerSheetNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         drawerContainerColor = props.colorOrNull("drawerContainerColor") ?: Color.Unspecified,
         drawerContentColor = props.colorOrNull("drawerContentColor") ?: Color.Unspecified,
-        drawerTonalElevation = props.dp("drawerTonalElevation")
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        drawerTonalElevation = props.dp("drawerTonalElevation"),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> columnComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderDismissibleNavigationDrawerNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    androidx.compose.material3.DismissibleNavigationDrawer(
+        drawerContent = {
+            renderSlotChildren(
+                node = node,
+                slotName = "drawerContent",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        gesturesEnabled = props.bool("gesturesEnabled", false),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -794,6 +1110,88 @@ internal fun renderDividerNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         thickness = props.dp("thickness"),
         color = props.colorOrNull("color") ?: Color.Unspecified
+    )
+}
+
+@Composable
+internal fun renderDropdownMenuNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onDismissRequestActionId = ToolPkgComposeDslParser.extractActionId(props["onDismissRequest"])
+    androidx.compose.material3.DropdownMenu(
+        expanded = props.bool("expanded", false),
+        onDismissRequest = {
+            if (!onDismissRequestActionId.isNullOrBlank()) {
+                onAction(onDismissRequestActionId, null)
+            }
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        offset = DpOffset(props.dp("offset"), 0.dp),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> columnComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderElevatedAssistChipNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.ElevatedAssistChip(
+        onClick = {
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
+            }
+        },
+        label = {
+            renderSlotChildren(
+                node = node,
+                slotName = "label",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true),
+        leadingIcon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "leadingIcon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        trailingIcon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "trailingIcon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
     )
 }
 
@@ -814,10 +1212,22 @@ internal fun renderElevatedButtonNode(
         },
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
-        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.elevatedShape,
+        contentPadding = props.paddingValuesOrNull("contentPadding") ?: androidx.compose.material3.ButtonDefaults.ContentPadding,
+        content = {
+            val slotNodes = node.slotChildren("content", fallbackToChildren = true)
+            if (slotNodes.isNotEmpty()) {
+                renderComposeDslNodes(
+                    nodes = slotNodes,
+                    onAction = onAction,
+                    nodePath = "$nodePath:content",
+                    modifierResolver = { base, slotProps -> rowComposeDslModifierResolver(base, slotProps) }
+                )
+            } else {
+                Text(props.string("text", "ElevatedButton"))
+            }
+        }
+    )
 }
 
 @Composable
@@ -830,10 +1240,111 @@ internal fun renderElevatedCardNode(
     val props = node.props
     androidx.compose.material3.ElevatedCard(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> columnComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderElevatedFilterChipNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.ElevatedFilterChip(
+        selected = props.bool("selected", false),
+        onClick = {
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
+            }
+        },
+        label = {
+            renderSlotChildren(
+                node = node,
+                slotName = "label",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true),
+        leadingIcon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "leadingIcon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        trailingIcon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "trailingIcon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+    )
+}
+
+@Composable
+internal fun renderElevatedSuggestionChipNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.ElevatedSuggestionChip(
+        onClick = {
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
+            }
+        },
+        label = {
+            renderSlotChildren(
+                node = node,
+                slotName = "label",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true),
+        icon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "icon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
+    )
 }
 
 @Composable
@@ -854,10 +1365,18 @@ internal fun renderExtendedFloatingActionButtonNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
-        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> rowComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -877,18 +1396,25 @@ internal fun renderFilledIconButtonNode(
         },
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
-        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
-    ) {
-        if (node.children.isNotEmpty()) {
-            renderNodeChildren(node, onAction, nodePath)
-        } else {
-            val iconName = props.string("icon", props.string("name", "info"))
-            Icon(
-                imageVector = iconFromName(iconName),
-                contentDescription = null
-            )
+        shape = props.shapeOrNull() ?: androidx.compose.material3.IconButtonDefaults.filledShape,
+        content = {
+            val slotNodes = node.slotChildren("content", fallbackToChildren = true)
+            if (slotNodes.isNotEmpty()) {
+                renderComposeDslNodes(
+                    nodes = slotNodes,
+                    onAction = onAction,
+                    nodePath = "$nodePath:content",
+                    modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) }
+                )
+            } else {
+                val iconName = props.string("icon", props.string("name", "info"))
+                Icon(
+                    imageVector = iconFromName(iconName),
+                    contentDescription = null
+                )
+            }
         }
-    }
+    )
 }
 
 @Composable
@@ -909,10 +1435,18 @@ internal fun renderFilledIconToggleButtonNode(
         },
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
-        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        shape = props.shapeOrNull() ?: androidx.compose.material3.IconButtonDefaults.filledShape,
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -923,21 +1457,31 @@ internal fun renderFilledTonalButtonNode(
     modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
-    val actionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
-    val contentPadding = props.paddingValuesOrNull("contentPadding")
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
     androidx.compose.material3.FilledTonalButton(
         onClick = {
-            if (!actionId.isNullOrBlank()) {
-                onAction(actionId, null)
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
             }
         },
-        enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
-        shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape,
-        contentPadding = contentPadding ?: androidx.compose.material3.ButtonDefaults.ContentPadding
-    ) {
-        renderRowScopeNodeChildren(node, onAction, nodePath)
-    }
+        enabled = props.bool("enabled", true),
+        shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.filledTonalShape,
+        contentPadding = props.paddingValuesOrNull("contentPadding") ?: androidx.compose.material3.ButtonDefaults.ContentPadding,
+        content = {
+            val slotNodes = node.slotChildren("content", fallbackToChildren = true)
+            if (slotNodes.isNotEmpty()) {
+                renderComposeDslNodes(
+                    nodes = slotNodes,
+                    onAction = onAction,
+                    nodePath = "$nodePath:content",
+                    modifierResolver = { base, slotProps -> rowComposeDslModifierResolver(base, slotProps) }
+                )
+            } else {
+                Text(props.string("text", "FilledTonalButton"))
+            }
+        }
+    )
 }
 
 @Composable
@@ -957,18 +1501,25 @@ internal fun renderFilledTonalIconButtonNode(
         },
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
-        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
-    ) {
-        if (node.children.isNotEmpty()) {
-            renderNodeChildren(node, onAction, nodePath)
-        } else {
-            val iconName = props.string("icon", props.string("name", "info"))
-            Icon(
-                imageVector = iconFromName(iconName),
-                contentDescription = null
-            )
+        shape = props.shapeOrNull() ?: androidx.compose.material3.IconButtonDefaults.filledShape,
+        content = {
+            val slotNodes = node.slotChildren("content", fallbackToChildren = true)
+            if (slotNodes.isNotEmpty()) {
+                renderComposeDslNodes(
+                    nodes = slotNodes,
+                    onAction = onAction,
+                    nodePath = "$nodePath:content",
+                    modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) }
+                )
+            } else {
+                val iconName = props.string("icon", props.string("name", "info"))
+                Icon(
+                    imageVector = iconFromName(iconName),
+                    contentDescription = null
+                )
+            }
         }
-    }
+    )
 }
 
 @Composable
@@ -989,10 +1540,70 @@ internal fun renderFilledTonalIconToggleButtonNode(
         },
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
+        shape = props.shapeOrNull() ?: androidx.compose.material3.IconButtonDefaults.filledShape,
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderFilterChipNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.FilterChip(
+        selected = props.bool("selected", false),
+        onClick = {
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
+            }
+        },
+        label = {
+            renderSlotChildren(
+                node = node,
+                slotName = "label",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true),
+        leadingIcon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "leadingIcon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        trailingIcon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "trailingIcon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+    )
 }
 
 @Composable
@@ -1013,10 +1624,18 @@ internal fun renderFloatingActionButtonNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
-        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -1051,18 +1670,87 @@ internal fun renderIconToggleButtonNode(
             }
         },
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
-        enabled = props.bool("enabled", true)
-    ) {
-        if (node.children.isNotEmpty()) {
-            renderNodeChildren(node, onAction, nodePath)
-        } else {
-            val iconName = props.string("icon", props.string("name", "info"))
-            Icon(
-                imageVector = iconFromName(iconName),
-                contentDescription = null
-            )
+        enabled = props.bool("enabled", true),
+        content = {
+            val slotNodes = node.slotChildren("content", fallbackToChildren = true)
+            if (slotNodes.isNotEmpty()) {
+                renderComposeDslNodes(
+                    nodes = slotNodes,
+                    onAction = onAction,
+                    nodePath = "$nodePath:content",
+                    modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) }
+                )
+            } else {
+                val iconName = props.string("icon", props.string("name", "info"))
+                Icon(
+                    imageVector = iconFromName(iconName),
+                    contentDescription = null
+                )
+            }
         }
-    }
+    )
+}
+
+@Composable
+internal fun renderInputChipNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.InputChip(
+        selected = props.bool("selected", false),
+        onClick = {
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
+            }
+        },
+        label = {
+            renderSlotChildren(
+                node = node,
+                slotName = "label",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true),
+        leadingIcon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "leadingIcon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        avatar = {
+            renderSlotChildren(
+                node = node,
+                slotName = "avatar",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        trailingIcon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "trailingIcon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
+    )
 }
 
 @Composable
@@ -1083,10 +1771,126 @@ internal fun renderLargeFloatingActionButtonNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
-        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderLeadingIconTabNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.LeadingIconTab(
+        selected = props.bool("selected", false),
+        onClick = {
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
+            }
+        },
+        text = {
+            renderSlotChildren(
+                node = node,
+                slotName = "text",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        icon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "icon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true),
+        selectedContentColor = props.colorOrNull("selectedContentColor") ?: Color.Unspecified,
+        unselectedContentColor = props.colorOrNull("unselectedContentColor") ?: Color.Unspecified
+    )
+}
+
+@Composable
+internal fun renderListItemNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    androidx.compose.material3.ListItem(
+        headlineContent = {
+            renderSlotChildren(
+                node = node,
+                slotName = "headlineContent",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        overlineContent = {
+            renderSlotChildren(
+                node = node,
+                slotName = "overlineContent",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        supportingContent = {
+            renderSlotChildren(
+                node = node,
+                slotName = "supportingContent",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        leadingContent = {
+            renderSlotChildren(
+                node = node,
+                slotName = "leadingContent",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        trailingContent = {
+            renderSlotChildren(
+                node = node,
+                slotName = "trailingContent",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        tonalElevation = props.dp("tonalElevation"),
+        shadowElevation = props.dp("shadowElevation")
+    )
 }
 
 @Composable
@@ -1101,10 +1905,53 @@ internal fun renderModalDrawerSheetNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         drawerContainerColor = props.colorOrNull("drawerContainerColor") ?: Color.Unspecified,
         drawerContentColor = props.colorOrNull("drawerContentColor") ?: Color.Unspecified,
-        drawerTonalElevation = props.dp("drawerTonalElevation")
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        drawerTonalElevation = props.dp("drawerTonalElevation"),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> columnComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderModalNavigationDrawerNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    androidx.compose.material3.ModalNavigationDrawer(
+        drawerContent = {
+            renderSlotChildren(
+                node = node,
+                slotName = "drawerContent",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        gesturesEnabled = props.bool("gesturesEnabled", false),
+        scrimColor = props.colorOrNull("scrimColor") ?: Color.Unspecified,
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -1119,11 +1966,29 @@ internal fun renderModalWideNavigationRailNode(
     androidx.compose.material3.ModalWideNavigationRail(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         hideOnCollapse = props.bool("hideOnCollapse", false),
+        header = {
+            renderSlotChildren(
+                node = node,
+                slotName = "header",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
         expandedHeaderTopPadding = props.dp("expandedHeaderTopPadding"),
-        arrangement = props.verticalArrangement("verticalArrangement", spacing)
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        arrangement = props.verticalArrangement("verticalArrangement", spacing),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -1138,10 +2003,69 @@ internal fun renderNavigationBarNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
         contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
-        tonalElevation = props.dp("tonalElevation")
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        tonalElevation = props.dp("tonalElevation"),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> rowComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderNavigationDrawerItemNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.NavigationDrawerItem(
+        label = {
+            renderSlotChildren(
+                node = node,
+                slotName = "label",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        selected = props.bool("selected", false),
+        onClick = {
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
+            }
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        icon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "icon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        badge = {
+            renderSlotChildren(
+                node = node,
+                slotName = "badge",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
+    )
 }
 
 @Composable
@@ -1155,10 +2079,70 @@ internal fun renderNavigationRailNode(
     androidx.compose.material3.NavigationRail(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
-        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
+        header = {
+            renderSlotChildren(
+                node = node,
+                slotName = "header",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> columnComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> columnComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderNavigationRailItemNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.NavigationRailItem(
+        selected = props.bool("selected", false),
+        onClick = {
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
+            }
+        },
+        icon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "icon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true),
+        label = {
+            renderSlotChildren(
+                node = node,
+                slotName = "label",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        alwaysShowLabel = props.bool("alwaysShowLabel", false)
+    )
 }
 
 @Composable
@@ -1169,21 +2153,31 @@ internal fun renderOutlinedButtonNode(
     modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
-    val actionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
-    val contentPadding = props.paddingValuesOrNull("contentPadding")
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
     androidx.compose.material3.OutlinedButton(
         onClick = {
-            if (!actionId.isNullOrBlank()) {
-                onAction(actionId, null)
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
             }
         },
-        enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
-        shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape,
-        contentPadding = contentPadding ?: androidx.compose.material3.ButtonDefaults.ContentPadding
-    ) {
-        renderRowScopeNodeChildren(node, onAction, nodePath)
-    }
+        enabled = props.bool("enabled", true),
+        shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.outlinedShape,
+        contentPadding = props.paddingValuesOrNull("contentPadding") ?: androidx.compose.material3.ButtonDefaults.ContentPadding,
+        content = {
+            val slotNodes = node.slotChildren("content", fallbackToChildren = true)
+            if (slotNodes.isNotEmpty()) {
+                renderComposeDslNodes(
+                    nodes = slotNodes,
+                    onAction = onAction,
+                    nodePath = "$nodePath:content",
+                    modifierResolver = { base, slotProps -> rowComposeDslModifierResolver(base, slotProps) }
+                )
+            } else {
+                Text(props.string("text", "OutlinedButton"))
+            }
+        }
+    )
 }
 
 @Composable
@@ -1196,10 +2190,18 @@ internal fun renderOutlinedCardNode(
     val props = node.props
     androidx.compose.material3.OutlinedCard(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
-        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> columnComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -1219,18 +2221,25 @@ internal fun renderOutlinedIconButtonNode(
         },
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
-        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
-    ) {
-        if (node.children.isNotEmpty()) {
-            renderNodeChildren(node, onAction, nodePath)
-        } else {
-            val iconName = props.string("icon", props.string("name", "info"))
-            Icon(
-                imageVector = iconFromName(iconName),
-                contentDescription = null
-            )
+        shape = props.shapeOrNull() ?: androidx.compose.material3.IconButtonDefaults.outlinedShape,
+        content = {
+            val slotNodes = node.slotChildren("content", fallbackToChildren = true)
+            if (slotNodes.isNotEmpty()) {
+                renderComposeDslNodes(
+                    nodes = slotNodes,
+                    onAction = onAction,
+                    nodePath = "$nodePath:content",
+                    modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) }
+                )
+            } else {
+                val iconName = props.string("icon", props.string("name", "info"))
+                Icon(
+                    imageVector = iconFromName(iconName),
+                    contentDescription = null
+                )
+            }
         }
-    }
+    )
 }
 
 @Composable
@@ -1251,10 +2260,18 @@ internal fun renderOutlinedIconToggleButtonNode(
         },
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
-        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        shape = props.shapeOrNull() ?: androidx.compose.material3.IconButtonDefaults.outlinedShape,
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -1269,10 +2286,144 @@ internal fun renderPermanentDrawerSheetNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         drawerContainerColor = props.colorOrNull("drawerContainerColor") ?: Color.Unspecified,
         drawerContentColor = props.colorOrNull("drawerContentColor") ?: Color.Unspecified,
-        drawerTonalElevation = props.dp("drawerTonalElevation")
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        drawerTonalElevation = props.dp("drawerTonalElevation"),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> columnComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderPermanentNavigationDrawerNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    androidx.compose.material3.PermanentNavigationDrawer(
+        drawerContent = {
+            renderSlotChildren(
+                node = node,
+                slotName = "drawerContent",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderPrimaryScrollableTabRowNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    androidx.compose.material3.PrimaryScrollableTabRow(
+        selectedTabIndex = props.int("selectedTabIndex", 0),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
+        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
+        edgePadding = props.dp("edgePadding"),
+        indicator = {
+            renderSlotChildren(
+                node = node,
+                slotName = "indicator",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        divider = {
+            renderSlotChildren(
+                node = node,
+                slotName = "divider",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        tabs = {
+            renderSlotChildren(
+                node = node,
+                slotName = "tabs",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderPrimaryTabRowNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    androidx.compose.material3.PrimaryTabRow(
+        selectedTabIndex = props.int("selectedTabIndex", 0),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
+        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
+        indicator = {
+            renderSlotChildren(
+                node = node,
+                slotName = "indicator",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        divider = {
+            renderSlotChildren(
+                node = node,
+                slotName = "divider",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        tabs = {
+            renderSlotChildren(
+                node = node,
+                slotName = "tabs",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        }
+    )
 }
 
 @Composable
@@ -1284,10 +2435,80 @@ internal fun renderProvideTextStyleNode(
 ) {
     val props = node.props
     androidx.compose.material3.ProvideTextStyle(
-        value = props.textStyle("style")
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        value = props.textStyle("style"),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderPullToRefreshBoxNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onRefreshActionId = ToolPkgComposeDslParser.extractActionId(props["onRefresh"])
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = props.bool("isRefreshing", false),
+        onRefresh = {
+            if (!onRefreshActionId.isNullOrBlank()) {
+                onAction(onRefreshActionId, null)
+            }
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        contentAlignment = props.boxAlignment("contentAlignment"),
+        indicator = {
+            renderSlotChildren(
+                node = node,
+                slotName = "indicator",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> boxComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> boxComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderRadioButtonNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.RadioButton(
+        selected = props.bool("selected", false),
+        onClick = {
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
+            }
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true)
+    )
 }
 
 @Composable
@@ -1300,11 +2521,157 @@ internal fun renderScaffoldNode(
     val props = node.props
     androidx.compose.material3.Scaffold(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        topBar = {
+            renderSlotChildren(
+                node = node,
+                slotName = "topBar",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        bottomBar = {
+            renderSlotChildren(
+                node = node,
+                slotName = "bottomBar",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        snackbarHost = {
+            renderSlotChildren(
+                node = node,
+                slotName = "snackbarHost",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        floatingActionButton = {
+            renderSlotChildren(
+                node = node,
+                slotName = "floatingActionButton",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
-        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
+        content = { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .consumeWindowInsets(innerPadding)
+            ) {
+                renderSlotChildren(
+                    node = node,
+                    slotName = "content",
+                    onAction = onAction,
+                    nodePath = nodePath,
+                    fallbackToChildren = true
+                )
+            }
+        }
+    )
+}
+
+@Composable
+internal fun renderSecondaryScrollableTabRowNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    androidx.compose.material3.SecondaryScrollableTabRow(
+        selectedTabIndex = props.int("selectedTabIndex", 0),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
+        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
+        edgePadding = props.dp("edgePadding"),
+        indicator = {
+            renderSlotChildren(
+                node = node,
+                slotName = "indicator",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        divider = {
+            renderSlotChildren(
+                node = node,
+                slotName = "divider",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        tabs = {
+            renderSlotChildren(
+                node = node,
+                slotName = "tabs",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderSecondaryTabRowNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    androidx.compose.material3.SecondaryTabRow(
+        selectedTabIndex = props.int("selectedTabIndex", 0),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
+        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
+        indicator = {
+            renderSlotChildren(
+                node = node,
+                slotName = "indicator",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        divider = {
+            renderSlotChildren(
+                node = node,
+                slotName = "divider",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        tabs = {
+            renderSlotChildren(
+                node = node,
+                slotName = "tabs",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        }
+    )
 }
 
 @Composable
@@ -1318,10 +2685,59 @@ internal fun renderShortNavigationBarNode(
     androidx.compose.material3.ShortNavigationBar(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
-        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderShortNavigationBarItemNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.ShortNavigationBarItem(
+        selected = props.bool("selected", false),
+        onClick = {
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
+            }
+        },
+        icon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "icon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        label = {
+            renderSlotChildren(
+                node = node,
+                slotName = "label",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true)
+    )
 }
 
 @Composable
@@ -1342,10 +2758,18 @@ internal fun renderSmallFloatingActionButtonNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
-        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -1358,15 +2782,84 @@ internal fun renderSnackbarNode(
     val props = node.props
     androidx.compose.material3.Snackbar(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        action = {
+            renderSlotChildren(
+                node = node,
+                slotName = "action",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        dismissAction = {
+            renderSlotChildren(
+                node = node,
+                slotName = "dismissAction",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
         actionOnNewLine = props.bool("actionOnNewLine", false),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
         contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
         actionContentColor = props.colorOrNull("actionContentColor") ?: Color.Unspecified,
-        dismissActionContentColor = props.colorOrNull("dismissActionContentColor") ?: Color.Unspecified
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        dismissActionContentColor = props.colorOrNull("dismissActionContentColor") ?: Color.Unspecified,
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderSuggestionChipNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.SuggestionChip(
+        onClick = {
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
+            }
+        },
+        label = {
+            renderSlotChildren(
+                node = node,
+                slotName = "label",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true),
+        icon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "icon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
+    )
 }
 
 @Composable
@@ -1388,10 +2881,18 @@ internal fun renderTabNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         selectedContentColor = props.colorOrNull("selectedContentColor") ?: Color.Unspecified,
-        unselectedContentColor = props.colorOrNull("unselectedContentColor") ?: Color.Unspecified
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        unselectedContentColor = props.colorOrNull("unselectedContentColor") ?: Color.Unspecified,
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> columnComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -1411,10 +2912,93 @@ internal fun renderTextButtonNode(
         },
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
-        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.textShape,
+        contentPadding = props.paddingValuesOrNull("contentPadding") ?: androidx.compose.material3.ButtonDefaults.ContentPadding,
+        content = {
+            val slotNodes = node.slotChildren("content", fallbackToChildren = true)
+            if (slotNodes.isNotEmpty()) {
+                renderComposeDslNodes(
+                    nodes = slotNodes,
+                    onAction = onAction,
+                    nodePath = "$nodePath:content",
+                    modifierResolver = { base, slotProps -> rowComposeDslModifierResolver(base, slotProps) }
+                )
+            } else {
+                Text(props.string("text", "TextButton"))
+            }
+        }
+    )
+}
+
+@Composable
+internal fun renderTimePickerDialogNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onDismissRequestActionId = ToolPkgComposeDslParser.extractActionId(props["onDismissRequest"])
+    androidx.compose.material3.TimePickerDialog(
+        onDismissRequest = {
+            if (!onDismissRequestActionId.isNullOrBlank()) {
+                onAction(onDismissRequestActionId, null)
+            }
+        },
+        confirmButton = {
+            renderSlotChildren(
+                node = node,
+                slotName = "confirmButton",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        title = {
+            renderSlotChildren(
+                node = node,
+                slotName = "title",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        modeToggleButton = {
+            renderSlotChildren(
+                node = node,
+                slotName = "modeToggleButton",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        dismissButton = {
+            renderSlotChildren(
+                node = node,
+                slotName = "dismissButton",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+        containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> columnComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -1457,10 +3041,70 @@ internal fun renderWideNavigationRailNode(
     androidx.compose.material3.WideNavigationRail(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
-        arrangement = props.verticalArrangement("verticalArrangement", spacing)
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        header = {
+            renderSlotChildren(
+                node = node,
+                slotName = "header",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        arrangement = props.verticalArrangement("verticalArrangement", spacing),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
+}
+
+@Composable
+internal fun renderWideNavigationRailItemNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
+) {
+    val props = node.props
+    val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    androidx.compose.material3.WideNavigationRailItem(
+        selected = props.bool("selected", false),
+        onClick = {
+            if (!onClickActionId.isNullOrBlank()) {
+                onAction(onClickActionId, null)
+            }
+        },
+        icon = {
+            renderSlotChildren(
+                node = node,
+                slotName = "icon",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        label = {
+            renderSlotChildren(
+                node = node,
+                slotName = "label",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = false
+            )
+        },
+        railExpanded = props.bool("railExpanded", false),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        enabled = props.bool("enabled", true)
+    )
 }
 
 @Composable
@@ -1473,10 +3117,19 @@ internal fun renderBoxWithConstraintsNode(
     val props = node.props
     androidx.compose.foundation.layout.BoxWithConstraints(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
-        propagateMinConstraints = props.bool("propagateMinConstraints", false)
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        contentAlignment = props.boxAlignment("contentAlignment"),
+        propagateMinConstraints = props.bool("propagateMinConstraints", false),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -1487,6 +3140,7 @@ internal fun renderBasicTextNode(
     modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
+    val onTextLayoutActionId = ToolPkgComposeDslParser.extractActionId(props["onTextLayout"])
     androidx.compose.foundation.text.BasicText(
         text = props.string("text"),
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
@@ -1505,9 +3159,17 @@ internal fun renderDisableSelectionNode(
 ) {
     val props = node.props
     androidx.compose.foundation.text.selection.DisableSelection(
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }
 
 @Composable
@@ -1522,6 +3184,7 @@ internal fun renderImageNode(
         imageVector = iconFromName(props.string("name", props.string("icon", "info"))),
         contentDescription = props.stringOrNull("contentDescription"),
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        alignment = props.boxAlignment("contentAlignment"),
         alpha = (props.floatOrNull("alpha") ?: 0f)
     )
 }
@@ -1535,8 +3198,16 @@ internal fun renderSelectionContainerNode(
 ) {
     val props = node.props
     androidx.compose.foundation.text.selection.SelectionContainer(
-        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver)
-    ) {
-        renderNodeChildren(node, onAction, nodePath)
-    }
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        content = {
+            renderSlotChildren(
+                node = node,
+                slotName = "content",
+                onAction = onAction,
+                nodePath = nodePath,
+                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                fallbackToChildren = true
+            )
+        }
+    )
 }

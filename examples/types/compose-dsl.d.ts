@@ -338,17 +338,20 @@ export interface ComposeCommonProps {
 }
 
 export interface ColumnProps extends ComposeCommonProps {
+  content?: ComposeChildren;
   horizontalAlignment?: ComposeAlignment;
   verticalArrangement?: ComposeArrangement;
 }
 
 export interface RowProps extends ComposeCommonProps {
+  content?: ComposeChildren;
   horizontalArrangement?: ComposeArrangement;
   verticalAlignment?: ComposeAlignment;
   onClick?: () => void | Promise<void>;
 }
 
 export interface BoxProps extends ComposeCommonProps {
+  content?: ComposeChildren;
   contentAlignment?: ComposeAlignment;
 }
 
@@ -370,12 +373,20 @@ export interface TextProps extends ComposeCommonProps {
 }
 
 export interface TextFieldProps extends ComposeCommonProps {
-  label?: string;
-  placeholder?: string;
+  label?: string | ComposeChildren;
+  placeholder?: string | ComposeChildren;
+  leadingIcon?: ComposeChildren;
+  trailingIcon?: ComposeChildren;
+  prefix?: ComposeChildren;
+  suffix?: ComposeChildren;
+  supportingText?: ComposeChildren;
   value: string;
   onValueChange: (value: string) => void;
   singleLine?: boolean;
   minLines?: number;
+  maxLines?: number;
+  readOnly?: boolean;
+  isError?: boolean;
   isPassword?: boolean;
   style?: ComposeTextFieldStyle;
 }
@@ -384,6 +395,7 @@ export interface SwitchProps extends ComposeCommonProps {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   enabled?: boolean;
+  thumbContent?: ComposeChildren;
   checkedThumbColor?: ComposeColor;
   checkedTrackColor?: ComposeColor;
   uncheckedThumbColor?: ComposeColor;
@@ -397,6 +409,7 @@ export interface CheckboxProps extends ComposeCommonProps {
 }
 
 export interface ButtonProps extends ComposeCommonProps {
+  content?: ComposeChildren;
   text?: string;
   enabled?: boolean;
   onClick: () => void | Promise<void>;
@@ -405,12 +418,14 @@ export interface ButtonProps extends ComposeCommonProps {
 }
 
 export interface IconButtonProps extends ComposeCommonProps {
+  content?: ComposeChildren;
   icon?: string;
   enabled?: boolean;
   onClick: () => void | Promise<void>;
 }
 
 export interface CardProps extends ComposeCommonProps {
+  content?: ComposeChildren;
   containerColor?: ComposeColor;
   containerAlpha?: number;
   contentColor?: ComposeColor;
@@ -421,6 +436,7 @@ export interface CardProps extends ComposeCommonProps {
 }
 
 export interface SurfaceProps extends ComposeCommonProps {
+  content?: ComposeChildren;
   containerColor?: ComposeColor;
   contentColor?: ComposeColor;
   shape?: ComposeShape;
@@ -434,6 +450,7 @@ export interface IconProps extends ComposeCommonProps {
 }
 
 export interface LazyColumnProps extends ComposeCommonProps {
+  content?: ComposeChildren;
   spacing?: number;
 }
 

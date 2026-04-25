@@ -94,7 +94,7 @@
                 { "name": "message", "description": { "zh": "发送给 AI 的内容", "en": "Message to send to AI" }, "type": "string", "required": true },
                 { "name": "character_card_name", "description": { "zh": "角色卡名称", "en": "Character card name" }, "type": "string", "required": true },
                 { "name": "chat_id", "description": { "zh": "目标对话 ID（可选；为空时新建）", "en": "Target chat id (optional; create new if empty)" }, "type": "string", "required": false },
-                { "name": "timeout", "description": { "zh": "可选：等待返回的超时秒数（默认 10）", "en": "Optional timeout seconds to wait for response (default 10)" }, "type": "number", "required": false },
+                { "name": "timeout", "description": { "zh": "可选：等待返回的超时秒数（默认 180）", "en": "Optional timeout seconds to wait for response (default 180)" }, "type": "number", "required": false },
                 { "name": "persist_turn", "description": { "zh": "可选：是否持久化本轮用户消息和 AI 回复（默认 true）", "en": "Optional: whether to persist this turn's user message and AI reply (default true)" }, "type": "boolean", "required": false },
                 { "name": "notify_reply", "description": { "zh": "可选：是否覆盖本轮回复通知开关", "en": "Optional: override reply notification for this turn" }, "type": "boolean", "required": false },
                 { "name": "hide_user_message", "description": { "zh": "可选：是否在 UI 中隐藏用户消息正文并显示占位标记", "en": "Optional: hide the user message body in UI and show a placeholder marker" }, "type": "boolean", "required": false },
@@ -422,9 +422,9 @@ const HistoryChat = (function () {
             }
         }
 
-        const timeoutRaw = params?.timeout !== undefined ? Number(params.timeout) : 10;
-        const timeoutSec = isNaN(timeoutRaw) || timeoutRaw <= 0 ? 10 : timeoutRaw;
-        const timeoutMs = Math.min(timeoutSec, 60) * 1000;
+        const timeoutRaw = params?.timeout !== undefined ? Number(params.timeout) : 180;
+        const timeoutSec = isNaN(timeoutRaw) || timeoutRaw <= 0 ? 180 : timeoutRaw;
+        const timeoutMs = timeoutSec * 1000;
 
         const sendMessageOptions: Parameters<typeof Tools.Chat.sendMessage>[4] = {};
         if (params?.persist_turn !== undefined) {
@@ -439,6 +439,7 @@ const HistoryChat = (function () {
         if (params?.disable_warning !== undefined) {
             sendMessageOptions.disable_warning = params.disable_warning;
         }
+        sendMessageOptions.timeout_ms = timeoutMs;
         const sendPromise = Tools.Chat.sendMessage(
             message,
             chatId,

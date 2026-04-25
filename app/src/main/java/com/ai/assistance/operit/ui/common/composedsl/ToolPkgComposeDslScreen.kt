@@ -73,7 +73,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -254,6 +257,31 @@ fun ToolPkgComposeDslToolScreen(
         return runtimeOptions
     }
 
+    fun updateDebugSnapshot(
+        phase: String,
+        rawRenderResult: Any? = null,
+        parsedRenderResult: ToolPkgComposeDslRenderResult? = renderResult,
+        error: String? = errorMessage
+    ) {
+        ToolPkgComposeDslDebugSnapshotStore.update(
+            ToolPkgComposeDslDebugSnapshot(
+                routeInstanceId = routeInstanceId,
+                containerPackageName = containerPackageName,
+                uiModuleId = uiModuleId,
+                fallbackTitle = fallbackTitle,
+                scriptScreenPath = scriptScreenPath,
+                scriptSource = script,
+                phase = phase,
+                rawRenderResultText = rawRenderResult?.toString(),
+                renderResult = parsedRenderResult,
+                errorMessage = error,
+                isLoading = isLoading,
+                isDispatching = isDispatching,
+                updatedAtMillis = System.currentTimeMillis()
+            )
+        )
+    }
+
     fun dispatchAction(actionId: String, payload: Any? = null) {
         val normalizedActionId = actionId.trim()
         if (normalizedActionId.isBlank()) {
@@ -279,11 +307,22 @@ fun ToolPkgComposeDslToolScreen(
                     if (parsedIntermediate != null) {
                         renderResult = parsedIntermediate
                         errorMessage = null
+                        updateDebugSnapshot(
+                            phase = "dispatch_intermediate",
+                            rawRenderResult = intermediateResult,
+                            parsedRenderResult = parsedIntermediate,
+                            error = null
+                        )
                     }
                 },
                 onComplete = {
                     dispatchingCount = (dispatchingCount - 1).coerceAtLeast(0)
                     isDispatching = dispatchingCount > 0
+                    updateDebugSnapshot(
+                        phase = "dispatch_complete",
+                        parsedRenderResult = renderResult,
+                        error = errorMessage
+                    )
                     settledDispatchTickets.add(dispatchTicket)
                     if (settledDispatchTickets.size > 64) {
                         val latestTickets = settledDispatchTickets.toList().sortedDescending().take(32).toSet()
@@ -292,6 +331,11 @@ fun ToolPkgComposeDslToolScreen(
                 },
                 onError = { error ->
                     errorMessage = "compose_dsl runtime error: $error"
+                    updateDebugSnapshot(
+                        phase = "dispatch_error",
+                        parsedRenderResult = renderResult,
+                        error = errorMessage
+                    )
                     AppLogger.e(
                         TAG,
                         "compose_dsl async action failed: actionId=$normalizedActionId, error=$error"
@@ -302,12 +346,21 @@ fun ToolPkgComposeDslToolScreen(
         if (!dispatched) {
             dispatchingCount = (dispatchingCount - 1).coerceAtLeast(0)
             isDispatching = dispatchingCount > 0
+            updateDebugSnapshot(
+                phase = "dispatch_not_started",
+                parsedRenderResult = renderResult,
+                error = errorMessage
+            )
             settledDispatchTickets.add(dispatchTicket)
         }
     }
 
     suspend fun render() {
         var followUpActionId: String? = null
+        var snapshotPhase = "render_start"
+        var snapshotRawResult: Any? = null
+        var snapshotParsedResult: ToolPkgComposeDslRenderResult? = null
+        var snapshotError: String? = null
         renderMutex.withLock {
             try {
                 isLoading = true
@@ -342,6 +395,9 @@ fun ToolPkgComposeDslToolScreen(
                     renderResult = null
                     errorMessage =
                         "compose_dsl script not found: package=$containerPackageName, module=$uiModuleId"
+                    snapshotPhase = "render_missing_script"
+                    snapshotParsedResult = null
+                    snapshotError = errorMessage
                     return
                 }
                 if (script == null) {
@@ -365,6 +421,7 @@ fun ToolPkgComposeDslToolScreen(
                                 )
                         )
                     }
+                snapshotRawResult = rawResult
 
                 val rawText = rawResult?.toString()?.trim().orEmpty()
                 val parsed = ToolPkgComposeDslParser.parseRenderResult(rawResult)
@@ -377,12 +434,18 @@ fun ToolPkgComposeDslToolScreen(
                         }
                     renderResult = null
                     errorMessage = normalizedError
+                    snapshotPhase = "render_invalid_result"
+                    snapshotParsedResult = null
+                    snapshotError = normalizedError
                     AppLogger.e(TAG, normalizedError)
                     return
                 }
 
                 renderResult = parsed
                 errorMessage = null
+                snapshotPhase = "render_success"
+                snapshotParsedResult = parsed
+                snapshotError = null
 
                 followUpActionId =
                     ToolPkgComposeDslParser.extractActionId(parsed.tree.props["onLoad"])
@@ -390,9 +453,18 @@ fun ToolPkgComposeDslToolScreen(
             } catch (e: Exception) {
                 renderResult = null
                 errorMessage = "compose_dsl runtime error: ${e.message}"
+                snapshotPhase = "render_exception"
+                snapshotParsedResult = null
+                snapshotError = errorMessage
                 AppLogger.e(TAG, "compose_dsl render failed", e)
             } finally {
                 isLoading = false
+                updateDebugSnapshot(
+                    phase = snapshotPhase,
+                    rawRenderResult = snapshotRawResult,
+                    parsedRenderResult = snapshotParsedResult,
+                    error = snapshotError
+                )
             }
         }
 
@@ -411,6 +483,7 @@ fun ToolPkgComposeDslToolScreen(
 
     DisposableEffect(executionContextKey) {
         onDispose {
+            ToolPkgComposeDslDebugSnapshotStore.clear(routeInstanceId)
             packageManager.releaseToolPkgExecutionEngine(executionContextKey)
         }
     }
@@ -460,12 +533,14 @@ fun ToolPkgComposeDslToolScreen(
                     }
                 }
                 rootNode != null -> {
-                    Box(modifier = contentModifier) {
-                        renderComposeDslNode(
-                            node = rootNode,
-                            onAction = ::dispatchAction,
-                            nodePath = "0"
-                        )
+                    CompositionLocalProvider(LocalComposeDslRouteInstanceId provides routeInstanceId) {
+                        Box(modifier = contentModifier) {
+                            renderComposeDslNode(
+                                node = rootNode,
+                                onAction = ::dispatchAction,
+                                nodePath = "0"
+                            )
+                        }
                     }
                 }
             }
@@ -487,7 +562,10 @@ fun RenderToolPkgComposeDslNode(
     modifier: Modifier = Modifier,
     onAction: (String, Any?) -> Unit = { _, _ -> }
 ) {
-    CompositionLocalProvider(LocalComposeDslActionHandler provides onAction) {
+    CompositionLocalProvider(
+        LocalComposeDslActionHandler provides onAction,
+        LocalComposeDslRouteInstanceId provides ""
+    ) {
         Box(modifier = modifier) {
             renderComposeDslNode(
                 node = node,
@@ -500,6 +578,18 @@ fun RenderToolPkgComposeDslNode(
 
 internal val LocalComposeDslActionHandler = staticCompositionLocalOf<(String, Any?) -> Unit> {
     { _, _ -> }
+}
+internal val LocalComposeDslRouteInstanceId = staticCompositionLocalOf { "" }
+
+private data class ComposeDslDebugNodeInfo(
+    val routeInstanceId: String,
+    val nodePath: String,
+    val nodeType: String,
+    val nodeKey: String?
+)
+
+private val LocalComposeDslDebugNodeInfo = staticCompositionLocalOf<ComposeDslDebugNodeInfo?> {
+    null
 }
 
 internal typealias ComposeDslModifierResolver =
@@ -514,20 +604,59 @@ internal fun renderComposeDslNode(
         defaultComposeDslModifierResolver(base, props)
     }
 ) {
-    val normalizedType = normalizeToken(node.type)
-    if (normalizedType == "canvas") {
-        renderCanvasNode(node, onAction, modifierResolver)
-        return
+    val routeInstanceId = LocalComposeDslRouteInstanceId.current
+    val nodeKey = node.props["key"]?.toString()?.trim()?.ifBlank { null }
+    CompositionLocalProvider(
+        LocalComposeDslDebugNodeInfo provides
+            ComposeDslDebugNodeInfo(
+                routeInstanceId = routeInstanceId,
+                nodePath = nodePath,
+                nodeType = node.type,
+                nodeKey = nodeKey
+            )
+    ) {
+        val normalizedType = normalizeToken(node.type)
+        if (normalizedType == "canvas") {
+            renderCanvasNode(node, onAction, modifierResolver)
+            return@CompositionLocalProvider
+        }
+        val renderer = composeDslGeneratedNodeRendererRegistry[normalizedType]
+        if (renderer != null) {
+            renderer(node, onAction, nodePath, modifierResolver)
+            return@CompositionLocalProvider
+        }
+        Text(
+            text = "Unsupported node: ${node.type}",
+            style = MaterialTheme.typography.bodySmall
+        )
     }
-    val renderer = composeDslGeneratedNodeRendererRegistry[normalizedType]
-    if (renderer != null) {
-        renderer(node, onAction, nodePath, modifierResolver)
-        return
+}
+
+@Composable
+internal fun applyComposeDslNodeDebugLayoutModifier(modifier: Modifier): Modifier {
+    val nodeInfo = LocalComposeDslDebugNodeInfo.current ?: return modifier
+    if (nodeInfo.routeInstanceId.isBlank()) {
+        return modifier
     }
-    Text(
-        text = "Unsupported node: ${node.type}",
-        style = MaterialTheme.typography.bodySmall
-    )
+    return modifier.onGloballyPositioned { coordinates ->
+        val rootBounds = coordinates.boundsInRoot()
+        val windowPosition = coordinates.positionInWindow()
+        ToolPkgComposeDslDebugSnapshotStore.updateLayout(
+            ToolPkgComposeDslLayoutSnapshot(
+                routeInstanceId = nodeInfo.routeInstanceId,
+                nodePath = nodeInfo.nodePath,
+                nodeType = nodeInfo.nodeType,
+                nodeKey = nodeInfo.nodeKey,
+                rootX = rootBounds.left,
+                rootY = rootBounds.top,
+                width = rootBounds.width,
+                height = rootBounds.height,
+                windowX = windowPosition.x,
+                windowY = windowPosition.y,
+                updatedAtMillis = System.currentTimeMillis()
+            )
+        )
+    }
 }
 
 internal typealias ComposeDslNodeRenderer =
@@ -1326,37 +1455,29 @@ internal fun Map<String, Any?>.textStyle(key: String): androidx.compose.ui.text.
 }
 
 internal fun Map<String, Any?>.horizontalAlignment(key: String): Alignment.Horizontal {
-    val token = normalizeToken(string(key))
-    val getter =
-        horizontalAlignmentGetterByToken[token]
-            ?: horizontalAlignmentGetterByToken["${token}horizontally"]
-    return (getter?.invoke(Alignment) as? Alignment.Horizontal) ?: Alignment.Start
+    return horizontalAlignmentFromToken(stringOrNull(key))
 }
 
 internal fun horizontalAlignmentFromToken(raw: String?): Alignment.Horizontal {
     val token = normalizeToken(raw.orEmpty())
-    val getter =
-        horizontalAlignmentGetterByToken[token]
-            ?: horizontalAlignmentGetterByToken["${token}horizontally"]
-    return (getter?.invoke(Alignment) as? Alignment.Horizontal) ?: Alignment.Start
+    return when (token) {
+        "center", "centerhorizontally" -> Alignment.CenterHorizontally
+        "end", "right" -> Alignment.End
+        else -> Alignment.Start
+    }
 }
 
 internal fun Map<String, Any?>.verticalAlignment(key: String): Alignment.Vertical {
-    val token = normalizeToken(string(key))
-    val getter =
-        verticalAlignmentGetterByToken[token]
-            ?: verticalAlignmentGetterByToken["${token}vertically"]
-            ?: verticalAlignmentGetterByToken[if (token == "end") "bottom" else token]
-    return (getter?.invoke(Alignment) as? Alignment.Vertical) ?: Alignment.Top
+    return verticalAlignmentFromToken(stringOrNull(key))
 }
 
 internal fun verticalAlignmentFromToken(raw: String?): Alignment.Vertical {
     val token = normalizeToken(raw.orEmpty())
-    val getter =
-        verticalAlignmentGetterByToken[token]
-            ?: verticalAlignmentGetterByToken["${token}vertically"]
-            ?: verticalAlignmentGetterByToken[if (token == "end") "bottom" else token]
-    return (getter?.invoke(Alignment) as? Alignment.Vertical) ?: Alignment.Top
+    return when (token) {
+        "center", "centervertically" -> Alignment.CenterVertically
+        "end", "bottom" -> Alignment.Bottom
+        else -> Alignment.Top
+    }
 }
 
 internal fun Map<String, Any?>.textOverflow(key: String): TextOverflow {
@@ -1367,33 +1488,48 @@ internal fun Map<String, Any?>.textOverflow(key: String): TextOverflow {
 }
 
 internal fun Map<String, Any?>.boxAlignment(key: String): Alignment {
-    val token = normalizeToken(string(key))
-    val getter =
-        boxAlignmentGetterByToken[token]
-            ?: boxAlignmentGetterByToken[if (token == "end") "bottomend" else token]
-    return (getter?.invoke(Alignment) as? Alignment) ?: Alignment.TopStart
+    return boxAlignmentFromToken(stringOrNull(key))
 }
 
 internal fun boxAlignmentFromToken(raw: String?): Alignment {
     val token = normalizeToken(raw.orEmpty())
-    val getter =
-        boxAlignmentGetterByToken[token]
-            ?: boxAlignmentGetterByToken[if (token == "end") "bottomend" else token]
-    return (getter?.invoke(Alignment) as? Alignment) ?: Alignment.TopStart
+    return when (token) {
+        "center" -> Alignment.Center
+        "topcenter", "centertop" -> Alignment.TopCenter
+        "topend", "endtop", "topright", "righttop" -> Alignment.TopEnd
+        "centerstart", "startcenter", "centerleft", "leftcenter" -> Alignment.CenterStart
+        "centerend", "endcenter", "centerright", "rightcenter" -> Alignment.CenterEnd
+        "bottomstart", "startbottom", "bottomleft", "leftbottom" -> Alignment.BottomStart
+        "bottomcenter", "centerbottom" -> Alignment.BottomCenter
+        "bottomend", "endbottom", "bottomright", "rightbottom", "end" -> Alignment.BottomEnd
+        else -> Alignment.TopStart
+    }
 }
 
 internal fun Map<String, Any?>.horizontalArrangement(key: String, spacing: Dp): Arrangement.Horizontal {
     val token = normalizeToken(string(key))
-    val getter = horizontalArrangementGetterByToken[token]
-    return (getter?.invoke(Arrangement) as? Arrangement.Horizontal) ?: Arrangement.spacedBy(spacing)
+    return when (token) {
+        "start" -> Arrangement.Start
+        "center" -> Arrangement.Center
+        "end" -> Arrangement.End
+        "spacebetween" -> Arrangement.SpaceBetween
+        "spacearound" -> Arrangement.SpaceAround
+        "spaceevenly" -> Arrangement.SpaceEvenly
+        else -> Arrangement.spacedBy(spacing)
+    }
 }
 
 internal fun Map<String, Any?>.verticalArrangement(key: String, spacing: Dp): Arrangement.Vertical {
     val token = normalizeToken(string(key))
-    val getter =
-        verticalArrangementGetterByToken[token]
-            ?: verticalArrangementGetterByToken[if (token == "end") "bottom" else token]
-    return (getter?.invoke(Arrangement) as? Arrangement.Vertical) ?: Arrangement.spacedBy(spacing)
+    return when (token) {
+        "top", "start" -> Arrangement.Top
+        "center" -> Arrangement.Center
+        "bottom", "end" -> Arrangement.Bottom
+        "spacebetween" -> Arrangement.SpaceBetween
+        "spacearound" -> Arrangement.SpaceAround
+        "spaceevenly" -> Arrangement.SpaceEvenly
+        else -> Arrangement.spacedBy(spacing)
+    }
 }
 
 internal fun Map<String, Any?>.fontWeightOrNull(key: String): FontWeight? {

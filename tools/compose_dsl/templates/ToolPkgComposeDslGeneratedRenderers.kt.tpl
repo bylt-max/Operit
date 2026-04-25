@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.sp
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslNode
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslParser
@@ -112,7 +114,27 @@ internal fun applyScopedCommonModifier(
     props: Map<String, Any?>,
     modifierResolver: ComposeDslModifierResolver
 ): Modifier {
-    return modifierResolver(base, props)
+    return applyComposeDslNodeDebugLayoutModifier(modifierResolver(base, props))
+}
+
+@Composable
+internal fun renderComposeDslNodes(
+    nodes: List<ToolPkgComposeDslNode>,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver = { base, props ->
+        defaultComposeDslModifierResolver(base, props)
+    }
+) {
+    nodes.forEachIndexed { index, child ->
+        val childPath = "$nodePath/$index"
+        renderComposeDslNode(
+            node = child,
+            onAction = onAction,
+            nodePath = childPath,
+            modifierResolver = modifierResolver
+        )
+    }
 }
 
 @Composable
@@ -124,15 +146,39 @@ internal fun renderNodeChildren(
         defaultComposeDslModifierResolver(base, props)
     }
 ) {
-    node.children.forEachIndexed { index, child ->
-        val childPath = "$nodePath/$index"
-        renderComposeDslNode(
-            node = child,
-            onAction = onAction,
-            nodePath = childPath,
-            modifierResolver = modifierResolver
-        )
+    renderComposeDslNodes(node.children, onAction, nodePath, modifierResolver)
+}
+
+private fun ToolPkgComposeDslNode.slotChildren(
+    slotName: String,
+    fallbackToChildren: Boolean = false
+): List<ToolPkgComposeDslNode> {
+    val normalizedSlotName = slotName.trim()
+    val slotNodes =
+        if (normalizedSlotName.isBlank()) {
+            emptyList()
+        } else {
+            slots[normalizedSlotName].orEmpty()
+        }
+    if (slotNodes.isNotEmpty()) {
+        return slotNodes
     }
+    return if (fallbackToChildren) children else emptyList()
+}
+
+@Composable
+internal fun renderSlotChildren(
+    node: ToolPkgComposeDslNode,
+    slotName: String,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver = { base, props ->
+        defaultComposeDslModifierResolver(base, props)
+    },
+    fallbackToChildren: Boolean = false
+) {
+    val slotNodes = node.slotChildren(slotName, fallbackToChildren)
+    renderComposeDslNodes(slotNodes, onAction, "$nodePath:$slotName", modifierResolver)
 }
 
 @Composable
@@ -185,6 +231,14 @@ private fun ToolPkgComposeDslNode.autoScrollSignature(): Int {
     result = 31 * result + children.size
     children.forEach { child ->
         result = 31 * result + child.autoScrollSignature()
+    }
+    result = 31 * result + slots.size
+    slots.toSortedMap().forEach { (slotName, slotChildren) ->
+        result = 31 * result + slotName.hashCode()
+        result = 31 * result + slotChildren.size
+        slotChildren.forEach { child ->
+            result = 31 * result + child.autoScrollSignature()
+        }
     }
     return result
 }
