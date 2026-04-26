@@ -1,10 +1,12 @@
 package com.ai.assistance.operit.ui.features.packages.screens
 
+import android.os.Environment
 import com.ai.assistance.operit.util.AppLogger
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -45,11 +47,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.PackageTool
 import com.ai.assistance.operit.core.tools.ToolPackage
 import com.ai.assistance.operit.core.tools.EnvVar
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.data.mcp.MCPRepository
+import com.ai.assistance.operit.data.model.AITool
+import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.preferences.EnvPreferences
 import com.ai.assistance.operit.data.skill.SkillRepository
 import com.ai.assistance.operit.ui.features.packages.screens.mcp.components.MCPEnvironmentVariablesDialog
@@ -58,13 +63,26 @@ import com.ai.assistance.operit.ui.components.ErrorDialog
 import com.ai.assistance.operit.ui.features.packages.components.EmptyState
 import com.ai.assistance.operit.ui.features.packages.components.PackageTab
 import com.ai.assistance.operit.ui.features.packages.dialogs.PackageDetailsDialog
+import com.ai.assistance.operit.ui.features.packages.dialogs.QuickPluginCreatorDialog
 import com.ai.assistance.operit.ui.features.packages.dialogs.ScriptExecutionDialog
 import com.ai.assistance.operit.ui.features.packages.lists.PackagesList
+import java.io.BufferedInputStream
 import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.ai.assistance.operit.R
+
+private const val OPERIT_EDITOR_PACKAGE_NAME = "operit_editor"
+private const val SANDBOX_PACKAGE_DEV_INSTALL_SCRIPT_URL =
+    "https://cdn.jsdelivr.net/gh/AAswordman/Operit@main/tools/sandboxpackage_dev_install_or_update.js"
+private const val SANDBOX_PACKAGE_DEV_SCRIPT_RELATIVE_PATH =
+    "Download/Operit/skills/SandboxPackage_DEV/scripts/install_or_update.js"
+private const val QUICK_PLUGIN_CREATION_PROMPT_PREFIX =
+    "请根据沙盒包开发的dev工具包以及operit editor工具包，创作一个符合以下需求的工具并导入。需求：\n"
 
 private data class ExternalPackageImportResult(
     val message: String,
@@ -90,12 +108,14 @@ fun PackageManagerScreen(
     onNavigateToMCPMarket: () -> Unit = {},
     onNavigateToSkillMarket: () -> Unit = {},
     onNavigateToArtifactMarket: () -> Unit = {},
+    onStartPluginCreation: (String) -> Unit = {},
     onOpenToolPkgPluginConfig: (String, String, String) -> Unit = { _, _, _ -> },
     onNavigateToMCPDetail: ((com.ai.assistance.operit.data.api.GitHubIssue) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val toolHandler = remember { AIToolHandler.getInstance(context) }
     val packageManager = remember {
-        PackageManager.getInstance(context, AIToolHandler.getInstance(context))
+        PackageManager.getInstance(context, toolHandler)
     }
     val scope = rememberCoroutineScope()
     val mcpRepository = remember { MCPRepository(context) }
@@ -136,6 +156,10 @@ fun PackageManagerScreen(
         remember { mutableStateOf<List<PackageManager.PackageLoadErrorInfo>>(emptyList()) }
     var showPackageLoadErrorsDialog by remember { mutableStateOf(false) }
     var importErrorMessage by remember { mutableStateOf<String?>(null) }
+    var showQuickPluginCreatorDialog by remember { mutableStateOf(false) }
+    var quickPluginRequirement by rememberSaveable { mutableStateOf("") }
+    var quickPluginSetupRunning by remember { mutableStateOf(false) }
+    var quickPluginSetupResult by remember { mutableStateOf<ToolResult?>(null) }
 
     val requiredEnvByPackage by remember {
         derivedStateOf {
@@ -553,8 +577,6 @@ fun PackageManagerScreen(
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     CircularProgressIndicator()
                                 }
-                            } else if (availablePackages.value.isEmpty()) {
-                                EmptyState(message = context.getString(R.string.no_packages_available))
                             } else {
                                 Surface(
                                     modifier = Modifier.fillMaxSize(),
@@ -593,8 +615,20 @@ fun PackageManagerScreen(
                                     LazyColumn(
                                         modifier = Modifier.fillMaxSize(),
                                         verticalArrangement = Arrangement.spacedBy(1.dp),
-                                        contentPadding = PaddingValues(bottom = 120.dp)
+                                        contentPadding = PaddingValues(top = 12.dp, bottom = 120.dp)
                                     ) {
+                                        item(key = "quick_plugin_creator_entry") {
+                                            QuickPluginCreatorEntry(
+                                                onClick = { showQuickPluginCreatorDialog = true }
+                                            )
+                                        }
+
+                                        if (availablePackages.value.isEmpty()) {
+                                            item(key = "empty_packages_state") {
+                                                EmptyState(message = context.getString(R.string.no_packages_available))
+                                            }
+                                        }
+
                                         groupedPackages.forEach { (category, packagesInCategory) ->
                                             val categoryColor = when (category) {
                                                 "Automatic" -> automaticColor
@@ -857,8 +891,191 @@ fun PackageManagerScreen(
                     onDismiss = { importErrorMessage = null }
                 )
             }
+
+            if (showQuickPluginCreatorDialog) {
+                QuickPluginCreatorDialog(
+                    requirement = quickPluginRequirement,
+                    onRequirementChange = { quickPluginRequirement = it },
+                    setupRunning = quickPluginSetupRunning,
+                    setupResult = quickPluginSetupResult,
+                    onRunSetup = {
+                        scope.launch {
+                            quickPluginSetupRunning = true
+                            quickPluginSetupResult = null
+                            quickPluginSetupResult =
+                                withContext(Dispatchers.IO) {
+                                    runQuickPluginCreatorSetup(
+                                        context = context,
+                                        packageManager = packageManager,
+                                        toolHandler = toolHandler
+                                    )
+                                }
+                            quickPluginSetupRunning = false
+                        }
+                    },
+                    onDismiss = { showQuickPluginCreatorDialog = false },
+                    onConfirm = {
+                        val requirement = quickPluginRequirement.trim()
+                        if (requirement.isBlank()) {
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    context.getString(R.string.quick_plugin_creator_requirement_empty)
+                                )
+                            }
+                        } else {
+                            showQuickPluginCreatorDialog = false
+                            quickPluginRequirement = ""
+                            onStartPluginCreation(QUICK_PLUGIN_CREATION_PROMPT_PREFIX + requirement)
+                        }
+                    }
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun QuickPluginCreatorEntry(
+    onClick: () -> Unit
+) {
+    ElevatedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        ),
+        shape = RoundedCornerShape(24.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AutoMode,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(12.dp)
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.quick_plugin_creator_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    text = stringResource(R.string.quick_plugin_creator_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
+    }
+}
+
+private fun runQuickPluginCreatorSetup(
+    context: android.content.Context,
+    packageManager: PackageManager,
+    toolHandler: AIToolHandler
+): ToolResult {
+    return try {
+        val scriptFile = downloadSandboxPackageDevInstallScript()
+        val enableMessage = packageManager.enablePackage(OPERIT_EDITOR_PACKAGE_NAME)
+        if (enableMessage.startsWith("Package not found", ignoreCase = true)) {
+            return ToolResult(
+                toolName = "$OPERIT_EDITOR_PACKAGE_NAME:debug_run_sandbox_script",
+                success = false,
+                result = StringResultData(""),
+                error = enableMessage
+            )
+        }
+
+        val result = toolHandler.executeTool(
+            AITool(
+                name = "$OPERIT_EDITOR_PACKAGE_NAME:debug_run_sandbox_script",
+                parameters = listOf(
+                    ToolParameter(
+                        name = "source_path",
+                        value = scriptFile.absolutePath
+                    )
+                )
+            )
+        )
+
+        if (!result.success) {
+            ToolResult(
+                toolName = result.toolName,
+                success = false,
+                result = StringResultData(""),
+                error = result.error ?: context.getString(R.string.quick_plugin_creator_setup_failed)
+            )
+        } else {
+            ToolResult(
+                toolName = result.toolName,
+                success = true,
+                result = StringResultData(context.getString(R.string.quick_plugin_creator_setup_success))
+            )
+        }
+    } catch (e: Exception) {
+        AppLogger.e("PackageManagerScreen", "Failed to run quick plugin creator setup", e)
+        ToolResult(
+            toolName = "$OPERIT_EDITOR_PACKAGE_NAME:debug_run_sandbox_script",
+            success = false,
+            result = StringResultData(""),
+            error = e.message ?: e.javaClass.simpleName
+        )
+    }
+}
+
+private fun downloadSandboxPackageDevInstallScript(): File {
+    val rootDir = Environment.getExternalStorageDirectory()
+    val scriptFile = File(rootDir, SANDBOX_PACKAGE_DEV_SCRIPT_RELATIVE_PATH)
+    scriptFile.parentFile?.mkdirs()
+
+    val connection =
+        (URL(SANDBOX_PACKAGE_DEV_INSTALL_SCRIPT_URL).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 20_000
+            readTimeout = 30_000
+            doInput = true
+            setRequestProperty("User-Agent", "Operit-QuickPluginCreator/1.0")
+        }
+
+    connection.connect()
+    if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+        throw IllegalStateException("HTTP ${connection.responseCode}")
+    }
+
+    BufferedInputStream(connection.inputStream).use { input ->
+        FileOutputStream(scriptFile).use { output ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                output.write(buffer, 0, read)
+            }
+            output.flush()
+        }
+    }
+    connection.disconnect()
+    return scriptFile
 }
 
 @Composable

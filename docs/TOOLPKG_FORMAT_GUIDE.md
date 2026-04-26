@@ -101,6 +101,35 @@ windows_control.toolpkg (ZIP 压缩包)
       "path": "resources/pc_agent/operit-pc-agent.zip",
       "mime": "application/zip"
     }
+  ],
+  "workflow_templates": [
+    {
+      "id": "quick_chat_workflow",
+      "display_name": {
+        "zh": "快速对话工作流",
+        "en": "Quick Chat Workflow"
+      },
+      "description": {
+        "zh": "手动触发后自动启动聊天并发送一条引导消息。",
+        "en": "Starts a chat and sends a guidance message after a manual trigger."
+      },
+      "resource_key": "demo_workflow_template"
+    }
+  ],
+  "workspace_templates": [
+    {
+      "id": "quick_start_workspace",
+      "display_name": {
+        "zh": "快速开始工作区",
+        "en": "Quick Start Workspace"
+      },
+      "description": {
+        "zh": "包含 .operit/config.json 的最小工作区模板。",
+        "en": "A minimal workspace template containing .operit/config.json."
+      },
+      "resource_key": "demo_workspace_template",
+      "project_type": "template_try"
+    }
   ]
 }
 ```
@@ -120,6 +149,8 @@ windows_control.toolpkg (ZIP 压缩包)
 | `description` | LocalizedText | 否 | 包的描述信息，支持多语言 |
 | `subpackages` | array | 否 | 子包列表，每个子包是一个独立的工具集 |
 | `resources` | array | 否 | 资源文件列表，可以是任意类型的文件 |
+| `workflow_templates` | array | 否 | 注册到宿主“工作流”入口的工作流模板列表 |
+| `workspace_templates` | array | 否 | 注册到宿主“工作区创建”入口的工作区模板列表 |
 
 #### 3.2.2 LocalizedText 类型
 
@@ -377,6 +408,115 @@ exports.onInputMenuToggle = onInputMenuToggle;
 - 当 `mime` 是目录类型（如 `inode/directory`、`vnd.android.document/directory`）时，`ToolPkg.readResource(key)` 会先将该目录压缩成 zip，再返回这个 zip 的临时文件路径。
 - 如果没有显式传 `outputFileName`，目录资源默认会自动补上 `.zip` 后缀。
 
+#### 3.2.6 Workflow Templates（工作流模板）
+
+ToolPkg 现在可以通过 `manifest` 直接注册工作流模板。注册后，模板会出现在宿主当前的“工作流 -> 从模板新建”入口里，也会显示在包管理的详情弹窗中。
+
+示例：
+
+```json
+{
+  "workflow_templates": [
+    {
+      "id": "quick_chat_workflow",
+      "display_name": {
+        "zh": "快速对话工作流",
+        "en": "Quick Chat Workflow"
+      },
+      "description": {
+        "zh": "手动触发后自动启动聊天并发送一条引导消息。",
+        "en": "Starts a chat and sends a guidance message after a manual trigger."
+      },
+      "resource_key": "demo_workflow_template"
+    }
+  ]
+}
+```
+
+字段说明：
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `id` | string | 是 | 模板唯一标识，在当前 ToolPkg 内必须唯一 |
+| `display_name` | LocalizedText | 否 | 模板显示名称 |
+| `description` | LocalizedText | 否 | 模板描述 |
+| `resource_key` | string | 是 | 指向 `resources` 中某个文件资源 |
+
+要求：
+- `resource_key` 必须引用一个文件资源，不能是目录资源
+- 文件内容必须是可被宿主反序列化的 `Workflow` JSON
+- 节点建议保留 `__type`，以便和宿主当前的 `kotlinx.serialization` 结构稳定对齐
+
+导入行为：
+- 宿主导入时会重新生成工作流 `id`
+- 执行统计字段会被重置
+- 导入成功后会落库成正式 `Workflow`
+
+#### 3.2.7 Workspace Templates（工作区模板）
+
+ToolPkg 也可以通过 `manifest` 注册工作区模板。注册后，模板会出现在宿主当前的“工作区 -> 创建默认”入口里，也会显示在包管理的详情弹窗中。
+
+示例：
+
+```json
+{
+  "resources": [
+    {
+      "key": "demo_workspace_template",
+      "path": "resources/workspaces/quick_start",
+      "mime": "inode/directory"
+    }
+  ],
+  "workspace_templates": [
+    {
+      "id": "quick_start_workspace",
+      "display_name": {
+        "zh": "快速开始工作区",
+        "en": "Quick Start Workspace"
+      },
+      "description": {
+        "zh": "包含 .operit/config.json 的最小工作区模板。",
+        "en": "A minimal workspace template containing .operit/config.json."
+      },
+      "resource_key": "demo_workspace_template",
+      "project_type": "template_try"
+    }
+  ]
+}
+```
+
+字段说明：
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `id` | string | 是 | 模板唯一标识，在当前 ToolPkg 内必须唯一 |
+| `display_name` | LocalizedText | 否 | 模板显示名称 |
+| `description` | LocalizedText | 否 | 模板描述 |
+| `resource_key` | string | 是 | 指向 `resources` 中某个目录资源 |
+| `project_type` | string | 否 | 传给宿主 UI 展示的项目类型标签 |
+
+要求：
+- `resource_key` 必须引用一个目录资源，常见 `mime` 可写 `inode/directory` 或 `application/x-directory`
+- 目录内容里必须包含 `.operit/config.json`
+- 宿主导入时会把整个目录复制到当前 chat 的 workspace 目录
+
+建议目录结构：
+
+```text
+resources/
+  workspaces/
+    quick_start/
+      .operit/
+        config.json
+      README.md
+      src/
+        ...
+```
+
+最小可参考示例：
+- `examples/template_try/`
+- 里面同时演示了 `workflow_templates`、`workspace_templates`、目录资源和最小 `main.ts`
+
 ## 4. 创建 ToolPkg
 
 ### 4.1 手动创建
@@ -426,8 +566,11 @@ Compress-Archive -Path my_toolpkg\* -DestinationPath my_toolpkg.toolpkg
 # 打包所有白名单中的包
 python sync_example_packages.py
 
-# 打包特定的包
+# 以“非白名单附加”的方式打包特定包
 python sync_example_packages.py --include windows_control
+
+# 例如只额外同步 template_try 这个示例
+python sync_example_packages.py --include template_try
 
 # 查看打包结果（不实际写入）
 python sync_example_packages.py --dry-run

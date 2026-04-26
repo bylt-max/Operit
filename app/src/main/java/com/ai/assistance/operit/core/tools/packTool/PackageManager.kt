@@ -23,11 +23,13 @@ import com.ai.assistance.operit.data.preferences.SkillVisibilityPreferences
 import com.ai.assistance.operit.core.tools.system.AndroidPermissionLevel
 import com.ai.assistance.operit.core.tools.system.ShizukuAuthorizer
 import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
+import com.ai.assistance.operit.data.model.Workflow
 import com.ai.assistance.operit.data.preferences.EnvPreferences
 import com.ai.assistance.operit.data.preferences.androidPermissionPreferences
 import com.ai.assistance.operit.data.model.PackageToolPromptCategory
 import com.ai.assistance.operit.data.model.ToolPrompt
 import com.ai.assistance.operit.data.model.ToolResult
+import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspaceConfig
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
@@ -110,9 +112,40 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         val version: String,
         val author: List<String>,
         val resourceCount: Int,
+        val workflowTemplateCount: Int,
+        val workspaceTemplateCount: Int,
         val uiModuleCount: Int,
         val toolboxUiModules: List<ToolPkgToolboxUiModule>,
-        val subpackages: List<ToolPkgSubpackageInfo>
+        val subpackages: List<ToolPkgSubpackageInfo>,
+        val workflowTemplates: List<ToolPkgWorkflowTemplate>,
+        val workspaceTemplates: List<ToolPkgWorkspaceTemplate>
+    )
+
+    data class ToolPkgWorkflowTemplate(
+        val containerPackageName: String,
+        val toolPkgId: String,
+        val templateId: String,
+        val displayName: String,
+        val description: String,
+        val resourceKey: String
+    )
+
+    data class ToolPkgWorkspaceTemplate(
+        val containerPackageName: String,
+        val toolPkgId: String,
+        val templateId: String,
+        val displayName: String,
+        val description: String,
+        val resourceKey: String,
+        val projectType: String
+    )
+
+    data class ToolPkgWorkspaceTemplateImportResult(
+        val containerPackageName: String,
+        val toolPkgId: String,
+        val templateId: String,
+        val workspacePath: String,
+        val workspaceConfig: WorkspaceConfig
     )
 
     data class ToolPkgToolboxUiModule(
@@ -1224,6 +1257,37 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         resolveContext: Context? = null
     ): List<ToolPkgNavigationEntry> {
         return toolPkgFacade.getToolPkgNavigationEntries(resolveContext)
+    }
+
+    fun getToolPkgWorkflowTemplates(
+        resolveContext: Context? = null
+    ): List<ToolPkgWorkflowTemplate> {
+        return toolPkgFacade.getToolPkgWorkflowTemplates(resolveContext)
+    }
+
+    fun importToolPkgWorkflowTemplate(
+        containerPackageName: String,
+        templateId: String
+    ): Result<Workflow> {
+        return toolPkgFacade.importToolPkgWorkflowTemplate(containerPackageName, templateId)
+    }
+
+    fun getToolPkgWorkspaceTemplates(
+        resolveContext: Context? = null
+    ): List<ToolPkgWorkspaceTemplate> {
+        return toolPkgFacade.getToolPkgWorkspaceTemplates(resolveContext)
+    }
+
+    fun importToolPkgWorkspaceTemplate(
+        containerPackageName: String,
+        templateId: String,
+        destinationDir: File
+    ): Result<ToolPkgWorkspaceTemplateImportResult> {
+        return toolPkgFacade.importToolPkgWorkspaceTemplate(
+            containerPackageName = containerPackageName,
+            templateId = templateId,
+            destinationDir = destinationDir
+        )
     }
 
     fun setToolPkgSubpackageEnabled(subpackagePackageName: String, enabled: Boolean): Boolean {

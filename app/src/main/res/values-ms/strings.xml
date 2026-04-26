@@ -6875,4 +6875,19 @@ Kini anda boleh menggunakan mod AutoGLM di antara muka perbualan.</string>
     <string name="share_preview_expand_tools_groups">Kembangkan alat dan kumpulan pemikiran</string>
     <string name="share_preview_include_background">Sertakan latar belakang</string>
     <string name="share_preview_border_width">Sempadan: %1$.1f dp</string>
+
+    <string name="quick_plugin_creator_title">Cipta Plugin Anda Dengan Pantas</string>
+    <string name="quick_plugin_creator_desc">Tidak jumpa plugin yang diingini di dalam terbina atau pasaran? Cipta sendiri!</string>
+    <string name="quick_plugin_creator_step1_title">1. Kemas kini atau muat turun pakej cipta Skill</string>
+    <string name="quick_plugin_creator_step1_desc">Selepas mengklik butang, `install_or_update.js` akan dimuat turun secara automatik, dan operit_editor akan memanggil debug_run_sandbox_script untuk melaksanakan pemasangan atau kemas kini.</string>
+    <string name="quick_plugin_creator_run_setup">Muat turun dan laksana secara automatik</string>
+    <string name="quick_plugin_creator_setup_success">Pemasangan atau kemas kini pakej cipta Skill selesai</string>
+    <string name="quick_plugin_creator_step2_title">2. Masukkan keperluan untuk mula mencipta</string>
+    <string name="quick_plugin_creator_requirement_hint">Contoh: Buat alat yang boleh menyusun gambar dalam direktori muat turun secara pukal dan menjana indeks</string>
+    <string name="quick_plugin_creator_requirement_empty">Sila masukkan keperluan plugin terlebih dahulu</string>
+    <string name="mcp_plugin_comment_view_thread">Lihat tingkat</string>
+    <string name="mcp_plugin_user_comments">Komen pengguna</string>
+    <string name="web_session_shortcut_label">Pelayar</string>
+    <string name="web_session_shortcut_long_label">Lancarkan pelayar dengan pantas</string>
+    <string name="web_session_shortcut_open_failed">Gagal melancarkan pelayar dengan pantas</string>
 </resources>

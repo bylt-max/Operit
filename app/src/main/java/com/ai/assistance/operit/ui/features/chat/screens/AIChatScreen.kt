@@ -74,6 +74,7 @@ import com.ai.assistance.operit.ui.features.chat.webview.computer.ComputerScreen
 import com.ai.assistance.operit.ui.features.chat.util.ConfigurationStateHolder
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModel
 import com.ai.assistance.operit.ui.main.LocalTopBarActions
+import com.ai.assistance.operit.ui.main.PendingChatDraftHandler
 import com.ai.assistance.operit.ui.main.components.LocalAppBarContentColor
 import com.ai.assistance.operit.ui.main.screens.GestureStateHolder
 import com.ai.assistance.operit.ui.main.SharedFileHandler
@@ -379,6 +380,22 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         onClearSharedFiles = SharedFileHandler::clearSharedFiles,
         onClearSharedLinks = SharedFileHandler::clearSharedLinks
     )
+
+    val pendingChatDraft by PendingChatDraftHandler.pendingDraft.collectAsState()
+    LaunchedEffect(pendingChatDraft) {
+        val draft = pendingChatDraft?.trim().orEmpty()
+        if (draft.isBlank()) return@LaunchedEffect
+
+        actualViewModel.showChatHistorySelector(false)
+        actualViewModel.createNewChat()
+        actualViewModel.updateUserMessage(
+            TextFieldValue(
+                text = draft,
+                selection = TextRange(draft.length)
+            )
+        )
+        PendingChatDraftHandler.clearPendingDraft()
+    }
 
 
     // 添加WebView刷新相关状态

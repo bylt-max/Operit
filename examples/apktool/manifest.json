@@ -11,7 +11,7 @@
     "zh": "基于内置 dex-jar 运行时的 APK 逆向工具包，提供 inspect/decode/jadx/build/sign/search 等直调能力。",
     "en": "APK reverse toolkit backed by bundled dex-jar runtimes, providing direct inspect/decode/jadx/build/sign/search capabilities."
   },
-  "enabled_by_default": true,
+  "enabled_by_default": false,
   "subpackages": [
     {
       "id": "apk_reverse",

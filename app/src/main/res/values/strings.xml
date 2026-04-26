@@ -968,6 +968,16 @@
     <!-- Package Manager Screen -->
     <string name="packages">包管理</string>
     <string name="skills">技能</string>
+    <string name="quick_plugin_creator_title">快速创作你的插件</string>
+    <string name="quick_plugin_creator_desc">内置和市场都找不到想要的插件？创作你自己想要的！</string>
+    <string name="quick_plugin_creator_step1_title">1. 更新或者下载包创作 Skill</string>
+    <string name="quick_plugin_creator_step1_desc">点击按钮后会自动下载 `install_or_update.js`，并调用 operit_editor 的 debug_run_sandbox_script 执行安装或更新。</string>
+    <string name="quick_plugin_creator_run_setup">自动下载并执行</string>
+    <string name="quick_plugin_creator_setup_success">包创作 Skill 安装或更新完成</string>
+    <string name="quick_plugin_creator_setup_failed">包创作 Skill 安装或更新失败</string>
+    <string name="quick_plugin_creator_step2_title">2. 输入需求开始创作</string>
+    <string name="quick_plugin_creator_requirement_hint">例如：做一个可以批量整理下载目录图片并生成索引的工具</string>
+    <string name="quick_plugin_creator_requirement_empty">请先输入插件需求</string>
     <string name="show_to_ai_short">AI</string>
     <string name="package_manager">包管理器</string>
     <string name="available_packages">可用包</string>
@@ -998,9 +1008,13 @@
     <string name="pkg_toolpkg_version">版本：%1$s</string>
     <string name="pkg_toolpkg_resources">资源数：%1$d</string>
     <string name="pkg_toolpkg_ui_modules">UI 模块数：%1$d</string>
+    <string name="pkg_toolpkg_workflow_templates">工作流模板数：%1$d</string>
+    <string name="pkg_toolpkg_workspace_templates">工作区模板数：%1$d</string>
     <string name="pkg_toolpkg_empty_subpackages">该 ToolPkg 未声明任何子包</string>
     <string name="pkg_toolpkg_tool_count">工具数：%1$d</string>
     <string name="pkg_toolpkg_subpackage_toggle_failed">子包开关失败，请重试</string>
+    <string name="pkg_toolpkg_registered_workflow_templates">工作流模板</string>
+    <string name="pkg_toolpkg_registered_workspace_templates">工作区模板</string>
     <string name="pkg_plugin_config_open_action">打开配置</string>
     <string name="automation_json_only">仅支持JSON文件</string>
     <string name="no_filename">无法获取文件名</string>
@@ -1756,6 +1770,7 @@
     <string name="workspace_description">为您的AI项目提供一个专属的文件环境</string>
     <string name="workspace_select_language_type_title">选择语言类型</string>
     <string name="workspace_select_language_type_prompt">请选择要创建的默认工作区类型</string>
+    <string name="workspace_template_importing">正在导入插件模板...</string>
     <string name="workspace_project_type_blank_title">空白工作区</string>
     <string name="workspace_project_type_blank_description">仅创建一个空的工作区目录，不包含任何模板文件</string>
     <string name="workspace_project_type_office_title">办公文档</string>
@@ -1776,6 +1791,8 @@
     <string name="workspace_project_type_java_description">适用于 Java 开发，支持 Gradle 和 Maven 构建</string>
     <string name="workspace_project_type_go_title">Go 项目</string>
     <string name="workspace_project_type_go_description">适用于 Go 开发，提供 go mod 和 build 命令</string>
+    <string name="workspace_project_type_toolpkg_section">插件工作区模板</string>
+    <string name="workspace_template_import_failed">导入插件工作区模板失败</string>
     <string name="please_select_or_create_conversation">请先选择或创建一个对话</string>
     <string name="latest">最新</string>
     <string name="main_highlights">✨ 主要亮点</string>
@@ -4716,6 +4733,7 @@
     <string name="workflow_template_error_branch_desc">主节点失败 -> 错误处理分支；成功 -> 正常分支</string>
     <string name="workflow_template_speech_trigger_title">语音触发</string>
     <string name="workflow_template_speech_trigger_desc">语音识别命中正则 -> 执行动作</string>
+    <string name="workflow_template_toolpkg_section">插件模板</string>
     <string name="workflow_action_create">创建</string>
     <string name="time_just_now">刚刚</string>
     <string name="time_minutes_ago">%1$d 分钟前</string>

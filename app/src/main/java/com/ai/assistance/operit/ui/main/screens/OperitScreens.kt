@@ -86,6 +86,8 @@ import com.ai.assistance.operit.ui.features.toolbox.screens.autoglm.AutoGlmToolS
 import com.ai.assistance.operit.ui.features.update.screens.UpdateScreen
 import com.ai.assistance.operit.ui.features.workflow.screens.WorkflowListScreen
 import com.ai.assistance.operit.ui.features.workflow.screens.WorkflowDetailScreen
+import com.ai.assistance.operit.ui.main.PendingChatDraftHandler
+import com.ai.assistance.operit.ui.main.navigation.AppRouteCatalog
 import com.ai.assistance.operit.ui.main.navigation.AppRouterGateway
 
 // 路由配置类
@@ -175,6 +177,15 @@ sealed class Screen(
                 onNavigateToMCPMarket = { navigateTo(Market(MarketHomeTab.MCP)) },
                 onNavigateToSkillMarket = { navigateTo(Market(MarketHomeTab.SKILL)) },
                 onNavigateToArtifactMarket = { navigateTo(Market(MarketHomeTab.ARTIFACT)) },
+                onStartPluginCreation = { prompt ->
+                    PendingChatDraftHandler.setPendingDraft(prompt)
+                    val chatEntry = AppRouteCatalog.toEntry(AiChat)
+                    AppRouterGateway.resetTo(
+                        routeId = chatEntry.routeId,
+                        args = chatEntry.args,
+                        source = chatEntry.source
+                    )
+                },
                 onOpenToolPkgPluginConfig = { containerPackageName, uiModuleId, title ->
                     navigateTo(
                         ToolPkgPluginConfig(

@@ -6712,4 +6712,19 @@ Agora é possível usar o modo AutoGLM na interface de diálogo.</string>
     <string name="share_preview_expand_tools_groups">Expandir ferramentas e grupos de raciocínio</string>
     <string name="share_preview_include_background">Incluir plano de fundo</string>
     <string name="share_preview_border_width">Borda: %1$.1f dp</string>
+
+    <string name="quick_plugin_creator_title">Crie seu plugin rapidamente</string>
+    <string name="quick_plugin_creator_desc">Não encontrou o plugin que deseja no sistema ou na loja? Crie o seu próprio!</string>
+    <string name="quick_plugin_creator_step1_title">1. Atualize ou baixe o pacote para criar a Skill</string>
+    <string name="quick_plugin_creator_step1_desc">Ao clicar no botão, o `install_or_update.js` será baixado automaticamente e o debug_run_sandbox_script do operit_editor será chamado para executar a instalação ou atualização.</string>
+    <string name="quick_plugin_creator_run_setup">Baixar e executar automaticamente</string>
+    <string name="quick_plugin_creator_setup_success">Instalação ou atualização da Skill de criação de pacotes concluída</string>
+    <string name="quick_plugin_creator_step2_title">2. Insira os requisitos para começar a criar</string>
+    <string name="quick_plugin_creator_requirement_hint">Exemplo: crie uma ferramenta para organizar em lote imagens do diretório de download e gerar um índice</string>
+    <string name="quick_plugin_creator_requirement_empty">Insira primeiro os requisitos do plugin</string>
+    <string name="mcp_plugin_comment_view_thread">Ver andar</string>
+    <string name="mcp_plugin_user_comments">Comentários do usuário</string>
+    <string name="web_session_shortcut_label">Navegador</string>
+    <string name="web_session_shortcut_long_label">Iniciar navegador rapidamente</string>
+    <string name="web_session_shortcut_open_failed">Falha ao iniciar o navegador rapidamente</string>
 </resources>

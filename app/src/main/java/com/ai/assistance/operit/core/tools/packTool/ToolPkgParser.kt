@@ -113,6 +113,8 @@ internal data class ToolPkgContainerRuntime(
     val sourcePath: String,
     val subpackages: List<ToolPkgSubpackageRuntime>,
     val resources: List<ToolPkgResourceRuntime>,
+    val workflowTemplates: List<ToolPkgWorkflowTemplateRuntime>,
+    val workspaceTemplates: List<ToolPkgWorkspaceTemplateRuntime>,
     val uiModules: List<ToolPkgUiModuleRuntime>,
     val uiRoutes: List<ToolPkgUiRouteRuntime>,
     val navigationEntries: List<ToolPkgNavigationEntryRuntime>,
@@ -149,7 +151,11 @@ internal data class ToolPkgManifest(
     val author: List<String> = emptyList(),
     @SerialName("enabled_by_default") val enabledByDefault: Boolean = true,
     val subpackages: List<ToolPkgManifestSubpackage> = emptyList(),
-    val resources: List<ToolPkgManifestResource> = emptyList()
+    val resources: List<ToolPkgManifestResource> = emptyList(),
+    @SerialName("workflow_templates")
+    val workflowTemplates: List<ToolPkgManifestWorkflowTemplate> = emptyList(),
+    @SerialName("workspace_templates")
+    val workspaceTemplates: List<ToolPkgManifestWorkspaceTemplate> = emptyList()
 )
 
 @Serializable
@@ -382,6 +388,80 @@ internal object ToolPkgArchiveParser {
                     key = resource.key,
                     path = normalizedPath,
                     mime = resource.mime
+                )
+            }
+
+        val resourceByKey =
+            resources.associateBy { resource -> resource.key.lowercase() }
+        val workflowTemplateIds = linkedSetOf<String>()
+        val workflowTemplates =
+            manifest.workflowTemplates.mapIndexed { index, template ->
+                val templateId = template.id.trim()
+                if (templateId.isBlank()) {
+                    throw IllegalArgumentException("workflow_templates[$index].id is required")
+                }
+                if (!workflowTemplateIds.add(templateId.lowercase())) {
+                    throw IllegalArgumentException("Duplicate workflow template id: $templateId")
+                }
+
+                val resourceKey = template.resourceKey.trim()
+                if (resourceKey.isBlank()) {
+                    throw IllegalArgumentException(
+                        "workflow_templates[$index].resource_key is required"
+                    )
+                }
+                val resource =
+                    resourceByKey[resourceKey.lowercase()]
+                        ?: throw IllegalArgumentException(
+                            "workflow_templates[$index].resource_key not found in manifest.resources: $resourceKey"
+                        )
+                if (isDirectoryResourceMime(resource.mime)) {
+                    throw IllegalArgumentException(
+                        "workflow_templates[$index].resource_key must reference a file resource: $resourceKey"
+                    )
+                }
+
+                ToolPkgWorkflowTemplateRuntime(
+                    id = templateId,
+                    displayName = template.displayName,
+                    description = template.description,
+                    resourceKey = resource.key
+                )
+            }
+        val workspaceTemplateIds = linkedSetOf<String>()
+        val workspaceTemplates =
+            manifest.workspaceTemplates.mapIndexed { index, template ->
+                val templateId = template.id.trim()
+                if (templateId.isBlank()) {
+                    throw IllegalArgumentException("workspace_templates[$index].id is required")
+                }
+                if (!workspaceTemplateIds.add(templateId.lowercase())) {
+                    throw IllegalArgumentException("Duplicate workspace template id: $templateId")
+                }
+
+                val resourceKey = template.resourceKey.trim()
+                if (resourceKey.isBlank()) {
+                    throw IllegalArgumentException(
+                        "workspace_templates[$index].resource_key is required"
+                    )
+                }
+                val resource =
+                    resourceByKey[resourceKey.lowercase()]
+                        ?: throw IllegalArgumentException(
+                            "workspace_templates[$index].resource_key not found in manifest.resources: $resourceKey"
+                        )
+                if (!isDirectoryResourceMime(resource.mime)) {
+                    throw IllegalArgumentException(
+                        "workspace_templates[$index].resource_key must reference a directory resource: $resourceKey"
+                    )
+                }
+
+                ToolPkgWorkspaceTemplateRuntime(
+                    id = templateId,
+                    displayName = template.displayName,
+                    description = template.description,
+                    resourceKey = resource.key,
+                    projectType = template.projectType.trim()
                 )
             }
 
@@ -896,6 +976,8 @@ internal object ToolPkgArchiveParser {
                 sourcePath = sourcePath,
                 subpackages = subpackageRuntimes,
                 resources = resources,
+                workflowTemplates = workflowTemplates,
+                workspaceTemplates = workspaceTemplates,
                 uiModules = uiModules,
                 uiRoutes = uiRoutes,
                 navigationEntries = navigationEntries,

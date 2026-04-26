@@ -319,14 +319,30 @@ fun OperitApp(
             }
         }
         DisposableEffect(routerState, navigationModel) {
-            AppRouterGateway.install { routeId, args, source ->
-                val routeSpec = navigationModel.routesById[routeId] ?: return@install
-                isNavigatingBack = false
-                navigationTransitionSource =
-                    if (source == RouteEntrySource.DRAWER) NavigationTransitionSource.DRAWER
-                    else NavigationTransitionSource.DEFAULT
-                routerState.navigate(routeId = routeId, args = args, source = source, routeSpec = routeSpec)
-            }
+            AppRouterGateway.install(
+                handler = { routeId, args, source ->
+                    val routeSpec = navigationModel.routesById[routeId] ?: return@install
+                    isNavigatingBack = false
+                    navigationTransitionSource =
+                        if (source == RouteEntrySource.DRAWER) NavigationTransitionSource.DRAWER
+                        else NavigationTransitionSource.DEFAULT
+                    routerState.navigate(routeId = routeId, args = args, source = source, routeSpec = routeSpec)
+                },
+                reset = { routeId, args, source ->
+                    navigationModel.routesById[routeId] ?: return@install
+                    isNavigatingBack = false
+                    navigationTransitionSource =
+                        if (source == RouteEntrySource.DRAWER) NavigationTransitionSource.DRAWER
+                        else NavigationTransitionSource.DEFAULT
+                    routerState.resetTo(
+                        com.ai.assistance.operit.ui.main.navigation.RouteEntry(
+                            routeId = routeId,
+                            args = args,
+                            source = source
+                        )
+                    )
+                }
+            )
             AppRouteDiscoveryGateway.install {
                 navigationModel.routes
             }

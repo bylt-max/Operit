@@ -6517,13 +6517,13 @@
     <string name="profile_identity_value">Identity: %1$s</string>
     <string name="profile_occupation_value">Occupation: %1$s</string>
     <string name="profile_ai_style_value">Expected AI Style: %1$s</string>
-    <string name="profile_regex_birth_date">(Birth Date|Date of Birth)[:：\s]+([\d-]+)</string>
-    <string name="profile_regex_birth_year">(Birth year|Age)[:：\s]+(\d+)</string>
-    <string name="profile_regex_gender">Gender[:：\s]+([^;]+)</string>
-    <string name="profile_regex_personality">Personality( traits)?[:：\s]+([^;]+)</string>
-    <string name="profile_regex_identity">Identity( recognition)?[:：\s]+([^;]+)</string>
-    <string name="profile_regex_occupation">Occupation[:：\s]+([^;]+)</string>
-    <string name="profile_regex_ai_style">(AI Style|Expected AI Style|Preferred AI Style)[:：\s]+([^;]+)</string>
+    <string name="profile_regex_birth_date">(Birth Date|Date of Birth)[:：\\s]+([\\d-]+)</string>
+    <string name="profile_regex_birth_year">(Birth year|Age)[:：\\s]+(\\d+)</string>
+    <string name="profile_regex_gender">Gender[:：\\s]+([^;]+)</string>
+    <string name="profile_regex_personality">Personality( traits)?[:：\\s]+([^;]+)</string>
+    <string name="profile_regex_identity">Identity( recognition)?[:：\\s]+([^;]+)</string>
+    <string name="profile_regex_occupation">Occupation[:：\\s]+([^;]+)</string>
+    <string name="profile_regex_ai_style">(AI Style|Expected AI Style|Preferred AI Style)[:：\\s]+([^;]+)</string>
 
     <!-- AI Message Manager -->
     <string name="ai_message_user">User</string>
@@ -7275,6 +7275,9 @@
     <string name="web_session_userscript_notification_channel">Userscript Notifications</string>
     <string name="web_session_userscript_notification_denied">Notification permission is not granted, so userscript notifications cannot be shown</string>
     <string name="web_session_userscript_download_failed">Userscript download failed</string>
+    <string name="web_session_shortcut_label">Browser</string>
+    <string name="web_session_shortcut_long_label">Quick launch browser</string>
+    <string name="web_session_shortcut_open_failed">Failed to launch browser shortcut</string>
 
     <string name="tool_windows_control_one_click">Windows One-Click Setup</string>
     <string name="tool_windows_control_one_click_desc">Export the PC agent package, configure HTTP agent environment variables, and enable windows_control in one flow</string>
@@ -7490,4 +7493,16 @@
     <string name="chat_delete_single_variant">Delete Single Message</string>
     <string name="chat_delete_single_variant_unavailable">No single message candidates available for deletion</string>
     <string name="chat_delete_single_variant_failed">Failed to delete single message: %1$s</string>
+
+    <string name="quick_plugin_creator_title">Quickly Create Your Plugin</string>
+    <string name="quick_plugin_creator_desc">Cannot find the plugin you want in the built-in list or marketplace? Create your own.</string>
+    <string name="quick_plugin_creator_step1_title">1. Update or download the package creation Skill</string>
+    <string name="quick_plugin_creator_step1_desc">Click the button to automatically download install_or_update.js and run the operit_editor debug_run_sandbox_script for installation or update.</string>
+    <string name="quick_plugin_creator_run_setup">Auto download and execute</string>
+    <string name="quick_plugin_creator_setup_success">Package creation Skill installation or update completed</string>
+    <string name="quick_plugin_creator_step2_title">2. Enter requirements to start creating</string>
+    <string name="quick_plugin_creator_requirement_hint">For example: create a tool to batch organize images in the download directory and generate an index</string>
+    <string name="quick_plugin_creator_requirement_empty">Please enter the plugin requirements first</string>
+    <string name="mcp_plugin_comment_view_thread">View thread</string>
+    <string name="mcp_plugin_user_comments">User comments</string>
 </resources>

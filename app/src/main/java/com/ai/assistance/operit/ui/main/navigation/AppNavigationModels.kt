@@ -127,13 +127,20 @@ class AppRouterState(initialEntry: RouteEntry) {
 object AppRouterGateway {
     @Volatile
     private var navigateHandler: ((String, Map<String, Any?>, RouteEntrySource) -> Unit)? = null
+    @Volatile
+    private var resetHandler: ((String, Map<String, Any?>, RouteEntrySource) -> Unit)? = null
 
-    fun install(handler: (String, Map<String, Any?>, RouteEntrySource) -> Unit) {
+    fun install(
+        handler: (String, Map<String, Any?>, RouteEntrySource) -> Unit,
+        reset: (String, Map<String, Any?>, RouteEntrySource) -> Unit
+    ) {
         navigateHandler = handler
+        resetHandler = reset
     }
 
     fun clear() {
         navigateHandler = null
+        resetHandler = null
     }
 
     fun navigate(
@@ -142,6 +149,14 @@ object AppRouterGateway {
         source: RouteEntrySource = RouteEntrySource.SCRIPT
     ) {
         navigateHandler?.invoke(routeId, args, source)
+    }
+
+    fun resetTo(
+        routeId: String,
+        args: Map<String, Any?> = emptyMap(),
+        source: RouteEntrySource = RouteEntrySource.SCRIPT
+    ) {
+        resetHandler?.invoke(routeId, args, source)
     }
 }
 
