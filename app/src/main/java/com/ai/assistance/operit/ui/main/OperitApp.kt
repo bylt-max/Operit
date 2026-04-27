@@ -46,6 +46,7 @@ import com.ai.assistance.operit.ui.main.navigation.NavigationSurface
 import com.ai.assistance.operit.ui.main.navigation.RouteEntrySource
 import com.ai.assistance.operit.util.NetworkUtils
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.compositionLocalOf
@@ -53,6 +54,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.features.update.screens.UpdateScreen
+import com.ai.assistance.operit.util.AppLogger
 
 // 为TopAppBar的actions提供CompositionLocal
 // 它允许子组件（如AIChatScreen）向上提供它们的action Composable
@@ -69,6 +71,8 @@ enum class NavigationTransitionSource {
     DEFAULT,
     DRAWER
 }
+
+private const val TAG = "OperitApp"
 
 @Composable
 fun OperitApp(
@@ -182,6 +186,33 @@ fun OperitApp(
     }
 
     fun navigateToNavigationEntry(entry: NavigationEntrySpec) {
+        val action = entry.action
+        if (action != null) {
+            val ownerPackageName = entry.ownerPackageName ?: return
+            scope.launch(Dispatchers.IO) {
+                packageManager.runToolPkgNavigationEntryAction(
+                    containerPackageName = ownerPackageName,
+                    entryId = entry.entryId,
+                    functionName = action.functionName,
+                    inlineFunctionSource = action.functionSource,
+                    eventPayload =
+                        mapOf(
+                            "entryId" to entry.entryId,
+                            "routeId" to entry.routeId,
+                            "surface" to entry.surface.name.lowercase(),
+                            "title" to entry.title,
+                            "description" to entry.description
+                        )
+                ).onFailure { error ->
+                    AppLogger.e(
+                        TAG,
+                        "ToolPkg navigation action failed: entryId=${entry.entryId}, package=$ownerPackageName",
+                        error
+                    )
+                }
+            }
+            return
+        }
         if (currentRouteEntry.routeId == entry.routeId && currentRouteEntry.args == entry.routeArgs) {
             return
         }

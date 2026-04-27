@@ -815,6 +815,12 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     )
 
     handler.registerTool(
+            name = "browser_close_all",
+            descriptionGenerator = { "Close all browser tabs" },
+            executor = { tool -> ToolGetter.getBrowserSessionTools(context).invoke(tool) }
+    )
+
+    handler.registerTool(
             name = "browser_console_messages",
             descriptionGenerator = { "Read browser console messages" },
             executor = { tool -> ToolGetter.getBrowserSessionTools(context).invoke(tool) }

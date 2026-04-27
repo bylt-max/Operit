@@ -31,6 +31,7 @@ export namespace ToolPkg {
         | "message_processing"
         | "xml_render"
         | "input_menu_toggle"
+        | "navigation_entry_action"
         | ToolLifecycleEventName
         | PromptInputEventName
         | PromptHistoryEventName
@@ -247,6 +248,9 @@ export namespace ToolPkg {
     export type InputMenuToggleHookHandler =
         (event: InputMenuToggleHookEvent) => InputMenuToggleHookReturn;
 
+    export type NavigationEntryActionHookHandler =
+        (event: NavigationEntryActionHookEvent) => HookReturn;
+
     export type ToolLifecycleHookHandler =
         (event: ToolLifecycleHookEvent) => ToolLifecycleHookReturn;
 
@@ -311,6 +315,14 @@ export namespace ToolPkg {
         toggleId?: string;
     }
 
+    export interface NavigationEntryActionEventPayload extends JsonObject {
+        entryId?: string;
+        routeId?: string;
+        surface?: string;
+        title?: string;
+        description?: string;
+    }
+
     export interface AppLifecycleHookEvent
         extends HookEventBase<AppLifecycleEvent, AppLifecycleEventPayload> {}
 
@@ -322,6 +334,9 @@ export namespace ToolPkg {
 
     export interface InputMenuToggleHookEvent
         extends HookEventBase<"input_menu_toggle", InputMenuToggleEventPayload> {}
+
+    export interface NavigationEntryActionHookEvent
+        extends HookEventBase<"navigation_entry_action", NavigationEntryActionEventPayload> {}
 
     export interface ToolLifecycleHookEvent
         extends HookEventBase<ToolLifecycleEventName, ToolLifecycleEventPayload> {}
@@ -495,8 +510,9 @@ export namespace ToolPkg {
 
     export interface NavigationEntryRegistration {
         id: string;
-        route: string;
+        route?: string;
         surface: NavigationSurface;
+        action?: NavigationEntryActionHookHandler;
         title?: LocalizedText;
         icon?: string;
         order?: number;

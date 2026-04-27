@@ -21,6 +21,7 @@ import com.ai.assistance.operit.api.chat.ChatRuntimeSlot
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.core.chat.AIMessageManager
 import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.core.tools.FileOperationData
 import com.ai.assistance.operit.data.collects.ApiProviderConfigs
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.AttachmentInfo
@@ -64,6 +65,8 @@ import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspaceBack
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.CommandConfig
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspaceCommandExecutionState
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspaceConfigReader
+import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspacePreviewRefreshBus
+import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspacePreviewRefreshEvent
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.toWorkspaceCommandOutputEntries
 import com.ai.assistance.operit.core.tools.system.Terminal
 import com.ai.assistance.operit.util.TtsCleaner
@@ -1851,7 +1854,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 }
 
                 _showWebView.value = true
-                _webViewRefreshCounter.value += 1
             } catch (e: CancellationException) {
                 AppLogger.d(TAG, "工作区打开流程已取消")
                 throw e
@@ -1945,6 +1947,34 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     // 强制WebView刷新
     fun refreshWebView() {
         _webViewRefreshCounter.value += 1
+    }
+
+    private fun notifyWorkspacePreviewRefresh(
+        workspacePath: String,
+        workspaceEnv: String?,
+        affectedPaths: List<String>,
+        source: String
+    ) {
+        WorkspacePreviewRefreshBus.tryEmit(
+            WorkspacePreviewRefreshEvent(
+                workspacePath = workspacePath,
+                workspaceEnv = workspaceEnv,
+                affectedPaths = affectedPaths,
+                source = source
+            )
+        )
+    }
+
+    private fun resolveWorkspaceEnvForPath(workspacePath: String): String? {
+        val activeChatId = currentChatId.value
+        val activeChat =
+            chatHistories.value.firstOrNull { history ->
+                history.id == activeChatId && history.workspace == workspacePath
+            }
+        if (activeChat != null) {
+            return activeChat.workspaceEnv
+        }
+        return chatHistories.value.firstOrNull { it.workspace == workspacePath }?.workspaceEnv
     }
 
     // 用于启动文件选择器并处理结果
@@ -2259,6 +2289,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                                 isRunning = false,
                                 isCancelling = false
                             )
+                        notifyWorkspacePreviewRefresh(
+                            workspacePath = workspacePath,
+                            workspaceEnv = resolveWorkspaceEnvForPath(workspacePath),
+                            affectedPaths = listOf(workspacePath),
+                            source = "workspace_command:${command.id}"
+                        )
                     } else {
                         val appendedEntries = event.outputChunk.toWorkspaceCommandOutputEntries()
                         if (appendedEntries.isEmpty()) {
@@ -2381,6 +2417,18 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                             R.string.chat_execute_command_failed,
                             result.error ?: "Tool execution failed"
                         )
+                    )
+                } else {
+                    val affectedPaths =
+                        when (val data = result.result) {
+                            is FileOperationData -> listOf(data.path)
+                            else -> listOf(workspacePath)
+                        }
+                    notifyWorkspacePreviewRefresh(
+                        workspacePath = workspacePath,
+                        workspaceEnv = resolveWorkspaceEnvForPath(workspacePath),
+                        affectedPaths = affectedPaths,
+                        source = "workspace_tool:$toolName"
                     )
                 }
             } catch (e: Exception) {
@@ -2663,6 +2711,11 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     }
                     isFirstSegment = false
                 }
+            } catch (e: CancellationException) {
+                logSpeechState(
+                    "speakMessage.cancelled",
+                    "paused=${_isSpeechPaused.value} session=${_isSpeechSessionActive.value} message=${e.message}"
+                )
             } catch (e: Exception) {
                 logSpeechState("speakMessage.exception", "type=${e::class.java.simpleName} message=${e.message}")
                 AppLogger.e(TAG, "朗读消息失败", e)
@@ -2695,10 +2748,14 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             try {
                 logSpeechState("pauseSpeaking.request")
                 cancelSpeechControlsHide("pauseSpeaking")
+                speechPlaybackJob?.cancel()
+                speechPlaybackJob = null
+                logSpeechState("pauseSpeaking.cancelPlaybackJob")
                 val success = ensureActiveVoiceService()?.pause() == true
                 if (success) {
                     _isSpeechPaused.value = true
                     _isSpeechSessionActive.value = true
+                    cancelSpeechControlsHide("pauseSpeaking.done")
                     logSpeechState("pauseSpeaking.done", "success=true")
                 } else {
                     logSpeechState("pauseSpeaking.done", "success=false")

@@ -53,8 +53,14 @@ internal data class ToolPkgNavigationEntryRuntime(
     val routeId: String,
     val surface: String,
     val title: LocalizedText,
+    val action: ToolPkgNavigationActionHookRuntime? = null,
     val icon: String? = null,
     val order: Int = 0
+)
+
+internal data class ToolPkgNavigationActionHookRuntime(
+    val function: String,
+    val functionSource: String? = null
 )
 
 internal data class ToolPkgAppLifecycleHookRuntime(
@@ -191,6 +197,7 @@ internal data class ToolPkgRegisteredNavigationEntry(
     val routeId: String,
     val surface: String,
     val title: LocalizedText,
+    val action: ToolPkgNavigationActionHookRuntime? = null,
     val icon: String? = null,
     val order: Int = 0
 )
@@ -249,6 +256,16 @@ internal data class ToolPkgMainRegistration(
     val aiProviders: List<ToolPkgRegisteredAiProvider> = emptyList()
 )
 
+internal sealed interface ToolPkgMainRegistrationParseResult {
+    data class Success(
+        val registration: ToolPkgMainRegistration
+    ) : ToolPkgMainRegistrationParseResult
+
+    data class Failure(
+        val message: String
+    ) : ToolPkgMainRegistrationParseResult
+}
+
 internal object ToolPkgArchiveParser {
     fun parseToolPkgFromEntries(
         entries: Map<String, ByteArray>,
@@ -256,7 +273,7 @@ internal object ToolPkgArchiveParser {
         sourcePath: String,
         isBuiltIn: Boolean,
         parseJsPackage: (String, (String, String) -> Unit) -> ToolPackage?,
-        parseMainRegistration: (String, String, String) -> ToolPkgMainRegistration?,
+        parseMainRegistration: (String, String, String) -> ToolPkgMainRegistrationParseResult,
         reportPackageLoadError: (String, String) -> Unit
     ): ToolPkgLoadResult {
         val manifestEntryName = findManifestEntry(entries)
@@ -471,12 +488,16 @@ internal object ToolPkgArchiveParser {
             } else {
                 LocalizedText.of(manifest.toolpkgId)
             }
-        val mainRegistration =
+        val mainRegistrationResult =
             parseMainRegistration(mainScriptText, manifest.toolpkgId, normalizedMainEntry)
-                ?: throw IllegalArgumentException(
-                    "Failed to parse main registration from '${manifest.main}'. " +
-                        "main script must export registerToolPkg()"
-                )
+        val mainRegistration =
+            when (mainRegistrationResult) {
+                is ToolPkgMainRegistrationParseResult.Success -> mainRegistrationResult.registration
+                is ToolPkgMainRegistrationParseResult.Failure ->
+                    throw IllegalArgumentException(
+                        "Failed to parse main registration from '${manifest.main}': ${mainRegistrationResult.message}"
+                    )
+            }
 
         val registeredUiRoutes =
             buildList {
@@ -567,16 +588,19 @@ internal object ToolPkgArchiveParser {
             val id = entry.id.trim()
             val routeId = entry.routeId.trim()
             val surface = entry.surface.trim().lowercase()
+            val action = entry.action
             if (id.isBlank()) {
                 throw IllegalArgumentException("$TOOLPKG_REGISTRATION_NAVIGATION_ENTRY[$index].id is required")
             }
             if (!navigationEntryIds.add(id.lowercase())) {
                 throw IllegalArgumentException("Duplicate toolpkg navigation entry id: $id")
             }
-            if (routeId.isBlank()) {
-                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_NAVIGATION_ENTRY[$index].route is required")
+            if (routeId.isBlank() && action == null) {
+                throw IllegalArgumentException(
+                    "$TOOLPKG_REGISTRATION_NAVIGATION_ENTRY[$index].route or action is required"
+                )
             }
-            if (uiRoutes.none { it.routeId.equals(routeId, ignoreCase = true) }) {
+            if (routeId.isNotBlank() && uiRoutes.none { it.routeId.equals(routeId, ignoreCase = true) }) {
                 throw IllegalArgumentException(
                     "$TOOLPKG_REGISTRATION_NAVIGATION_ENTRY[$index].route not found: $routeId"
                 )
@@ -595,6 +619,7 @@ internal object ToolPkgArchiveParser {
                     routeId = routeId,
                     surface = surface,
                     title = entry.title,
+                    action = action,
                     icon = entry.icon,
                     order = entry.order
                 )

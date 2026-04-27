@@ -13,7 +13,7 @@ internal object ToolPkgMainRegistrationScriptParser {
         toolPkgId: String,
         mainScriptPath: String,
         jsEngine: JsEngine
-    ): ToolPkgMainRegistration? {
+    ): ToolPkgMainRegistrationParseResult {
         return try {
             val captured =
                 jsEngine.executeToolPkgMainRegistrationFunction(
@@ -92,34 +92,56 @@ internal object ToolPkgMainRegistrationScriptParser {
                     registrations = captured.aiProviders,
                     registryName = TOOLPKG_REGISTRATION_AI_PROVIDER
                 )
-            ToolPkgMainRegistration(
-                toolboxUiModules = uiModules,
-                uiRoutes = uiRoutes,
-                navigationEntries = navigationEntries,
-                appLifecycleHooks = appLifecycleHooks,
-                messageProcessingPlugins = messageProcessingPlugins,
-                xmlRenderPlugins = xmlRenderPlugins,
-                inputMenuTogglePlugins = inputMenuTogglePlugins,
-                toolLifecycleHooks = toolLifecycleHooks,
-                promptInputHooks = promptInputHooks,
-                promptHistoryHooks = promptHistoryHooks,
-                promptEstimateHistoryHooks = promptEstimateHistoryHooks,
-                systemPromptComposeHooks = systemPromptComposeHooks,
-                toolPromptComposeHooks = toolPromptComposeHooks,
-                promptFinalizeHooks = promptFinalizeHooks,
-                promptEstimateFinalizeHooks = promptEstimateFinalizeHooks,
-                aiProviders = aiProviders
+            ToolPkgMainRegistrationParseResult.Success(
+                registration =
+                    ToolPkgMainRegistration(
+                        toolboxUiModules = uiModules,
+                        uiRoutes = uiRoutes,
+                        navigationEntries = navigationEntries,
+                        appLifecycleHooks = appLifecycleHooks,
+                        messageProcessingPlugins = messageProcessingPlugins,
+                        xmlRenderPlugins = xmlRenderPlugins,
+                        inputMenuTogglePlugins = inputMenuTogglePlugins,
+                        toolLifecycleHooks = toolLifecycleHooks,
+                        promptInputHooks = promptInputHooks,
+                        promptHistoryHooks = promptHistoryHooks,
+                        promptEstimateHistoryHooks = promptEstimateHistoryHooks,
+                        systemPromptComposeHooks = systemPromptComposeHooks,
+                        toolPromptComposeHooks = toolPromptComposeHooks,
+                        promptFinalizeHooks = promptFinalizeHooks,
+                        promptEstimateFinalizeHooks = promptEstimateFinalizeHooks,
+                        aiProviders = aiProviders
+                    )
             )
         } catch (e: Exception) {
             AppLogger.e(TAG, "Failed to parse toolpkg main registration: $toolPkgId", e)
-            val message = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+            val message =
+                buildDeveloperFacingFailureMessage(
+                    mainScriptPath = mainScriptPath,
+                    error = e
+                )
             AppLogger.e(
                 "ToolPkg",
                 "PKG: main registration parse failed, toolPkgId=$toolPkgId, reason=$message",
                 e
             )
-            null
+            ToolPkgMainRegistrationParseResult.Failure(message)
         }
+    }
+
+    private fun buildDeveloperFacingFailureMessage(
+        mainScriptPath: String,
+        error: Exception
+    ): String {
+        val rawMessage = error.message?.trim().orEmpty()
+        val compactMessage =
+            rawMessage
+                .lineSequence()
+                .map { it.trim() }
+                .firstOrNull { it.isNotEmpty() }
+                ?: error.javaClass.simpleName
+
+        return "main script '$mainScriptPath' failed while loading or running registerToolPkg(): $compactMessage"
     }
 
     private fun parseRegisteredUiModules(
@@ -229,11 +251,14 @@ internal object ToolPkgMainRegistrationScriptParser {
                     item.optString("routeId").trim()
                 }
             val surface = item.optString("surface").trim().lowercase()
+            val action = parseNavigationEntryAction(item, index)
             if (id.isBlank()) {
                 throw IllegalArgumentException("$TOOLPKG_REGISTRATION_NAVIGATION_ENTRY[$index].id is required")
             }
-            if (routeId.isBlank()) {
-                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_NAVIGATION_ENTRY[$index].route is required")
+            if (routeId.isBlank() && action == null) {
+                throw IllegalArgumentException(
+                    "$TOOLPKG_REGISTRATION_NAVIGATION_ENTRY[$index].route or action is required"
+                )
             }
             if (surface.isBlank()) {
                 throw IllegalArgumentException("$TOOLPKG_REGISTRATION_NAVIGATION_ENTRY[$index].surface is required")
@@ -244,12 +269,42 @@ internal object ToolPkgMainRegistrationScriptParser {
                     routeId = routeId,
                     surface = surface,
                     title = parseLocalizedText(item.opt("title"), fallback = id),
+                    action = action,
                     icon = item.optString("icon").trim().ifBlank { null },
                     order = item.optInt("order", 0)
                 )
             )
         }
         return entries
+    }
+
+    private fun parseNavigationEntryAction(
+        item: JSONObject,
+        index: Int
+    ): ToolPkgNavigationActionHookRuntime? {
+        val directFunctionName = item.optString("action").trim()
+        val directFunctionSource = item.optString("function_source").trim().ifBlank { null }
+        if (directFunctionName.isNotBlank()) {
+            return ToolPkgNavigationActionHookRuntime(
+                function = directFunctionName,
+                functionSource = directFunctionSource
+            )
+        }
+
+        val actionObj =
+            item.optJSONObject("action")
+                ?: return null
+        val functionName = actionObj.optString("function").trim()
+        if (functionName.isBlank()) {
+            throw IllegalArgumentException(
+                "$TOOLPKG_REGISTRATION_NAVIGATION_ENTRY[$index].action function is required"
+            )
+        }
+
+        return ToolPkgNavigationActionHookRuntime(
+            function = functionName,
+            functionSource = actionObj.optString("function_source").trim().ifBlank { null }
+        )
     }
 
     private fun parseRegisteredAppLifecycleHooks(

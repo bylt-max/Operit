@@ -443,6 +443,32 @@ class AIForegroundService : Service() {
             startServiceForAction(context, ACTION_START_OR_REFRESH_EXTERNAL_HTTP)
         }
 
+        fun refreshBackgroundKeepAlive(context: Context) {
+            val appContext = context.applicationContext
+            val keepAliveEnabled = runCatching {
+                runBlocking {
+                    DisplayPreferencesManager.getInstance(appContext).enableBackgroundKeepAlive.first()
+                }
+            }.getOrDefault(false)
+            if (!keepAliveEnabled && !isRunning.get()) {
+                return
+            }
+            val intent = Intent(appContext, AIForegroundService::class.java).apply {
+                putExtra(EXTRA_STATE, STATE_IDLE)
+            }
+            try {
+                if (isRunning.get()) {
+                    appContext.startService(intent)
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    appContext.startForegroundService(intent)
+                } else {
+                    appContext.startService(intent)
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to refresh background keep alive: ${e.message}", e)
+            }
+        }
+
         fun stopExternalHttp(context: Context) {
             externalHttpStateFlow.value =
                 externalHttpStateFlow.value.copy(isRunning = false, lastError = null)
@@ -477,12 +503,17 @@ class AIForegroundService : Service() {
                     WakeWordPreferences(appContext).alwaysListeningEnabledFlow.first()
                 }
             }.getOrDefault(false)
+            val backgroundKeepAliveEnabled = runCatching {
+                runBlocking {
+                    DisplayPreferencesManager.getInstance(appContext).enableBackgroundKeepAlive.first()
+                }
+            }.getOrDefault(false)
             val externalHttpEnabled = runCatching {
                 ExternalHttpApiPreferences.getInstance(appContext).getConfigSync().let { config ->
                     config.enabled && ExternalHttpApiPreferences.isValidPort(config.port)
                 }
             }.getOrDefault(false)
-            return alwaysListeningEnabled || externalHttpEnabled
+            return alwaysListeningEnabled || backgroundKeepAliveEnabled || externalHttpEnabled
         }
     }
 
@@ -683,6 +714,8 @@ class AIForegroundService : Service() {
     @Volatile
     private var hideRuntimeTaskViewEnabled: Boolean = false
     @Volatile
+    private var backgroundKeepAliveEnabled: Boolean = false
+    @Volatile
     private var lastAppliedRuntimeTaskViewHidden: Boolean? = null
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -870,7 +903,7 @@ class AIForegroundService : Service() {
     private fun stopSelfIfIdle(ignoreAppForeground: Boolean = false) {
         val alwaysListeningEnabled = wakeListeningEnabled || isAlwaysListeningEnabledNow()
         val externalHttpEnabled = externalHttpStateFlow.value.isRunning || isExternalHttpEnabledNow()
-        if (isAiBusy || alwaysListeningEnabled || externalHttpEnabled) {
+        if (isAiBusy || alwaysListeningEnabled || backgroundKeepAliveEnabled || externalHttpEnabled) {
             return
         }
         if (!ignoreAppForeground && ActivityLifecycleManager.getCurrentActivity() != null) {
@@ -906,6 +939,7 @@ class AIForegroundService : Service() {
             )
         )
         observeRuntimeTaskViewPreference()
+        observeBackgroundKeepAlivePreference()
         observeChatRuntimeStats()
         startWakeMonitoring()
         startExternalHttpMonitoring()
@@ -924,6 +958,27 @@ class AIForegroundService : Service() {
                     }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "监听运行时任务视图隐藏设置失败: ${e.message}", e)
+            }
+        }
+    }
+
+    private fun observeBackgroundKeepAlivePreference() {
+        serviceScope.launch {
+            try {
+                DisplayPreferencesManager
+                    .getInstance(applicationContext)
+                    .enableBackgroundKeepAlive
+                    .collectLatest { enabled ->
+                        backgroundKeepAliveEnabled = enabled
+                        updateKeepAliveOverlayVisibility()
+                        if (enabled) {
+                            refreshServiceNotification()
+                        } else {
+                            stopSelfIfIdle(ignoreAppForeground = true)
+                        }
+                    }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "监听后台保活设置失败: ${e.message}", e)
             }
         }
     }
@@ -1200,6 +1255,7 @@ class AIForegroundService : Service() {
                     externalHttpStateFlow.value.isRunning || isExternalHttpEnabledNow()
                 if (!isAiBusy &&
                     !alwaysListeningEnabled &&
+                    !backgroundKeepAliveEnabled &&
                     !externalHttpEnabled
                 ) {
                     AppLogger.d(TAG, "服务进入空闲且无持久后台职责，停止前台服务并移除通知")
@@ -1341,11 +1397,7 @@ class AIForegroundService : Service() {
                     wakeListeningEnabled = enabled
                     AppLogger.d(TAG, "唤醒监听开关更新: enabled=$enabled")
 
-                    if (enabled) {
-                        showKeepAliveOverlayIfPossible()
-                    } else {
-                        hideKeepAliveOverlay()
-                    }
+                    updateKeepAliveOverlayVisibility()
 
                     if (enabled) {
                         startRecordingStateMonitoring()
@@ -1359,6 +1411,14 @@ class AIForegroundService : Service() {
                     manager.notify(NOTIFICATION_ID, createNotification())
                 }
             }
+    }
+
+    private fun updateKeepAliveOverlayVisibility() {
+        if (wakeListeningEnabled || backgroundKeepAliveEnabled) {
+            showKeepAliveOverlayIfPossible()
+        } else {
+            hideKeepAliveOverlay()
+        }
     }
 
     private fun stopWakeMonitoring() {

@@ -293,6 +293,7 @@ interface TabsPayload {
 const TOOL_NAMES = [
     "click",
     "close",
+    "close_all",
     "console_messages",
     "drag",
     "evaluate",
@@ -350,6 +351,11 @@ async function click(params: ClickPayload) {
 async function close() {
     const result = await Tools.Net.browserClose();
     return maybePersistLargeBrowserResponse(result, "close");
+}
+
+async function close_all() {
+    const result = await Tools.Net.browserCloseAll();
+    return maybePersistLargeBrowserResponse(result, "close_all");
 }
 
 async function console_messages(params: Partial<ConsoleMessagesPayload> = {}) {
@@ -481,6 +487,7 @@ async function browserMain() {
 
 exports.click = click;
 exports.close = close;
+exports.close_all = close_all;
 exports.console_messages = console_messages;
 exports.drag = drag;
 exports.evaluate = evaluate;

@@ -58,6 +58,7 @@ export interface ToolResultMap {
     'visit_web': VisitWebResultData;
     'browser_click': StringResultData;
     'browser_close': StringResultData;
+    'browser_close_all': StringResultData;
     'browser_console_messages': StringResultData;
     'browser_drag': StringResultData;
     'browser_evaluate': StringResultData;

@@ -127,7 +127,8 @@ data class SandboxPackagesResultData(
         val externalCount: Int,
         val enabledCount: Int,
         val disabledCount: Int,
-        val packages: List<SandboxPackageResultItem>
+        val packages: List<SandboxPackageResultItem>,
+        val packageLoadErrors: Map<String, String> = emptyMap()
 ) : ToolResultData() {
     override fun toString(): String {
         return "Sandbox packages: total=$totalCount, enabled=$enabledCount, builtIn=$builtInCount, external=$externalCount"

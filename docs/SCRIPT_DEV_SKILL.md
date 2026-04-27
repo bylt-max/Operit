@@ -145,7 +145,8 @@ description: 用于 Operit Sandbox Package 开发。
    - 如果目标就是模板注册，还应额外搜索 `workflow_templates`、`workspace_templates`、`project_type`
 8. 用 `read_file_part` 读取相关段落，确认脚本结构、元数据、manifest 和注册写法
 9. 用 `types/` 里的定义约束参数、返回值、可调用能力和结果结构
-10. 开始写包时，优先遵循最新本地 types 和本地 guide，不要依赖旧记忆
-11. 如果最终产物是普通 JS 包脚本，需要根据需求撰写 `main` 函数，并在交付前自行完成测试
+10. 如果对代码片段或接口行为不确定，先用 `operit_editor` 的 `debug_run_sandbox_script` 做最小片段验证，再并回正式脚本或 ToolPkg
+11. 开始写包时，优先遵循最新本地 types 和本地 guide，不要依赖旧记忆
+12. 如果最终产物是普通 JS 包脚本，需要根据需求撰写 `main` 函数，并在交付前自行完成测试
 
 如果写到一半发现本地类型和实际需求对不上，先不要硬猜，先重新运行安装脚本，再继续写。

@@ -2080,6 +2080,31 @@ type SandboxRefreshResult = {
   packageEntry: SandboxPackageEntry | null;
 };
 
+function collect_related_package_load_errors(
+  payload: SandboxPackagesPayload | null,
+  packageName: string,
+  ...relatedPaths: Array<string | null | undefined>
+): Record<string, string> {
+  const normalizedPackageName = normalize_package_key(packageName);
+  const normalizedPaths = relatedPaths.map((path) => String(path ?? "").trim()).filter(Boolean);
+  const packageLoadErrors = (payload as { packageLoadErrors?: Record<string, string> } | null)?.packageLoadErrors;
+  if (!packageLoadErrors || typeof packageLoadErrors !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(packageLoadErrors).filter(([key, value]) => {
+      const normalizedKey = normalize_package_key(key);
+      const message = String(value ?? "");
+      return (
+        normalizedKey === normalizedPackageName ||
+        message.toLowerCase().includes(normalizedPackageName) ||
+        normalizedPaths.some((path) => message.includes(path))
+      );
+    })
+  );
+}
+
 type JsPackageSourceInfo = {
   packageName: string;
   metadataBlock: string;
@@ -2477,89 +2502,6 @@ async function resolve_toolpkg_source(rawSourcePath: string): Promise<ToolPkgRes
   };
 }
 
-function collect_toolpkg_directory_entries(
-  rootFile: JavaBridgeInstance,
-  currentFile: JavaBridgeInstance,
-  entries: Array<{ file: JavaBridgeInstance; relativePath: string }> = []
-) {
-  const children = currentFile.listFiles();
-  const length = Number(children?.length ?? 0);
-
-  for (let index = 0; index < length; index += 1) {
-    const child = children[index] as JavaBridgeInstance;
-    const childName = String(child.getName?.() ?? child.name ?? "").trim();
-    if (!childName) {
-      continue;
-    }
-    if (child.isDirectory()) {
-      if (TOOLPKG_SKIP_DIR_NAMES.has(childName)) {
-        continue;
-      }
-      collect_toolpkg_directory_entries(rootFile, child, entries);
-      continue;
-    }
-    if (TOOLPKG_SKIP_FILE_NAMES.has(childName)) {
-      continue;
-    }
-
-    const rootPath = String(rootFile.getAbsolutePath()).replace(/\\/g, "/").replace(/\/+$/, "");
-    const childPath = String(child.getAbsolutePath()).replace(/\\/g, "/");
-    const relativePath = childPath.startsWith(`${rootPath}/`) ? childPath.slice(rootPath.length + 1) : childName;
-    entries.push({
-      file: child,
-      relativePath
-    });
-  }
-
-  return entries;
-}
-
-function create_toolpkg_archive_from_folder_contents(sourceFolderPath: string, destinationArchivePath: string) {
-  const File = Java.type("java.io.File");
-  const FileOutputStream = Java.type("java.io.FileOutputStream");
-  const BufferedOutputStream = Java.type("java.io.BufferedOutputStream");
-  const ZipOutputStream = Java.type("java.util.zip.ZipOutputStream");
-  const ZipEntry = Java.type("java.util.zip.ZipEntry");
-  const FileInputStream = Java.type("java.io.FileInputStream");
-  const Channels = Java.type("java.nio.channels.Channels");
-
-  const sourceRoot = new File(sourceFolderPath);
-  if (!sourceRoot.exists() || !sourceRoot.isDirectory()) {
-    throw new Error(`ToolPkg source folder does not exist or is not a directory: ${sourceFolderPath}`);
-  }
-
-  const destinationFile = new File(destinationArchivePath);
-  const parentDir = destinationFile.getParentFile();
-  if (parentDir && !parentDir.exists()) {
-    parentDir.mkdirs();
-  }
-  if (destinationFile.exists()) {
-    destinationFile.delete();
-  }
-
-  const entries = collect_toolpkg_directory_entries(sourceRoot, sourceRoot).sort((left, right) =>
-    left.relativePath.localeCompare(right.relativePath)
-  );
-
-  const zipStream = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(destinationFile)));
-  try {
-    for (const entry of entries) {
-      zipStream.putNextEntry(new ZipEntry(entry.relativePath));
-      const inputStream = new FileInputStream(entry.file);
-      try {
-        const sourceChannel = inputStream.getChannel();
-        const targetChannel = Channels.newChannel(zipStream);
-        sourceChannel.transferTo(0, sourceChannel.size(), targetChannel);
-      } finally {
-        inputStream.close();
-      }
-      zipStream.closeEntry();
-    }
-  } finally {
-    zipStream.close();
-  }
-}
-
 async function build_toolpkg_archive_from_folder(source: ToolPkgResolvedSource) {
   const tempBuildDir = path_join(
     OPERIT_CLEAN_ON_EXIT_DIR,
@@ -2567,7 +2509,7 @@ async function build_toolpkg_archive_from_folder(source: ToolPkgResolvedSource) 
   );
   await ensure_android_directory(tempBuildDir);
   const archivePath = path_join(tempBuildDir, `${safe_debug_file_stem(source.packageId, "toolpkg")}.toolpkg`);
-  create_toolpkg_archive_from_folder_contents(source.folderPath, archivePath);
+  await Tools.Files.zip(source.folderPath, archivePath, "android");
 
   if (!(await android_path_exists(archivePath))) {
     throw new Error(`Failed to create ToolPkg archive: ${archivePath}`);
@@ -2830,11 +2772,21 @@ async function debug_install_toolpkg(params?: {
     logStep(`Debug install broadcast dispatched -> ${extract_string_result(broadcastResult) || "<empty>"}`);
 
     const refresh = await refresh_sandbox_packages_until(resolvedSource.packageId, waitMs);
+    const relatedLoadErrors = collect_related_package_load_errors(
+      refresh.payload,
+      resolvedSource.packageId,
+      resolvedSource.sourcePath,
+      archivePath,
+      targetPath
+    );
     logStep(
       `Sandbox refresh completed -> found=${String(Boolean(refresh.packageEntry))}, builtIn=${String(
         refresh.packageEntry?.isBuiltIn ?? false
       )}`
     );
+    if (Object.keys(relatedLoadErrors).length > 0) {
+      logStep(`Related load errors -> ${JSON.stringify(relatedLoadErrors)}`);
+    }
     if (!refresh.packageEntry) {
       finalPayload = {
         success: false,
@@ -2844,7 +2796,8 @@ async function debug_install_toolpkg(params?: {
           source_path: resolvedSource.sourcePath,
           archive_path: targetPath,
           broadcast_result: broadcastResult,
-          refresh_result: refresh.payload
+          refresh_result: refresh.payload,
+          related_load_errors: relatedLoadErrors
         }
       };
       return;
@@ -2856,7 +2809,8 @@ async function debug_install_toolpkg(params?: {
         data: {
           package: refresh.packageEntry,
           broadcast_result: broadcastResult,
-          refresh_result: refresh.payload
+          refresh_result: refresh.payload,
+          related_load_errors: relatedLoadErrors
         }
       };
       return;
@@ -2913,7 +2867,8 @@ async function debug_install_toolpkg(params?: {
         subpackage_results: subpackageResults,
         package: refresh.packageEntry,
         broadcast_result: broadcastResult,
-        refresh_result: refresh.payload
+        refresh_result: refresh.payload,
+        related_load_errors: relatedLoadErrors
       }
     };
   } catch (error: unknown) {

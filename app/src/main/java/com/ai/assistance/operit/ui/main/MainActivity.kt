@@ -36,9 +36,6 @@ import androidx.lifecycle.lifecycleScope
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.AIForegroundService
 import com.ai.assistance.operit.core.tools.AIToolHandler
-import com.ai.assistance.operit.core.tools.defaultTool.ToolGetter
-import com.ai.assistance.operit.data.model.AITool
-import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.preferences.AgreementPreferences
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.preferences.androidPermissionPreferences
@@ -66,7 +63,6 @@ import androidx.compose.ui.res.stringResource
 class MainActivity : ComponentActivity() {
     companion object {
         const val ACTION_OPEN_SETTINGS_SHORTCUT = "com.ai.assistance.operit.action.OPEN_SETTINGS_SHORTCUT"
-        const val ACTION_OPEN_BROWSER_SHORTCUT = "com.ai.assistance.operit.action.OPEN_BROWSER_SHORTCUT"
     }
 
     private val TAG = "MainActivity"
@@ -268,22 +264,6 @@ class MainActivity : ComponentActivity() {
             pendingShortcutNavItem = NavItem.Settings
             pendingShortcutRequestId = System.currentTimeMillis()
             AppLogger.d(TAG, "Shortcut requested opening settings")
-            return true
-        }
-
-        if (intent?.action == ACTION_OPEN_BROWSER_SHORTCUT) {
-            AppLogger.d(TAG, "Shortcut requested opening browser")
-            val result =
-                ToolGetter.getBrowserSessionTools(applicationContext).invoke(
-                    AITool(
-                        name = "browser_navigate",
-                        parameters = listOf(ToolParameter(name = "url", value = "about:blank"))
-                    )
-                )
-            if (!result.success) {
-                AppLogger.w(TAG, "Failed to open browser shortcut: ${result.error ?: result.result.toString()}")
-                Toast.makeText(this, getString(R.string.web_session_shortcut_open_failed), Toast.LENGTH_SHORT).show()
-            }
             return true
         }
         

@@ -6801,6 +6801,8 @@ Sekarang Anda dapat menggunakan mode AutoGLM di antarmuka percakapan.</string>
     <string name="mcp_config_invalid_missing_server_entry">Tidak valid: Tidak ada mcpServers.%1$s</string>
     <string name="mcp_config_invalid_missing_command">Tidak valid: Tidak ada command</string>
     <string name="web_session_accessibility_web_content">Konten Web</string>
+    <string name="web_session_render_process_crashed">Proses render halaman web saat ini mengalami crash. Tab ini telah ditutup.</string>
+    <string name="web_session_render_process_gone">Proses render halaman web saat ini telah direklamasi oleh sistem. Tab ini telah ditutup.</string>
 
     <string name="sidebar_permission_short">Izin</string>
     <string name="sidebar_status_normal">Normal</string>
@@ -6892,4 +6894,16 @@ Sekarang Anda dapat menggunakan mode AutoGLM di antarmuka percakapan.</string>
     <string name="web_session_shortcut_label">Peramban</string>
     <string name="web_session_shortcut_long_label">Mulai peramban dengan cepat</string>
     <string name="web_session_shortcut_open_failed">Gagal memulai pintasan peramban</string>
+
+    <string name="quick_plugin_creator_setup_failed">Pembuatan Skill plugin gagal dipasang atau diperbarui</string>
+    <string name="pkg_toolpkg_workflow_templates">Jumlah template alur kerja: %1$d</string>
+    <string name="pkg_toolpkg_workspace_templates">Jumlah template ruang kerja: %1$d</string>
+    <string name="pkg_toolpkg_registered_workflow_templates">Template alur kerja</string>
+    <string name="pkg_toolpkg_registered_workspace_templates">Template ruang kerja</string>
+    <string name="workspace_template_importing">Sedang mengimpor template plugin...</string>
+    <string name="workspace_project_type_toolpkg_section">Template ruang kerja plugin</string>
+    <string name="workspace_template_import_failed">Gagal mengimpor template ruang kerja plugin</string>
+    <string name="workflow_template_toolpkg_section">Template plugin</string>
+    <string name="enable_background_keep_alive">Tetap aktif di latar belakang</string>
+    <string name="enable_background_keep_alive_description">Setelah diaktifkan, notifikasi latar depan tetap dipertahankan, dan layanan latar depan tidak otomatis ditutup saat AI idle, cocok untuk skenario yang memerlukan pemantauan latar belakang jangka panjang.</string>
 </resources>

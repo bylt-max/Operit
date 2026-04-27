@@ -4891,6 +4891,8 @@
     <string name="enable_reply_notification_sound_description">Play a sound when a reply notification is triggered</string>
     <string name="enable_reply_notification_vibration">Reply Notification Vibration</string>
     <string name="enable_reply_notification_vibration_description">Vibrate when a reply notification is triggered</string>
+    <string name="enable_background_keep_alive">Background keep-alive</string>
+    <string name="enable_background_keep_alive_description">Keep the foreground notification active after enabling it, and do not automatically stop the foreground service when AI becomes idle.</string>
     <string name="keep_screen_on">Keep Screen On</string>
     <string name="keep_screen_on_description">Keep screen awake to prevent auto-lock during conversations</string>
     <string name="enable_navigation_animation">New Navigation Animation</string>
@@ -7157,6 +7159,8 @@
     <string name="web_session_accessibility_minimize_panel">Minimize web sessions panel</string>
     <string name="web_session_accessibility_close_current_session">Close current web session</string>
     <string name="web_session_accessibility_minimized_indicator">Web sessions panel minimized, double tap to expand</string>
+    <string name="web_session_render_process_crashed">The current web page render process crashed. This tab has been closed.</string>
+    <string name="web_session_render_process_gone">The current web page render process was reclaimed by the system. This tab has been closed.</string>
     <string name="web_session_back">Back</string>
     <string name="web_session_forward">Forward</string>
     <string name="web_session_refresh">Refresh</string>
@@ -7275,10 +7279,6 @@
     <string name="web_session_userscript_notification_channel">Userscript Notifications</string>
     <string name="web_session_userscript_notification_denied">Notification permission is not granted, so userscript notifications cannot be shown</string>
     <string name="web_session_userscript_download_failed">Userscript download failed</string>
-    <string name="web_session_shortcut_label">Browser</string>
-    <string name="web_session_shortcut_long_label">Quick launch browser</string>
-    <string name="web_session_shortcut_open_failed">Failed to launch browser shortcut</string>
-
     <string name="tool_windows_control_one_click">Windows One-Click Setup</string>
     <string name="tool_windows_control_one_click_desc">Export the PC agent package, configure HTTP agent environment variables, and enable windows_control in one flow</string>
     <string name="screen_title_windows_control_one_click">Windows One-Click Setup</string>
@@ -7505,4 +7505,14 @@
     <string name="quick_plugin_creator_requirement_empty">Please enter the plugin requirements first</string>
     <string name="mcp_plugin_comment_view_thread">View thread</string>
     <string name="mcp_plugin_user_comments">User comments</string>
+
+    <string name="quick_plugin_creator_setup_failed">Failed to install or update the Skill for package creation</string>
+    <string name="pkg_toolpkg_workflow_templates">Workflow templates: %1$d</string>
+    <string name="pkg_toolpkg_workspace_templates">Workspace templates: %1$d</string>
+    <string name="pkg_toolpkg_registered_workflow_templates">Workflow templates</string>
+    <string name="pkg_toolpkg_registered_workspace_templates">Workspace templates</string>
+    <string name="workspace_template_importing">Importing plugin template...</string>
+    <string name="workspace_project_type_toolpkg_section">Plugin workspace templates</string>
+    <string name="workspace_template_import_failed">Failed to import plugin workspace template</string>
+    <string name="workflow_template_toolpkg_section">Plugin templates</string>
 </resources>

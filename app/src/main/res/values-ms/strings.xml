@@ -6537,6 +6537,8 @@ Kini anda boleh menggunakan mod AutoGLM di antara muka perbualan.</string>
     <string name="web_session_accessibility_minimize_panel">Minimakan panel sesi web</string>
     <string name="web_session_accessibility_close_current_session">Tutup sesi web semasa</string>
     <string name="web_session_accessibility_minimized_indicator">Panel sesi web diminimakan, klik dua kali untuk kembangkan</string>
+    <string name="web_session_render_process_crashed">Proses pemaparan halaman web semasa telah terhenti. Tab ini telah ditutup.</string>
+    <string name="web_session_render_process_gone">Proses pemaparan halaman web semasa telah ditebus guna oleh sistem. Tab ini telah ditutup.</string>
     <string name="web_session_back">Kembali</string>
     <string name="web_session_forward">Maju</string>
     <string name="web_session_refresh">Muat semula</string>
@@ -6890,4 +6892,16 @@ Kini anda boleh menggunakan mod AutoGLM di antara muka perbualan.</string>
     <string name="web_session_shortcut_label">Pelayar</string>
     <string name="web_session_shortcut_long_label">Lancarkan pelayar dengan pantas</string>
     <string name="web_session_shortcut_open_failed">Gagal melancarkan pelayar dengan pantas</string>
+
+    <string name="quick_plugin_creator_setup_failed">Pemasangan atau kemas kini Skill penciptaan pakej gagal</string>
+    <string name="pkg_toolpkg_workflow_templates">Bilangan templat aliran kerja: %1$d</string>
+    <string name="pkg_toolpkg_workspace_templates">Bilangan templat ruang kerja: %1$d</string>
+    <string name="pkg_toolpkg_registered_workflow_templates">Templat aliran kerja</string>
+    <string name="pkg_toolpkg_registered_workspace_templates">Templat ruang kerja</string>
+    <string name="workspace_template_importing">Sedang mengimport templat pemalam...</string>
+    <string name="workspace_project_type_toolpkg_section">Templat ruang kerja pemalam</string>
+    <string name="workspace_template_import_failed">Import templat ruang kerja pemalam gagal</string>
+    <string name="workflow_template_toolpkg_section">Templat pemalam</string>
+    <string name="enable_background_keep_alive">Kekal hidup latar belakang</string>
+    <string name="enable_background_keep_alive_description">Apabila diaktifkan, pemberitahuan latar depan dikekalkan, dan perkhidmatan latar depan tidak ditutup secara automatik apabila AI menjadi idle, sesuai untuk senario yang memerlukan kediaman latar belakang jangka panjang.</string>
 </resources>

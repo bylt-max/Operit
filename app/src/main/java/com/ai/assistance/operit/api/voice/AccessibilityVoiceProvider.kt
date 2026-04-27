@@ -336,13 +336,21 @@ class SimpleVoiceProvider(
                                     "speak request flushing existing queue size=${queuedUtterances.size}"
                                 )
                                 queuedUtterances.clear()
+                                pausedSegments = emptyList()
+                                isPausedInternally = false
                                 currentUtteranceId = null
                                 currentUtteranceText = ""
                                 currentUtteranceRangeStart = 0
                             }
 
-                            pausedSegments = emptyList()
-                            isPausedInternally = false
+                            if (isPausedInternally && !interrupt) {
+                                pausedSegments = pausedSegments + text
+                                logQueueState(
+                                    event = "speak.bufferedWhilePaused",
+                                    extra = "len=${text.length} preview=\"${speechPreview(text)}\""
+                                )
+                                return@synchronized true
+                            }
 
                             val entry =
                                 PendingUtterance(
@@ -449,6 +457,10 @@ class SimpleVoiceProvider(
 
                 val result = textToSpeech.stop() == TextToSpeech.SUCCESS
                 synchronized(queueLock) {
+                    if (!result) {
+                        isPausedInternally = false
+                        pausedSegments = emptyList()
+                    }
                     _isSpeaking.value = false
                     logQueueState(
                         "pause.done",

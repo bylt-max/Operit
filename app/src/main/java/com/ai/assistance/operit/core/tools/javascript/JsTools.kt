@@ -246,6 +246,12 @@ fun getJsToolsDefinition(): String {
                     }
                     return toolCall("browser_close", options || {});
                 },
+                browserCloseAll: (options) => {
+                    if (options !== undefined && (typeof options !== 'object' || Array.isArray(options))) {
+                        throw new Error("browserCloseAll only accepts one options object");
+                    }
+                    return toolCall("browser_close_all", options || {});
+                },
                 browserConsoleMessages: (options) => {
                     if (options !== undefined && (typeof options !== 'object' || Array.isArray(options))) {
                         throw new Error("browserConsoleMessages only accepts one options object");

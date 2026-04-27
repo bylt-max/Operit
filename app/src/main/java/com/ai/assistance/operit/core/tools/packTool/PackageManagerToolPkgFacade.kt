@@ -129,6 +129,13 @@ internal class PackageManagerToolPkgFacade(
                     surface = entry.surface,
                     title = entry.title.resolve(localizationContext).trim().ifBlank { entry.id },
                     description = containerDescription,
+                    action =
+                        entry.action?.let { action ->
+                            PackageManager.ToolPkgNavigationActionHook(
+                                functionName = action.function,
+                                functionSource = action.functionSource
+                            )
+                        },
                     icon = entry.icon,
                     order = entry.order
                 )
@@ -916,6 +923,26 @@ internal class PackageManagerToolPkgFacade(
                 error
             )
         }
+    }
+
+    fun runToolPkgNavigationEntryAction(
+        containerPackageName: String,
+        entryId: String,
+        functionName: String,
+        inlineFunctionSource: String? = null,
+        eventPayload: Map<String, Any?> = emptyMap(),
+        onIntermediateResult: ((Any?) -> Unit)? = null
+    ): Result<Any?> {
+        return runToolPkgMainHook(
+            containerPackageName = containerPackageName,
+            functionName = functionName,
+            event = TOOLPKG_EVENT_NAVIGATION_ENTRY_ACTION,
+            eventName = "navigation_entry_action",
+            pluginId = entryId,
+            inlineFunctionSource = inlineFunctionSource,
+            eventPayload = eventPayload,
+            onIntermediateResult = onIntermediateResult
+        )
     }
 
     private fun resolveToolPkgExecutionContextKey(

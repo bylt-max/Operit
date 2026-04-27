@@ -289,6 +289,16 @@ internal fun buildToolPkgRegistrationBridgeScript(): String {
                 requireNative(nativeMethod)(JSON.stringify(normalized));
             }
 
+            function normalizeNavigationEntryDefinition(definition, label) {
+                if (!definition || typeof definition !== 'object' || Array.isArray(definition)) {
+                    throw new Error(label + ' expects an object');
+                }
+                if (typeof definition.action === 'function') {
+                    return normalizeFunctionField(definition, 'action', label);
+                }
+                return copyObject(definition, '');
+            }
+
             function resolveCurrentToolPkgTarget() {
                 var callId = String(root.__operitCurrentCallId || '').trim();
                 var callState =
@@ -357,8 +367,12 @@ internal fun buildToolPkgRegistrationBridgeScript(): String {
                     );
                 },
                 registerNavigationEntry: function(definition) {
+                    var normalized = normalizeNavigationEntryDefinition(
+                        definition,
+                        'registerToolPkgNavigationEntry'
+                    );
                     requireNative('registerToolPkgNavigationEntry')(
-                        JSON.stringify(definition || {})
+                        JSON.stringify(normalized)
                     );
                 },
                 readResource: readToolPkgResource

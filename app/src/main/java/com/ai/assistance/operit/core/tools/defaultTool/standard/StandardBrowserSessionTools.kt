@@ -16,7 +16,9 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.os.SystemClock
 import android.util.Base64
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -164,6 +166,8 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
         @Volatile var viewportHeightPx: Int? = null
         @Volatile var appliedViewportScaleFactor: Float = 1f
         @Volatile var lastSnapshot: BrowserSnapshot? = null
+        val stateSignal: Object = Object()
+        @Volatile var stateVersion: Long = 0L
         val consoleEntries: MutableList<BrowserConsoleEntry> = mutableListOf()
         val networkEntries: MutableList<BrowserNetworkRequestEntry> = mutableListOf()
     }
@@ -175,7 +179,8 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
         val waitForText: String? = null,
         val waitForTextGone: String? = null,
         val waitForTimeSeconds: Double? = null,
-        val allowActivePageSwitch: Boolean = true
+        val allowActivePageSwitch: Boolean = true,
+        val captureSnapshot: Boolean = true
     )
 
     internal data class BrowserActionMarkers(
@@ -190,7 +195,7 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
     internal data class BrowserActionSettlement(
         val registry: BrowserPageRegistry,
         val session: WebSession,
-        val snapshot: BrowserSnapshot,
+        val snapshot: BrowserSnapshot?,
         val consoleMarker: Long,
         val downloadMarker: Long,
         val timedOut: Boolean = false
@@ -201,6 +206,7 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
             when (tool.name) {
                 "browser_click" -> browserClick(tool)
                 "browser_close" -> browserClose(tool)
+                "browser_close_all" -> browserCloseAll(tool)
                 "browser_console_messages" -> browserConsoleMessages(tool)
                 "browser_drag" -> browserDrag(tool)
                 "browser_evaluate" -> browserEvaluate(tool)
@@ -253,7 +259,8 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
                     BrowserActionSettlementPolicy(
                         timeoutMs = DEFAULT_TIMEOUT_MS.coerceAtLeast(6_000L),
                         waitForDocumentReady = true,
-                        waitForNavigationChange = true
+                        waitForNavigationChange = true,
+                        captureSnapshot = false
                     )
             )
 
@@ -309,8 +316,20 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
                 ref != null -> buildClickCode(session, ref, button, doubleClick, modifiers)
                 else -> buildClickCodeForSelector(selector!!, button, doubleClick, modifiers)
             }
+        val useNativeTap =
+            ref != null &&
+                button == "left" &&
+                !doubleClick &&
+                modifiers.isEmpty()
         val jsResult =
             when {
+                useNativeTap && dispatchNativeTapByRef(session.webView, ref!!) == true ->
+                    JSONObject()
+                        .put("ok", true)
+                        .put("ref", ref)
+                        .put("button", button)
+                        .put("doubleClick", false)
+                        .put("activationMethod", "native_webview_tap")
                 ref != null ->
                     dispatchClickByRef(
                         webView = session.webView,
@@ -376,6 +395,46 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
                     }
             )
         )
+    }
+
+    private fun dispatchNativeTapByRef(webView: WebView, ref: String): Boolean {
+        val rect = resolveElementRect(webView, ref) ?: return false
+        val x = ((rect.left + rect.right) / 2f).coerceIn(1f, (webView.width - 1).coerceAtLeast(1).toFloat())
+        val y = ((rect.top + rect.bottom) / 2f).coerceIn(1f, (webView.height - 1).coerceAtLeast(1).toFloat())
+        return runOnMainSync {
+            try {
+                webView.requestFocus()
+                val downTime = SystemClock.uptimeMillis()
+                val down =
+                    MotionEvent.obtain(
+                        downTime,
+                        downTime,
+                        MotionEvent.ACTION_DOWN,
+                        x,
+                        y,
+                        0
+                    )
+                val up =
+                    MotionEvent.obtain(
+                        downTime,
+                        downTime + 16L,
+                        MotionEvent.ACTION_UP,
+                        x,
+                        y,
+                        0
+                    )
+                try {
+                    val downHandled = webView.dispatchTouchEvent(down)
+                    val upHandled = webView.dispatchTouchEvent(up)
+                    downHandled || upHandled
+                } finally {
+                    down.recycle()
+                    up.recycle()
+                }
+            } catch (_: Throwable) {
+                false
+            }
+        }
     }
 
     private fun buildClickCodeForSelector(
@@ -519,13 +578,7 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
             })();
             """.trimIndent()
 
-        return try {
-            val raw = evaluateJavascriptSync(webView, script, DEFAULT_TIMEOUT_MS.coerceIn(2_000L, 8_000L))
-            val decoded = decodeJsResult(raw)
-            JSONObject(decoded)
-        } catch (e: Exception) {
-            JSONObject().put("ok", false).put("error", e.message ?: "click_dispatch_error")
-        }
+        return runJsonScript(webView, script, "click_dispatch_error")
     }
 
     private fun dispatchHoverByRef(webView: WebView, ref: String): JSONObject? {
@@ -744,9 +797,13 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
 
     internal fun runJsonScript(webView: WebView, script: String, fallbackError: String): JSONObject? {
         return try {
-            val raw = evaluateJavascriptSync(webView, script, DEFAULT_TIMEOUT_MS.coerceIn(2_000L, 8_000L))
-            val decoded = decodeJsResult(raw)
-            JSONObject(decoded)
+            val payload =
+                evaluateJavascriptAsync(
+                    webView,
+                    script,
+                    DEFAULT_TIMEOUT_MS.coerceIn(2_000L, 8_000L)
+                )
+            JSONObject(extractAsyncJsValue(payload))
         } catch (e: Exception) {
             JSONObject().put("ok", false).put("error", e.message ?: fallbackError)
         }
@@ -782,13 +839,13 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
 
     internal fun readCurrentUrl(webView: WebView, fallback: String): String {
         return runCatching {
-            val raw =
-                evaluateJavascriptSync(
+            extractAsyncJsValue(
+                evaluateJavascriptAsync(
                     webView,
                     "(function(){ return String(location.href || ''); })();",
                     2_000L
                 )
-            decodeJsResult(raw)
+            )
         }.getOrDefault(fallback)
     }
 
@@ -840,12 +897,14 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
                     if (shouldCancel) {
                         callback.onReceiveValue(null)
                         session.pendingFileChooserCallback = null
+                        notifySessionStateChanged(session)
                         resolvedCode = "await fileChooser.cancel();"
                         resolvedResult = "Cancelled the active file chooser."
                     } else {
                         val uris = files.map { Uri.fromFile(it) }.toTypedArray()
                         callback.onReceiveValue(uris)
                         session.pendingFileChooserCallback = null
+                        notifySessionStateChanged(session)
                         resolvedCode =
                             "await fileChooser.setFiles(${renderJsArrayCode(files.map { it.absolutePath })});"
                         resolvedResult =
@@ -997,7 +1056,8 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
                     BrowserActionSettlementPolicy(
                         timeoutMs = DEFAULT_TIMEOUT_MS.coerceAtLeast(4_000L),
                         waitForDocumentReady = true,
-                        waitForNavigationChange = couldGoBack
+                        waitForNavigationChange = couldGoBack,
+                        captureSnapshot = false
                     )
             )
 
@@ -1214,20 +1274,11 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
         val markers = captureActionMarkers(session)
 
         runOnMainSync<Unit> {
-            if (pending.jsPromptResult != null) {
-                if (accept) {
-                    pending.jsPromptResult.confirm(promptText ?: pending.defaultValue.orEmpty())
-                } else {
-                    pending.jsPromptResult.cancel()
-                }
-            } else if (pending.jsResult != null) {
-                if (accept) {
-                    pending.jsResult.confirm()
-                } else {
-                    pending.jsResult.cancel()
-                }
-            }
-            session.pendingDialog = null
+            resolvePendingDialogOnMain(
+                session = session,
+                accept = accept,
+                promptText = promptText
+            )
         }
         val settlement =
             settleBrowserAction(
@@ -1626,6 +1677,26 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
         )
     }
 
+    private fun browserCloseAll(tool: AITool): ToolResult {
+        val ids = orderedSessionIds()
+        if (ids.isEmpty()) {
+            return ok(tool.name, buildBrowserResponse(openTabs = "No open tabs.", result = "No browser tabs were open."))
+        }
+
+        ids.forEach { sessionId ->
+            closeSession(sessionId)
+        }
+
+        return ok(
+            tool.name,
+            buildBrowserResponse(
+                openTabs = "No open tabs.",
+                pageState = "No active page.",
+                result = "Closed all browser tabs."
+            )
+        )
+    }
+
     private fun determineExtensionFromMimeType(mimeType: String): String =
         when {
             mimeType.lowercase(Locale.ROOT).startsWith("image/") -> ".${mimeType.lowercase(Locale.ROOT).substringAfter('/')}"
@@ -1641,50 +1712,6 @@ class StandardBrowserSessionTools(internal val context: Context) : ToolExecutor 
             mimeType.lowercase(Locale.ROOT).contains("plain") -> ".txt"
             else -> ".bin"
         }
-
-    internal fun evaluateJavascriptSync(webView: WebView, script: String, timeoutMs: Long): String {
-        val latch = CountDownLatch(1)
-        var result: String? = null
-
-        mainHandler.post {
-            try {
-                if (!webView.isAttachedToWindow) {
-                    result = JSONObject.quote("WebView is not attached")
-                    latch.countDown()
-                    return@post
-                }
-                webView.evaluateJavascript(script) { value ->
-                    result = value
-                    latch.countDown()
-                }
-            } catch (e: Exception) {
-                result = JSONObject.quote("JavaScript evaluation error: ${e.message}")
-                latch.countDown()
-            }
-        }
-
-        if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) {
-            throw RuntimeException("JavaScript execution timeout (${timeoutMs}ms)")
-        }
-
-        return result ?: "null"
-    }
-
-    internal fun decodeJsResult(raw: String?): String {
-        if (raw.isNullOrBlank() || raw == "null") {
-            return ""
-        }
-
-        if (raw.startsWith("\"") && raw.endsWith("\"")) {
-            return try {
-                JSONObject("{\"v\":$raw}").getString("v")
-            } catch (_: Exception) {
-                raw.substring(1, raw.length - 1)
-            }
-        }
-
-        return raw
-    }
 
     private fun quoteJs(value: String): String = JSONObject.quote(value)
 

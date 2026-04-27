@@ -242,6 +242,9 @@ fun WorkspaceManager(
     var lastLoadedCommandPreviewUrl by remember(workspacePath, workspaceEnv, workspaceConfig.preview.url) {
         mutableStateOf<String?>(null)
     }
+    var lastHandledWebViewRefreshCounter by remember(workspacePath, workspaceEnv) {
+        mutableIntStateOf(webViewRefreshCounter)
+    }
     var canCommandPreviewGoBack by remember { mutableStateOf(false) }
     var canCommandPreviewGoForward by remember { mutableStateOf(false) }
     val commandPreviewUrl = workspaceConfig.preview.url
@@ -344,13 +347,25 @@ fun WorkspaceManager(
     }
 
     // 监听WebView刷新计数器变化并触发刷新
-    LaunchedEffect(webViewRefreshCounter) {
-        if (webViewRefreshCounter > 0) {
-            AppLogger.d("WorkspaceManager", "WebView refresh triggered, counter: $webViewRefreshCounter")
-            // 确保webView已经加载完成后再刷新
-            kotlinx.coroutines.delay(100) // 短暂延迟确保webView准备就绪
-            workspaceWebView?.reload()
-            commandPreviewWebView?.reload()
+    LaunchedEffect(
+        webViewRefreshCounter,
+        isBrowserPreviewVisible,
+        isCommandPreviewVisible,
+        workspaceWebView,
+        commandPreviewWebView
+    ) {
+        if (webViewRefreshCounter <= lastHandledWebViewRefreshCounter) {
+            return@LaunchedEffect
+        }
+
+        lastHandledWebViewRefreshCounter = webViewRefreshCounter
+        AppLogger.d("WorkspaceManager", "WebView refresh triggered, counter: $webViewRefreshCounter")
+
+        // 仅处理新的刷新事件，避免重新进入页面时把旧计数误判成一次刷新。
+        kotlinx.coroutines.delay(100)
+        when {
+            isBrowserPreviewVisible -> workspaceWebView?.reload()
+            isCommandPreviewVisible -> commandPreviewWebView?.reload()
         }
     }
 
@@ -394,6 +409,41 @@ fun WorkspaceManager(
                 }
             }
             openFiles = updatedFiles
+        }
+    }
+
+    LaunchedEffect(
+        isVisible,
+        isSafEnv,
+        workspacePath,
+        workspaceEnv,
+        workspaceConfig.preview.type,
+        currentFileIndex,
+        workspaceWebView
+    ) {
+        if (!isVisible || isSafEnv) {
+            return@LaunchedEffect
+        }
+
+        WorkspacePreviewRefreshBus.events.collect { event ->
+            val isSameWorkspace = event.workspacePath == workspacePath
+            val isSameEnvironment =
+                event.workspaceEnv?.trim().orEmpty().equals(
+                    workspaceEnv?.trim().orEmpty(),
+                    ignoreCase = true
+                )
+            val shouldRefreshBrowserPreview =
+                currentFileIndex == -1 && workspaceConfig.preview.type == "browser"
+
+            if (!isSameWorkspace || !isSameEnvironment || !shouldRefreshBrowserPreview) {
+                return@collect
+            }
+
+            AppLogger.d(
+                "WorkspaceManager",
+                "Workspace preview refresh requested by ${event.source}: ${event.affectedPaths.joinToString()}"
+            )
+            workspaceWebView?.reload()
         }
     }
     

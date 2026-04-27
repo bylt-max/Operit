@@ -27,6 +27,12 @@ enum class NavigationEntryKind {
     PLUGIN
 }
 
+@Immutable
+data class NavigationEntryActionSpec(
+    val functionName: String,
+    val functionSource: String? = null
+)
+
 enum class RouteEntrySource {
     DEFAULT,
     DRAWER,
@@ -62,6 +68,7 @@ data class NavigationEntrySpec(
     val icon: ImageVector,
     val order: Int = 0,
     val routeArgs: Map<String, Any?> = emptyMap(),
+    val action: NavigationEntryActionSpec? = null,
     val kind: NavigationEntryKind = NavigationEntryKind.HOST,
     val ownerPackageName: String? = null
 )

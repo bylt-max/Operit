@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.api.chat.AIForegroundService
 import com.ai.assistance.operit.core.tools.system.AndroidPermissionLevel
 import com.ai.assistance.operit.data.preferences.AndroidPermissionPreferences
 import com.ai.assistance.operit.data.preferences.ApiPreferences
@@ -61,13 +62,14 @@ fun GlobalDisplaySettingsScreen(
     val enableEnterToSend by displayPreferencesManager.enableEnterToSend.collectAsState(initial = false)
     val enableNewSidebar by displayPreferencesManager.enableNewSidebar.collectAsState(initial = true)
     val enableNavigationAnimation by displayPreferencesManager.enableNavigationAnimation.collectAsState(initial = true)
+    val enableBackgroundKeepAlive by displayPreferencesManager.enableBackgroundKeepAlive.collectAsState(initial = false)
     val enableExperimentalVirtualDisplay by displayPreferencesManager.enableExperimentalVirtualDisplay.collectAsState(initial = true)
     val hideRuntimeTaskView by displayPreferencesManager.hideRuntimeTaskView.collectAsState(initial = false)
     val globalUserName by displayPreferencesManager.globalUserName.collectAsState(initial = null)
     val globalUserAvatarUri by displayPreferencesManager.globalUserAvatarUri.collectAsState(initial = null)
-    val screenshotFormat by displayPreferencesManager.screenshotFormat.collectAsState(initial = "PNG")
-    val screenshotQuality by displayPreferencesManager.screenshotQuality.collectAsState(initial = 90)
-    val screenshotScalePercent by displayPreferencesManager.screenshotScalePercent.collectAsState(initial = 100)
+    val screenshotFormat by displayPreferencesManager.screenshotFormat.collectAsState(initial = "JPG")
+    val screenshotQuality by displayPreferencesManager.screenshotQuality.collectAsState(initial = 75)
+    val screenshotScalePercent by displayPreferencesManager.screenshotScalePercent.collectAsState(initial = 75)
     val visitWebWaitSeconds by displayPreferencesManager.visitWebWaitSeconds.collectAsState(initial = 0)
     val virtualDisplayBitrateKbps by displayPreferencesManager.virtualDisplayBitrateKbps.collectAsState(initial = 3000)
     val keepScreenOn by apiPreferences.keepScreenOnFlow.collectAsState(initial = true)
@@ -604,6 +606,21 @@ fun GlobalDisplaySettingsScreen(
                 onCheckedChange = {
                     scope.launch {
                         userPreferences.saveUiAccessibilityMode(it)
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
+            DisplayToggleItem(
+                title = stringResource(R.string.enable_background_keep_alive),
+                subtitle = stringResource(R.string.enable_background_keep_alive_description),
+                checked = enableBackgroundKeepAlive,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(
+                            enableBackgroundKeepAlive = it
+                        )
+                        AIForegroundService.refreshBackgroundKeepAlive(context)
                     }
                 },
                 backgroundColor = componentBackgroundColor

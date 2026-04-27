@@ -44,6 +44,13 @@ object AppRouteCatalog {
                     description = entry.description,
                     icon = resolveIcon(entry.icon),
                     order = entry.order,
+                    action =
+                        entry.action?.let { action ->
+                            NavigationEntryActionSpec(
+                                functionName = action.functionName,
+                                functionSource = action.functionSource
+                            )
+                        },
                     kind = NavigationEntryKind.PLUGIN,
                     ownerPackageName = entry.containerPackageName
                 )

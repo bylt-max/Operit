@@ -349,7 +349,7 @@ private fun UnifiedMarketDetailStickyTabs(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f)
+        color = Color.Transparent
     ) {
         Box(
             modifier = Modifier.fillMaxWidth(),

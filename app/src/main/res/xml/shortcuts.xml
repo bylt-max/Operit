@@ -22,15 +22,4 @@
             android:targetPackage="com.ai.assistance.operit"
             android:targetClass="com.ai.assistance.operit.ui.main.MainActivity" />
     </shortcut>
-    <shortcut
-        android:shortcutId="open_browser"
-        android:enabled="true"
-        android:icon="@drawable/ic_shortcut_browser"
-        android:shortcutShortLabel="@string/web_session_shortcut_label"
-        android:shortcutLongLabel="@string/web_session_shortcut_long_label">
-        <intent
-            android:action="com.ai.assistance.operit.action.OPEN_BROWSER_SHORTCUT"
-            android:targetPackage="com.ai.assistance.operit"
-            android:targetClass="com.ai.assistance.operit.ui.main.MainActivity" />
-    </shortcut>
 </shortcuts>

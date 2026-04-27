@@ -64,6 +64,8 @@ class DisplayPreferencesManager private constructor(private val context: Context
             booleanPreferencesKey("enable_navigation_animation")
 
         // 自动化显示与行为相关设置的 Key
+        private val KEY_ENABLE_BACKGROUND_KEEP_ALIVE =
+            booleanPreferencesKey("enable_background_keep_alive")
         private val KEY_ENABLE_EXPERIMENTAL_VIRTUAL_DISPLAY =
             booleanPreferencesKey("enable_experimental_virtual_display")
         private val KEY_HIDE_RUNTIME_TASK_VIEW =
@@ -214,6 +216,11 @@ class DisplayPreferencesManager private constructor(private val context: Context
             preferences[KEY_ENABLE_NAVIGATION_ANIMATION] ?: true
         }
 
+    val enableBackgroundKeepAlive: Flow<Boolean> =
+        context.displayPreferencesDataStore.data.map { preferences ->
+            preferences[KEY_ENABLE_BACKGROUND_KEEP_ALIVE] ?: false
+        }
+
     val enableExperimentalVirtualDisplay: Flow<Boolean> =
         context.displayPreferencesDataStore.data.map { preferences ->
             preferences[KEY_ENABLE_EXPERIMENTAL_VIRTUAL_DISPLAY] ?: true
@@ -226,17 +233,17 @@ class DisplayPreferencesManager private constructor(private val context: Context
 
     val screenshotFormat: Flow<String> =
         context.displayPreferencesDataStore.data.map { preferences ->
-            preferences[KEY_SCREENSHOT_FORMAT] ?: "PNG"
+            preferences[KEY_SCREENSHOT_FORMAT] ?: "JPG"
         }
 
     val screenshotQuality: Flow<Int> =
         context.displayPreferencesDataStore.data.map { preferences ->
-            preferences[KEY_SCREENSHOT_QUALITY] ?: 90
+            preferences[KEY_SCREENSHOT_QUALITY] ?: 75
         }
 
     val screenshotScalePercent: Flow<Int> =
         context.displayPreferencesDataStore.data.map { preferences ->
-            preferences[KEY_SCREENSHOT_SCALE_PERCENT] ?: 100
+            preferences[KEY_SCREENSHOT_SCALE_PERCENT] ?: 75
         }
 
     val visitWebWaitSeconds: Flow<Int> =
@@ -273,6 +280,7 @@ class DisplayPreferencesManager private constructor(private val context: Context
         enableEnterToSend: Boolean? = null,
         enableNewSidebar: Boolean? = null,
         enableNavigationAnimation: Boolean? = null,
+        enableBackgroundKeepAlive: Boolean? = null,
         enableExperimentalVirtualDisplay: Boolean? = null,
         hideRuntimeTaskView: Boolean? = null,
         screenshotFormat: String? = null,
@@ -303,6 +311,9 @@ class DisplayPreferencesManager private constructor(private val context: Context
             enableNewSidebar?.let { preferences[KEY_ENABLE_NEW_SIDEBAR] = it }
             enableNavigationAnimation?.let {
                 preferences[KEY_ENABLE_NAVIGATION_ANIMATION] = it
+            }
+            enableBackgroundKeepAlive?.let {
+                preferences[KEY_ENABLE_BACKGROUND_KEEP_ALIVE] = it
             }
             enableExperimentalVirtualDisplay?.let {
                 preferences[KEY_ENABLE_EXPERIMENTAL_VIRTUAL_DISPLAY] = it
@@ -375,6 +386,7 @@ class DisplayPreferencesManager private constructor(private val context: Context
             preferences[KEY_ENABLE_ENTER_TO_SEND] = false
             preferences.remove(KEY_ENABLE_NEW_SIDEBAR)
             preferences.remove(KEY_ENABLE_NAVIGATION_ANIMATION)
+            preferences[KEY_ENABLE_BACKGROUND_KEEP_ALIVE] = false
             preferences[KEY_ENABLE_EXPERIMENTAL_VIRTUAL_DISPLAY] = true
             preferences[KEY_HIDE_RUNTIME_TASK_VIEW] = false
             preferences.remove(KEY_SCREENSHOT_FORMAT)

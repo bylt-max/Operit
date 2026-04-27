@@ -180,8 +180,14 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         val surface: String,
         val title: String,
         val description: String,
+        val action: ToolPkgNavigationActionHook? = null,
         val icon: String?,
         val order: Int
+    )
+
+    data class ToolPkgNavigationActionHook(
+        val functionName: String,
+        val functionSource: String? = null
     )
 
     data class PackageLoadErrorInfo(
@@ -1425,6 +1431,24 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
             event = event,
             eventName = eventName,
             pluginId = pluginId,
+            inlineFunctionSource = inlineFunctionSource,
+            eventPayload = eventPayload,
+            onIntermediateResult = onIntermediateResult
+        )
+    }
+
+    fun runToolPkgNavigationEntryAction(
+        containerPackageName: String,
+        entryId: String,
+        functionName: String,
+        inlineFunctionSource: String? = null,
+        eventPayload: Map<String, Any?> = emptyMap(),
+        onIntermediateResult: ((Any?) -> Unit)? = null
+    ): Result<Any?> {
+        return toolPkgFacade.runToolPkgNavigationEntryAction(
+            containerPackageName = containerPackageName,
+            entryId = entryId,
+            functionName = functionName,
             inlineFunctionSource = inlineFunctionSource,
             eventPayload = eventPayload,
             onIntermediateResult = onIntermediateResult

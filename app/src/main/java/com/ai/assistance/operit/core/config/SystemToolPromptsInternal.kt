@@ -161,6 +161,11 @@ object SystemToolPromptsInternal {
                             parametersStructured = emptyList()
                         ),
                         ToolPrompt(
+                            name = "browser_close_all",
+                            description = "Close all browser tabs. This also closes the browser overlay.",
+                            parametersStructured = emptyList()
+                        ),
+                        ToolPrompt(
                             name = "browser_console_messages",
                             description = "Read browser console messages for the current page.",
                             parametersStructured =
@@ -2759,6 +2764,11 @@ object SystemToolPromptsInternal {
                         ToolPrompt(
                             name = "browser_close",
                             description = "关闭当前浏览器 tab。关闭最后一个 tab 时也会关闭浏览器浮窗。",
+                            parametersStructured = emptyList()
+                        ),
+                        ToolPrompt(
+                            name = "browser_close_all",
+                            description = "关闭全部浏览器 tab，并关闭浏览器浮窗。",
                             parametersStructured = emptyList()
                         ),
                         ToolPrompt(

@@ -164,6 +164,7 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
             val enabledSet = packageManager.getEnabledPackageNames().toSet()
             val disabledSet = packageManager.getDisabledPackages().toSet()
             val externalPackagesPath = packageManager.getExternalPackagesPath()
+            val packageLoadErrors = packageManager.getPackageLoadErrors()
 
             val packages =
                 availablePackages.entries
@@ -196,7 +197,8 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
                         externalCount = availablePackages.values.count { !it.isBuiltIn },
                         enabledCount = availablePackages.keys.count { enabledSet.contains(it) },
                         disabledCount = availablePackages.keys.count { !enabledSet.contains(it) },
-                        packages = packages
+                        packages = packages,
+                        packageLoadErrors = packageLoadErrors
                     )
             )
         } catch (e: Exception) {
@@ -212,7 +214,8 @@ class StandardSoftwareSettingsModifyTools(private val context: Context) {
                         externalCount = 0,
                         enabledCount = 0,
                         disabledCount = 0,
-                        packages = emptyList()
+                        packages = emptyList(),
+                        packageLoadErrors = emptyMap()
                     ),
                 error = e.message ?: "Failed to list sandbox packages"
             )

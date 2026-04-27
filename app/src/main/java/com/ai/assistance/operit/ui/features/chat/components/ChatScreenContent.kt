@@ -585,10 +585,11 @@ fun ChatScreenContent(
                     }
             ) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     SmallFloatingActionButton(
+                        modifier = Modifier.align(Alignment.Top),
                         onClick = {
                             AppLogger.d(
                                 "ChatScreenContent",
@@ -606,7 +607,12 @@ fun ChatScreenContent(
                         )
                     }
 
-                    AnimatedVisibility(visible = isSpeechPaused) {
+                    AnimatedVisibility(
+                        visible = isSpeechPaused,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                        modifier = Modifier.align(Alignment.Top)
+                    ) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             SmallFloatingActionButton(
                                 onClick = {

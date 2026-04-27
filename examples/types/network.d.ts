@@ -93,6 +93,11 @@ export namespace Net {
     function browserClose(options?: Record<string, unknown>): Promise<StringResultData>;
 
     /**
+     * Close all browser tabs.
+     */
+    function browserCloseAll(options?: Record<string, unknown>): Promise<StringResultData>;
+
+    /**
      * Read console messages from the browser session.
      */
     function browserConsoleMessages(options?: {
