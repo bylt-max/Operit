@@ -94,6 +94,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -123,6 +124,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.io.File
 import java.util.Locale
 
 private const val TAG = "ToolPkgComposeDslScreen"
@@ -2015,6 +2017,42 @@ internal fun boxAlignmentFromToken(raw: String?): Alignment {
         "bottomcenter", "centerbottom" -> Alignment.BottomCenter
         "bottomend", "endbottom", "bottomright", "rightbottom", "end" -> Alignment.BottomEnd
         else -> Alignment.TopStart
+    }
+}
+
+internal fun Map<String, Any?>.contentScale(key: String): ContentScale {
+    return when (normalizeToken(string(key))) {
+        "crop" -> ContentScale.Crop
+        "fillbounds", "fill" -> ContentScale.FillBounds
+        "fillwidth" -> ContentScale.FillWidth
+        "fillheight" -> ContentScale.FillHeight
+        "inside" -> ContentScale.Inside
+        "none" -> ContentScale.None
+        else -> ContentScale.Fit
+    }
+}
+
+internal fun Map<String, Any?>.imageModelOrNull(): Any? {
+    val rawValue =
+        stringOrNull("url")
+            ?: stringOrNull("uri")
+            ?: stringOrNull("path")
+            ?: stringOrNull("fileUri")
+            ?: stringOrNull("src")
+            ?: return null
+    val normalized = rawValue.trim()
+    if (normalized.isEmpty()) {
+        return null
+    }
+    return when {
+        normalized.startsWith("http://", ignoreCase = true) ||
+            normalized.startsWith("https://", ignoreCase = true) -> normalized
+        normalized.startsWith("content://", ignoreCase = true) ||
+            normalized.startsWith("file://", ignoreCase = true) ||
+            normalized.startsWith("android.resource://", ignoreCase = true) -> Uri.parse(normalized)
+        normalized.startsWith("/") -> File(normalized)
+        Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(normalized) -> File(normalized)
+        else -> normalized
     }
 }
 
